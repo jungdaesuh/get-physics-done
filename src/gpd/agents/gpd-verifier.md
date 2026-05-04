@@ -148,7 +148,9 @@ Immediately before writing or validating `VERIFICATION.md`, load the canonical s
 
 Do not restate the schema from memory. Treat those files as the source of truth for `plan_contract_ref`, `contract_results`, `comparison_verdicts`, `suggested_contract_checks`, proof-audit fields, status vocabularies, ID linkage, and stale-audit handling. Keep these validator-owned ledger labels visible while using the schema: `contract_results.uncertainty_markers`, reference `completed_actions` / `missing_actions`, decisive `comparison_verdicts` with `subject_role: decisive`, and incomplete `inconclusive` / `tension` verdicts. If a decisive benchmark, prior-work, experiment, baseline, or cross-method comparison remains unresolved, record the canonical incomplete verdict instead of omitting the ledger entry or upgrading the parent target to pass.
 
-Schema guard: `contract_results` keys match PLAN IDs from `plan_contract_ref`; project-only IDs go in body/unbound suggestions. No `gpd_return`, `computational_oracle`, or runtime fields in frontmatter. Oracle in body; return after report. Unclear `evidence[]`: use parent `summary` / `notes`.
+Fallback report-writer rule: when a handoff payload provides `verification_report_skeleton_bridge`, write body-only evidence (hashes, command output, oracle details, stale comparisons, and prose gap analysis) to a Markdown body file, then run its `writer_command`. Follow `body_contract` when present: the body file is body-only Markdown with one fenced executed `python`/`bash` block, adjacent `**Output:**` plus fenced `output`, and a following `PASS`/`FAIL`/`INCONCLUSIVE` verdict. The writer serializes frontmatter and validates before the report is canonical. Do not hand-author or reflow `VERIFICATION.md` YAML. Use `skeleton_command` only as a read-only preview or if the writer helper is unavailable; in that fallback, copy generated YAML verbatim and edit body only.
+
+Schema guard: frontmatter `status` uses the verification schema enum; use `gaps_found` for physics/evidence gaps, not `failed`. Keep `contract_results` keyed by PLAN IDs and use only fields from the loaded schema references. Keep `gpd_return`, computational-oracle/runtime details, command transcripts, hashes, and prose-only evidence out of frontmatter; they belong in the body or return envelope. Omit ambiguous `evidence[]`; do not invent comparison-verdict keys. For missing decisive anchors, follow `contract-results-schema.md#compact-gap-report-crib`.
 
 Before freezing the verification plan, use this contract-check loop whenever project-local anchors or prior-output paths matter:
 
@@ -311,7 +313,7 @@ For each item, document: what to verify, expected result, domain expertise neede
 
 ## Step 10: Structure Gap Output (If Gaps Found)
 
-Structure gaps in YAML frontmatter for `gpd:plan-phase --gaps`. Each gap has: `gap_subject_kind`, `subject_id`, `expectation` (what failed), `expected_check`, `status` (failed|partial), `category` (which check: dimensional_analysis, limiting_case, symmetry, conservation, math_consistency, convergence, literature_agreement, plausibility, statistical_rigor, thermodynamic_consistency, spectral_analytic, anomalies_topological, spot_check, cross_check, intermediate_spot_check, forbidden_proxy, comparison_verdict), `reason`, `computation_evidence` (what you computed that revealed the error), `artifacts` (path + issue), `missing` (specific fixes), `severity` (blocker|significant|minor), and `suggested_contract_checks` when the contract is missing a decisive target.
+Structure gaps in YAML frontmatter for `gpd:plan-phase --gaps`. A gap report's top-level `status` is `gaps_found`, `expert_needed`, or `human_needed` as applicable, never `failed` for a physics or evidence gap. Each gap has: `gap_subject_kind`, `subject_id`, `expectation` (what failed), `expected_check`, `status` (failed|partial), `category` (which check: dimensional_analysis, limiting_case, symmetry, conservation, math_consistency, convergence, literature_agreement, plausibility, statistical_rigor, thermodynamic_consistency, spectral_analytic, anomalies_topological, spot_check, cross_check, intermediate_spot_check, forbidden_proxy, comparison_verdict), `reason`, `computation_evidence` (what you computed that revealed the error), `artifacts` (path + issue), `missing` (specific fixes), `severity` (blocker|significant|minor), and `suggested_contract_checks` when the contract is missing a decisive target.
 
 **Group related gaps by root cause** — if multiple contract targets fail from the same physics error, note this for focused remediation.
 
@@ -359,7 +361,7 @@ Use the loaded canonical report template and result-ledger schema as the example
 
 ### Validation Stop Rule
 
-Run validator after writing. Pass: return. Fail: max two targeted repairs; unresolved or PLAN/project ID ambiguity -> `gpd_return.status: blocked` with latest errors. No aliases or empty evidence to pass.
+Run the validator after writing: `gpd frontmatter validate ${phase_dir}/${phase_number}-VERIFICATION.md --schema verification`, plus `gpd validate verification-contract ${phase_dir}/${phase_number}-VERIFICATION.md` when the report is contract-backed. If validation fails, perform exactly one bounded repair pass limited to the reported schema errors, then rerun the same validator command(s) once. Pass: return. After the second validator failure total (initial failure plus one repair rerun), stop all edits and return `gpd_return.status: blocked` with latest errors. Do not patch prose, summaries, scores, frontmatter, aliases, empty evidence, or PLAN/project IDs again merely to satisfy validation.
 
 ### Report Body Sections
 
@@ -413,7 +415,7 @@ gpd_return:
 ```
 
 Use only status names: `completed` | `checkpoint` | `blocked` | `failed`.
-`gpd_return.files_written` is fail-closed: list only files that genuinely landed on disk in this run. `completed` should normally include `${phase_dir}/${phase_number}-VERIFICATION.md`. `checkpoint`, `blocked`, and `failed` may use `[]` unless a partial verification artifact was truly written and verified on disk.
+`gpd_return.files_written` is fail-closed: list only files that genuinely landed on disk in this run. `completed` may include `${phase_dir}/${phase_number}-VERIFICATION.md` only after the canonical report passes frontmatter and contract validation. If a draft report still fails validation, leave it as invalid evidence, return blocked outside the report artifact, and do not list it as completed. `checkpoint`, `blocked`, and `failed` may use `[]` unless a partial verification artifact was truly written and verified on disk.
 
 </structured_returns>
 

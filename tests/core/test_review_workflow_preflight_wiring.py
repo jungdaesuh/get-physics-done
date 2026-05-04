@@ -175,7 +175,7 @@ def test_peer_review_prompts_do_not_route_managed_subjects_to_global_review_root
     round_reference = _publication_reference_text("publication-review-round-artifacts.md")
     reliability_reference = _publication_reference_text("peer-review-reliability.md")
 
-    assert "selected GPD-owned publication/review roots exposed by centralized preflight" in command
+    assert "centralized preflight's selected publication/review roots" in command
     assert "Never write managed-subject review artifacts to the global `GPD/review` fallback." in command
     assert "not under the default global `GPD/review` path" in command
     assert "while still writing review artifacts under `GPD/` in the invoking workspace" not in reliability_reference

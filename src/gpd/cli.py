@@ -18,13 +18,16 @@ import asyncio
 import dataclasses
 import glob
 import hashlib
+import inspect
 import json
 import logging
 import os
 import re
 import shlex
 import sys
+import tempfile
 from collections.abc import Callable, Collection, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
@@ -34,6 +37,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from gpd.adapters.base import INSTALL_ROLLBACK_RESULT_KEY as _INSTALL_RESULT_ROLLBACK_KEY
 from gpd.adapters.runtime_catalog import list_runtime_names, normalize_runtime_name
 from gpd.command_labels import canonical_command_label, parse_command_label, validated_public_command_prefix
 from gpd.core.artifact_text import (
@@ -1275,7 +1279,7 @@ def help_bridge(
         "local_cli_equivalence_guaranteed": False,
         "dispatch_note": (
             "Runtime commands are installed into configured agent surfaces; "
-            "this local bridge exposes registry metadata for automation and live-audit probes."
+            "this local bridge exposes registry metadata for automation."
         ),
         "default_sections": ["quick_start_extract", "wrapper_owned_all_hint"],
         "quick_start": {
@@ -6005,7 +6009,6 @@ app.add_typer(config_app, name="config")
 
 _WOLFRAM_INTEGRATION_NAME = WOLFRAM_MANAGED_INTEGRATION.integration_id
 _INSTALL_RESULT_ADAPTER_KEY = "__gpd_install_adapter_instance__"
-_INSTALL_RESULT_ROLLBACK_KEY = "__gpd_install_rollback_snapshot__"
 
 
 def _integrations_config_path(cwd: Path) -> Path:
@@ -6711,6 +6714,9 @@ def config_ensure_section() -> None:
 
 validate_app = typer.Typer(help="Validation checks")
 app.add_typer(validate_app, name="validate")
+
+verification_report_app = typer.Typer(help="Verification report skeleton helpers")
+app.add_typer(verification_report_app, name="verification-report")
 
 
 def _resolve_subject_path(subject: str | None, *, base: Path) -> Path | None:
@@ -11594,6 +11600,669 @@ def validate_review_preflight(
         raise typer.Exit(code=1)
 
 
+def _verification_report_plan_contract_ref(plan_path: Path) -> str:
+    """Return the canonical project-local contract ref for a PLAN path."""
+
+    resolved = plan_path.resolve(strict=False)
+    parts = resolved.parts
+    if "GPD" in parts:
+        gpd_index = parts.index("GPD")
+        return f"{Path(*parts[gpd_index:]).as_posix()}#/contract"
+    return f"{resolved.name}#/contract"
+
+
+def _normalize_verification_report_skeleton_status(status: str) -> str:
+    normalized = status.strip()
+    if normalized != "gaps_found":
+        raise GPDError("verification-report skeleton currently supports only --status gaps_found")
+    return normalized
+
+
+def _load_verification_report_skeleton_builder() -> Callable[..., Mapping[str, object]]:
+    """Load the source-of-truth verification-report skeleton builder."""
+
+    try:
+        from gpd.core.verification_report import build_verification_report_skeleton
+    except ImportError as exc:
+        raise GPDError(
+            "verification-report skeleton builder is not available; expected "
+            "gpd.core.verification_report.build_verification_report_skeleton"
+        ) from exc
+    return build_verification_report_skeleton
+
+
+def _callable_accepts_kwarg(callable_obj: Callable[..., object], name: str) -> bool:
+    try:
+        signature = inspect.signature(callable_obj)
+    except (TypeError, ValueError):
+        return False
+    for parameter in signature.parameters.values():
+        if parameter.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+        if parameter.name == name and parameter.kind in {
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        }:
+            return True
+    return False
+
+
+def _call_verification_report_skeleton_builder(
+    builder: Callable[..., object],
+    *,
+    contract: object,
+    plan_path: Path,
+    plan_contract_ref: str,
+    status: str,
+    verified: str | None,
+    score: str | None,
+) -> object:
+    kwargs: dict[str, object] = {
+        "contract": contract,
+        "plan_path": plan_path,
+        "plan_contract_ref": plan_contract_ref,
+        "status": status,
+    }
+    if verified is not None and _callable_accepts_kwarg(builder, "verified"):
+        kwargs["verified"] = verified
+    if score is not None and _callable_accepts_kwarg(builder, "score"):
+        kwargs["score"] = score
+    return builder(**kwargs)
+
+
+def _normalize_verification_report_skeleton_output(
+    raw_payload: object,
+    *,
+    plan_path: Path,
+    plan_contract_ref: str,
+    target_status: str,
+) -> dict[str, object]:
+    if hasattr(raw_payload, "model_dump"):
+        payload = raw_payload.model_dump(mode="json", by_alias=True)
+    elif dataclasses.is_dataclass(raw_payload) and not isinstance(raw_payload, type):
+        payload = dataclasses.asdict(raw_payload)
+    else:
+        payload = raw_payload
+    if not isinstance(payload, Mapping):
+        raise GPDError("verification-report skeleton builder must return a mapping")
+
+    normalized = dict(payload)
+    normalized.setdefault("plan_path", str(plan_path))
+    normalized.setdefault("plan_contract_ref", plan_contract_ref)
+    normalized.setdefault("target_status", target_status)
+    if "validation_commands" not in normalized:
+        normalized["validation_commands"] = _verification_report_validation_commands(normalized)
+    if "authoring_rules" not in normalized:
+        normalized["authoring_rules"] = _verification_report_authoring_rules()
+    if "warnings" not in normalized:
+        normalized["warnings"] = []
+    if "frontmatter_yaml" not in normalized:
+        normalized["frontmatter_yaml"] = _render_verification_report_frontmatter_yaml(
+            normalized.get("frontmatter"),
+            target_report_ref=_verification_report_artifact_ref(normalized),
+        )
+    if "markdown_draft" not in normalized:
+        normalized["markdown_draft"] = _render_verification_report_markdown_draft(normalized)
+    return normalized
+
+
+def _normalize_verification_report_skeleton_format(output_format: str) -> str:
+    normalized = output_format.strip().lower()
+    if normalized not in {"markdown", "frontmatter", "json"}:
+        raise GPDError("verification-report skeleton --format must be one of: markdown, frontmatter, json")
+    return normalized
+
+
+def _project_local_gpd_ref(path_value: object) -> str | None:
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+    parts = Path(path_value).expanduser().parts
+    if "GPD" not in parts:
+        return path_value
+    return Path(*parts[parts.index("GPD") :]).as_posix()
+
+
+def _render_verification_report_frontmatter_yaml(
+    frontmatter: object,
+    *,
+    target_report_ref: str | None = None,
+) -> str:
+    if not isinstance(frontmatter, Mapping):
+        raise GPDError("verification-report skeleton payload is missing frontmatter")
+
+    from gpd.core.verification_report import render_verification_report_frontmatter_yaml
+
+    kwargs: dict[str, object] = {}
+    if target_report_ref is not None and _callable_accepts_kwarg(
+        render_verification_report_frontmatter_yaml,
+        "target_report_ref",
+    ):
+        kwargs["target_report_ref"] = target_report_ref
+    return render_verification_report_frontmatter_yaml(dict(frontmatter), **kwargs)
+
+
+def _ensure_frontmatter_block(frontmatter_yaml: object) -> str:
+    if not isinstance(frontmatter_yaml, str) or not frontmatter_yaml.strip():
+        raise GPDError("verification-report skeleton payload is missing frontmatter_yaml")
+    rendered = frontmatter_yaml.strip()
+    if rendered.startswith("---"):
+        return f"{rendered}\n"
+    return f"---\n{rendered}\n---\n"
+
+
+def _verification_report_artifact_ref(payload: Mapping[str, object]) -> str:
+    for key in ("target_report_ref", "target_report_path"):
+        rendered = _project_local_gpd_ref(payload.get(key))
+        if rendered:
+            return rendered
+    return "GPD/phases/<phase>/<plan>-VERIFICATION.md"
+
+
+def _verification_report_validation_commands(payload: Mapping[str, object]) -> list[str]:
+    existing = payload.get("validation_commands")
+    if isinstance(existing, list) and all(isinstance(item, str) for item in existing):
+        return list(existing)
+    report_ref = _verification_report_artifact_ref(payload)
+    return [
+        f"gpd frontmatter validate {report_ref} --schema verification",
+        f"gpd validate verification-contract {report_ref}",
+    ]
+
+
+def _verification_report_authoring_rules() -> list[str]:
+    return [
+        "Use this generated frontmatter as the starting YAML, not as a loose example.",
+        "Do not add prose strings to contract_results.*.evidence; put prose in summary, notes, or the Markdown body.",
+        "Keep top-level status as gaps_found until a validated report can support a stronger result.",
+        "Run the validation commands before treating the report as canonical.",
+    ]
+
+
+def _render_verification_report_markdown_draft(payload: Mapping[str, object]) -> str:
+    from gpd.core.verification_report import render_verification_report_markdown
+
+    frontmatter_block = _ensure_frontmatter_block(payload.get("frontmatter_yaml"))
+    validation_commands = _verification_report_validation_commands(payload)
+    authoring_rules = payload.get("authoring_rules")
+    rules = authoring_rules if isinstance(authoring_rules, list) else _verification_report_authoring_rules()
+    validation_block = "\n".join(validation_commands)
+    rules_block = "\n".join(f"- {rule}" for rule in rules if isinstance(rule, str))
+    body_stub = (
+        "# Verification\n\n"
+        "## Evidence\n\n"
+        "Add the independent verification commands, exact outputs, and PASS/FAIL/INCONCLUSIVE verdict here.\n\n"
+        "## Gap Notes\n\n"
+        "Explain unresolved contract gaps without changing schema-only fields into prose evidence.\n\n"
+        "## Validation Commands\n\n"
+        "```bash\n"
+        f"{validation_block}\n"
+        "```\n\n"
+        "## Authoring Rules\n\n"
+        f"{rules_block}\n"
+    )
+    return render_verification_report_markdown(frontmatter_block, body_stub)
+
+
+def _emit_verification_report_skeleton(payload: Mapping[str, object], *, output_format: str) -> None:
+    if _raw or output_format == "json":
+        _emit_raw_json(dict(payload))
+        return
+    if output_format == "frontmatter":
+        typer.echo(_ensure_frontmatter_block(payload.get("frontmatter_yaml")), nl=False)
+        return
+    markdown_draft = payload.get("markdown_draft")
+    if not isinstance(markdown_draft, str) or not markdown_draft.strip():
+        markdown_draft = _render_verification_report_markdown_draft(payload)
+    typer.echo(markdown_draft.rstrip() + "\n", nl=False)
+
+
+def _normalize_verification_report_validate_mode(validate_mode: str | None, *, has_body_file: bool) -> str:
+    if validate_mode is None:
+        return "contract" if has_body_file else "frontmatter"
+    normalized = validate_mode.strip().lower()
+    if normalized not in {"none", "frontmatter", "contract"}:
+        raise GPDError("verification-report skeleton --validate must be one of: none, frontmatter, contract")
+    return normalized
+
+
+def _normalize_verification_report_verified(verified: str | None) -> str | None:
+    if verified is None:
+        return None
+    normalized = verified.strip()
+    if not normalized:
+        raise GPDError("verification-report skeleton --verified cannot be empty")
+    if normalized.lower() == "now":
+        return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return normalized
+
+
+def _normalize_verification_report_score(score: str | None) -> str | None:
+    if score is None:
+        return None
+    normalized = score.strip()
+    if not normalized:
+        raise GPDError("verification-report skeleton --score cannot be empty")
+    return normalized
+
+
+def _verification_report_output_target(
+    output_path: str | None,
+    *,
+    payload: Mapping[str, object],
+    plan_path: Path,
+) -> Path:
+    raw_target = output_path
+    if raw_target is None:
+        payload_target = payload.get("target_report_path")
+        if isinstance(payload_target, str) and payload_target.strip():
+            raw_target = payload_target
+    if raw_target is None:
+        name = plan_path.name
+        raw_target = str(
+            plan_path.with_name(name.replace("PLAN.md", "VERIFICATION.md") if "PLAN.md" in name else "VERIFICATION.md")
+        )
+
+    target = Path(raw_target).expanduser()
+    if not target.is_absolute():
+        target = _get_cwd() / target
+    return target.resolve(strict=False)
+
+
+def _verification_report_validation_commands_for_ref(report_ref: str) -> list[str]:
+    quoted_ref = shlex.quote(report_ref)
+    return [
+        f"gpd frontmatter validate {quoted_ref} --schema verification",
+        f"gpd validate verification-contract {quoted_ref}",
+    ]
+
+
+def _verification_report_warning_list(payload: Mapping[str, object], *, validate_mode: str) -> list[str]:
+    warnings: list[str] = []
+    raw_warnings = payload.get("warnings")
+    if isinstance(raw_warnings, list):
+        warnings.extend(str(item) for item in raw_warnings if str(item).strip())
+    if validate_mode == "none":
+        warnings.append("Validation skipped because --validate none was requested.")
+    return warnings
+
+
+def _render_verification_report_markdown_candidate(frontmatter_yaml: str, body_markdown: str) -> str:
+    from gpd.core.verification_report import render_verification_report_markdown
+
+    return render_verification_report_markdown(frontmatter_yaml, body_markdown)
+
+
+def _render_verification_report_candidate(
+    payload: Mapping[str, object],
+    *,
+    target_report_ref: str,
+    body_markdown: str | None,
+    verified: str | None,
+    score: str | None,
+) -> tuple[str, dict[str, object]]:
+    frontmatter = payload.get("frontmatter")
+    if not isinstance(frontmatter, Mapping):
+        raise GPDError("verification-report skeleton payload is missing frontmatter")
+
+    rendered_payload = dict(payload)
+    rendered_frontmatter = dict(frontmatter)
+    if verified is not None:
+        rendered_frontmatter["verified"] = verified
+    if score is not None:
+        rendered_frontmatter["score"] = score
+
+    frontmatter_yaml = _render_verification_report_frontmatter_yaml(
+        rendered_frontmatter,
+        target_report_ref=target_report_ref,
+    )
+    body = body_markdown
+    if body is None:
+        body_candidate = rendered_payload.get("body_stub")
+        body = body_candidate if isinstance(body_candidate, str) else ""
+    candidate = _render_verification_report_markdown_candidate(frontmatter_yaml, body)
+
+    rendered_payload["frontmatter"] = rendered_frontmatter
+    rendered_payload["frontmatter_yaml"] = frontmatter_yaml
+    rendered_payload["markdown_draft"] = candidate
+    return candidate, rendered_payload
+
+
+def _verification_report_validation_not_run(mode: str, error: str) -> dict[str, object]:
+    return {
+        "mode": mode,
+        "status": "not_run",
+        "valid": False,
+        "missing": [],
+        "present": [],
+        "errors": [error],
+        "schema_name": "verification",
+        "oracle_evidence_count": None,
+    }
+
+
+def _verification_report_write_recovery(
+    *,
+    plan_path: Path,
+    target_path: Path,
+    body_path: Path | None,
+    validate_mode: str,
+    force: bool,
+    status: str,
+    verified: str | None,
+    score: str | None,
+) -> dict[str, object]:
+    from gpd.core.verification_report import VERIFICATION_REPORT_BODY_CONTRACT
+
+    body_display = _format_display_path(body_path) if body_path is not None else "BODY.md"
+    command_parts = [
+        "gpd",
+        "verification-report",
+        "skeleton",
+        _format_display_path(plan_path),
+        "--status",
+        status,
+        "--write",
+        "--output",
+        _format_display_path(target_path),
+        "--body-file",
+        body_display,
+        "--validate",
+        validate_mode,
+    ]
+    if force:
+        command_parts.insert(6, "--force")
+    if verified is not None:
+        command_parts.extend(["--verified", verified])
+    if score is not None:
+        command_parts.extend(["--score", score])
+
+    if body_path is None:
+        safe_next_step = (
+            "Create a Markdown body file with executed oracle evidence, then rerun the writer with --body-file."
+        )
+    else:
+        safe_next_step = "Edit only the Markdown body file, then rerun the writer command."
+
+    return {
+        "safe_next_step": safe_next_step,
+        "body_file_contract": [
+            VERIFICATION_REPORT_BODY_CONTRACT,
+            "Do not include YAML frontmatter in the body file.",
+            "Keep generated frontmatter unchanged; the canonical report is written only after validation passes.",
+        ],
+        "rerun_command": " ".join(shlex.quote(part) for part in command_parts),
+    }
+
+
+def _validate_verification_report_candidate(
+    content: str,
+    *,
+    source_path: Path,
+    mode: str,
+) -> dict[str, object]:
+    if mode == "none":
+        return {
+            "mode": mode,
+            "status": "skipped",
+            "valid": True,
+            "missing": [],
+            "present": [],
+            "errors": [],
+            "schema_name": "verification",
+            "oracle_evidence_count": None,
+        }
+
+    from gpd.core.correctness_validators import validate_verification_oracle_evidence
+    from gpd.core.frontmatter import FrontmatterParseError, FrontmatterValidationError, validate_frontmatter
+
+    try:
+        schema_result = validate_frontmatter(content, "verification", source_path=source_path)
+    except (FrontmatterParseError, FrontmatterValidationError) as exc:
+        return {
+            "mode": mode,
+            "status": "invalid",
+            "valid": False,
+            "missing": [],
+            "present": [],
+            "errors": [f"{type(exc).__name__}: {exc}"],
+            "schema_name": "verification",
+            "oracle_evidence_count": None,
+        }
+
+    errors = list(schema_result.errors)
+    oracle_evidence_count: int | None = None
+    if mode == "contract":
+        oracle_result = validate_verification_oracle_evidence(content, source_path=source_path)
+        oracle_evidence_count = oracle_result.evidence_count
+        errors.extend(oracle_result.errors)
+
+    valid = len(schema_result.missing) == 0 and not errors
+    return {
+        "mode": mode,
+        "status": "valid" if valid else "invalid",
+        "valid": valid,
+        "missing": list(schema_result.missing),
+        "present": list(schema_result.present),
+        "errors": errors,
+        "schema_name": schema_result.schema_name,
+        "oracle_evidence_count": oracle_evidence_count,
+    }
+
+
+def _write_text_atomically(target_path: Path, content: str) -> None:
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=target_path.parent,
+            prefix=f".{target_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = handle.name
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, target_path)
+    finally:
+        if tmp_path is not None:
+            try:
+                Path(tmp_path).unlink()
+            except FileNotFoundError:
+                pass
+
+
+@verification_report_app.command("skeleton")
+def verification_report_skeleton_cmd(
+    input_path: str = typer.Argument(..., help="Path to a contract-backed PLAN.md file"),
+    status: str = typer.Option(
+        "gaps_found",
+        "--status",
+        help="Target VERIFICATION status for the skeleton; only gaps_found is supported.",
+    ),
+    output_format: str = typer.Option(
+        "markdown",
+        "--format",
+        help="Output mode for non-raw use: markdown, frontmatter, or json.",
+    ),
+    write: bool = typer.Option(
+        False, "--write", help="Write the rendered VERIFICATION report instead of only printing it."
+    ),
+    output_path: str | None = typer.Option(None, "--output", help="Target VERIFICATION.md path for --write."),
+    force: bool = typer.Option(False, "--force", help="Allow --write to replace an existing target."),
+    body_file: str | None = typer.Option(
+        None, "--body-file", help="Markdown body file to compose below generated frontmatter."
+    ),
+    verified: str | None = typer.Option(
+        None, "--verified", help="Override verified timestamp; use 'now' for current UTC."
+    ),
+    score: str | None = typer.Option(None, "--score", help="Override the generated score string."),
+    validate_mode: str | None = typer.Option(
+        None,
+        "--validate",
+        help="Validation mode for --write: none, frontmatter, or contract. Defaults to contract with --body-file, otherwise frontmatter.",
+    ),
+) -> None:
+    """Build a typed VERIFICATION frontmatter skeleton, optionally writing a validated report."""
+
+    from gpd.core.frontmatter import (
+        FrontmatterParseError,
+        FrontmatterValidationError,
+        parse_contract_block,
+    )
+
+    try:
+        normalized_status = _normalize_verification_report_skeleton_status(status)
+        normalized_format = _normalize_verification_report_skeleton_format(output_format)
+        normalized_verified = _normalize_verification_report_verified(verified)
+        normalized_score = _normalize_verification_report_score(score)
+        normalized_validate_mode = _normalize_verification_report_validate_mode(
+            validate_mode,
+            has_body_file=body_file is not None,
+        )
+    except GPDError as exc:
+        _error(str(exc))
+    file_path, content = _load_text_document_or_error(input_path)
+    body_path: Path | None = None
+    body_markdown: str | None = None
+    if body_file is not None:
+        body_path, body_markdown = _load_text_document_or_error(body_file)
+    try:
+        contract = parse_contract_block(content, source_path=file_path)
+    except (FrontmatterParseError, FrontmatterValidationError) as exc:
+        _error(str(exc))
+    if contract is None:
+        _error("PLAN frontmatter does not contain a contract block")
+
+    plan_contract_ref = _verification_report_plan_contract_ref(file_path)
+    try:
+        builder = _load_verification_report_skeleton_builder()
+    except GPDError as exc:
+        _error(str(exc))
+    try:
+        raw_payload = _call_verification_report_skeleton_builder(
+            builder,
+            contract=contract,
+            plan_path=file_path,
+            plan_contract_ref=plan_contract_ref,
+            status=normalized_status,
+            verified=normalized_verified,
+            score=normalized_score,
+        )
+    except ValueError as exc:
+        _error(str(exc))
+    try:
+        payload = _normalize_verification_report_skeleton_output(
+            raw_payload,
+            plan_path=file_path,
+            plan_contract_ref=plan_contract_ref,
+            target_status=normalized_status,
+        )
+    except GPDError as exc:
+        _error(str(exc))
+
+    if (
+        write
+        or output_path is not None
+        or body_markdown is not None
+        or normalized_verified is not None
+        or normalized_score is not None
+    ):
+        target_path = _verification_report_output_target(output_path, payload=payload, plan_path=file_path)
+        target_ref = _project_local_gpd_ref(str(target_path)) or target_path.as_posix()
+        validation_commands = _verification_report_validation_commands_for_ref(target_ref)
+        try:
+            candidate, rendered_payload = _render_verification_report_candidate(
+                payload,
+                target_report_ref=target_ref,
+                body_markdown=body_markdown,
+                verified=normalized_verified,
+                score=normalized_score,
+            )
+        except GPDError as exc:
+            _error(str(exc))
+
+        rendered_payload["target_report_path"] = str(target_path)
+        rendered_payload["target_report_ref"] = target_ref
+        rendered_payload["validation_commands"] = validation_commands
+        if not write:
+            _emit_verification_report_skeleton(rendered_payload, output_format=normalized_format)
+            return
+
+        warnings = _verification_report_warning_list(rendered_payload, validate_mode=normalized_validate_mode)
+        target_exists = target_path.exists()
+        write_payload: dict[str, object] = {
+            "written": False,
+            "target_report_path": str(target_path),
+            "target_report_ref": target_ref,
+            "replaced": False,
+            "force": force,
+            "body_file": str(body_path) if body_path is not None else None,
+            "validation": {},
+            "warnings": warnings,
+            "validation_commands": validation_commands,
+        }
+        if target_exists and not force:
+            write_payload["validation"] = _verification_report_validation_not_run(
+                normalized_validate_mode,
+                f"target exists; pass --force to overwrite: {_format_display_path(target_path)}",
+            )
+            _emit_raw_json(write_payload)
+            raise typer.Exit(code=1)
+        if not target_path.parent.exists():
+            write_payload["validation"] = _verification_report_validation_not_run(
+                normalized_validate_mode,
+                f"target parent directory does not exist: {_format_display_path(target_path.parent)}",
+            )
+            _emit_raw_json(write_payload)
+            raise typer.Exit(code=1)
+        if not target_path.parent.is_dir():
+            write_payload["validation"] = _verification_report_validation_not_run(
+                normalized_validate_mode,
+                f"target parent is not a directory: {_format_display_path(target_path.parent)}",
+            )
+            _emit_raw_json(write_payload)
+            raise typer.Exit(code=1)
+
+        validation = _validate_verification_report_candidate(
+            candidate,
+            source_path=target_path,
+            mode=normalized_validate_mode,
+        )
+        write_payload["validation"] = validation
+        if not validation.get("valid"):
+            if normalized_validate_mode == "contract":
+                write_payload["recovery"] = _verification_report_write_recovery(
+                    plan_path=file_path,
+                    target_path=target_path,
+                    body_path=body_path,
+                    validate_mode=normalized_validate_mode,
+                    force=force,
+                    status=normalized_status,
+                    verified=normalized_verified,
+                    score=normalized_score,
+                )
+            _emit_raw_json(write_payload)
+            raise typer.Exit(code=1)
+
+        try:
+            _write_text_atomically(target_path, candidate)
+        except OSError as exc:
+            write_payload["validation"] = _verification_report_validation_not_run(
+                normalized_validate_mode,
+                f"failed to write target atomically: {exc}",
+            )
+            _emit_raw_json(write_payload)
+            raise typer.Exit(code=1) from exc
+        write_payload["written"] = True
+        write_payload["replaced"] = target_exists
+        _emit_raw_json(write_payload)
+        return
+
+    _emit_verification_report_skeleton(payload, output_format=normalized_format)
+
+
 @validate_app.command("arxiv-package", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def validate_arxiv_package_cmd(
     ctx: typer.Context,
@@ -13052,7 +13721,6 @@ def _install_single_runtime(
     """Install GPD for a single runtime. Returns install result dict."""
     from contextlib import nullcontext
 
-    from gpd.adapters.base import INSTALL_ROLLBACK_RESULT_KEY
     from gpd.version import resolve_install_gpd_root
 
     adapter = _get_adapter_or_error(runtime_name, action="install")
@@ -13072,7 +13740,7 @@ def _install_single_runtime(
             is_global=is_global,
             explicit_target=target_dir_override is not None,
         )
-    install_rollback = result.pop(INSTALL_ROLLBACK_RESULT_KEY, None)
+    install_rollback = result.pop(_INSTALL_RESULT_ROLLBACK_KEY, None)
     result[_INSTALL_RESULT_ADAPTER_KEY] = adapter
     if install_rollback is not None:
         result[_INSTALL_RESULT_ROLLBACK_KEY] = install_rollback

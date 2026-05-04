@@ -69,7 +69,7 @@ def _remove_incidental_grounding(contract: dict[str, object]) -> None:
         target["evidence_required"] = [item for item in target.get("evidence_required", []) if item != "ref-benchmark"]
 
 
-def test_validate_project_contract_accepts_stage0_fixture() -> None:
+def test_validate_project_contract_accepts_baseline_fixture() -> None:
     contract = _load_contract_fixture()
 
     result = validate_project_contract(contract)

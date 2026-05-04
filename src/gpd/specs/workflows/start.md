@@ -65,7 +65,7 @@ Offer only the choices that fit the detected state.
 
 If choices are rendered as plain text, add: `Reply with the number or the option name.`
 
-Assign one internal `option_id` per choice. Do not route directly on the mutable English label; map input to: `resume_work`, `sync_state`, `progress`, `suggest_next`, `map_research`, `new_project_minimal`, `new_project_full`, `tour`, `quick`, `explain`, `help_all`, `reopen_recent`.
+Assign one internal `option_id` per displayed choice. Do not route directly on the mutable English label; map input to: `resume_work`, `sync_state`, `progress`, `map_research`, `new_project_minimal`, `new_project_full`, `tour`, `reopen_recent`.
 
 Before listing choices, add one short line in plain English such as:
 
@@ -74,7 +74,7 @@ Before listing choices, add one short line in plain English such as:
 
 Runtime label: Show `gpd:` as native labels; keep local CLI `gpd ...` unchanged.
 
-Keep the numbered list short. Put extra capabilities in a separate `Other useful options` block instead of making the user compare too many first choices; this is an internal structuring rule, not a line to show the researcher.
+Keep the numbered list short. Do not add a separate capabilities menu or help menu to the first chooser. The first turn should ask the researcher to choose among only the commands that fit the detected folder state.
 
 **This folder already has saved GPD work (`GPD project`)**
 
@@ -83,13 +83,6 @@ Recommended next steps:
 1. Resume this project (recommended) - use `gpd:resume-work`. This is the in-runtime continue command for an existing GPD project.
 2. Review the project status first - use `gpd:progress`.
 3. Take a guided tour first - use `gpd:tour`.
-
-Other useful options, only if one of these is what you need:
-
-- Suggest the next best step - use `gpd:suggest-next`.
-- Do one small bounded task - use `gpd:quick`.
-- Explain one concept - use `gpd:explain`.
-- Show all commands - use `gpd:help --all`.
 
 **This folder has partial/recoverable GPD state**
 
@@ -114,11 +107,6 @@ Recommended next steps:
 2. Refresh the research map - use `gpd:map-research`.
 3. Take a guided tour first - use `gpd:tour`.
 
-Other useful options, only if one of these is what you need:
-
-- Explain one concept - use `gpd:explain`.
-- Show all commands - use `gpd:help --all`.
-
 **This folder already has research files, but GPD is not set up here yet**
 
 Recommended next steps:
@@ -127,11 +115,6 @@ Recommended next steps:
 2. Take a guided tour first - use `gpd:tour`.
 3. Start a brand-new GPD project anyway - use `gpd:new-project --minimal`.
 
-Other useful options, only if one of these is what you need:
-
-- Explain one concept - use `gpd:explain`.
-- Show all commands - use `gpd:help --all`.
-
 **This folder looks new or mostly empty**
 
 Recommended next steps:
@@ -139,11 +122,6 @@ Recommended next steps:
 1. Fast start (recommended) - use `gpd:new-project --minimal`.
 2. Full guided setup - use `gpd:new-project`.
 3. Take a guided tour first - use `gpd:tour`.
-
-Other useful options, only if one of these is what you need:
-
-- Explain one concept - use `gpd:explain`.
-- Show all commands - use `gpd:help --all`.
 
 If you need to reopen a different GPD project, use `gpd resume --recent` in your normal terminal first. That is the explicit multi-project picker in the recovery ladder; the rows are advisory, and once you open the selected workspace `gpd:resume-work` reloads its canonical state. If it finds exactly one recoverable project it may auto-select it, otherwise choose from the list. Then open the workspace and continue with `gpd:resume-work`.
 
@@ -174,11 +152,6 @@ Normalize the reply to one stable `option_id`; labels are aliases only.
 - Read `{GPD_INSTALL_DIR}/workflows/progress.md` with the file-read tool.
 - Use `gpd:progress` as the selected runtime command label while following that workflow.
 
-**If the researcher chooses option_id `suggest_next` (`Suggest the next best step`):**
-
-- `suggest-next` is a workflow-exempt command, not a shared workflow include.
-- Use `gpd:suggest-next` as the selected runtime command label and follow its installed command contract directly.
-
 **If the researcher chooses option_id `map_research` (`Map this folder first (recommended)` or `Refresh the research map`):**
 
 - Read `{GPD_INSTALL_DIR}/workflows/map-research.md` with the file-read tool.
@@ -196,22 +169,6 @@ Normalize the reply to one stable `option_id`; labels are aliases only.
 
 - Use `gpd:tour` as the selected runtime command label and follow its installed command contract directly.
 
-**If the researcher chooses option_id `quick` (`Do one small bounded task`):**
-
-- Read `{GPD_INSTALL_DIR}/workflows/quick.md` with the file-read tool.
-- Use `gpd:quick` as the selected runtime command label while following that workflow.
-
-**If the researcher chooses option_id `explain` (`Explain one concept`):**
-
-- If `$ARGUMENTS` contains a usable concept or question, reuse it.
-- Otherwise ask for one short concept or question before continuing.
-- Read `{GPD_INSTALL_DIR}/workflows/explain.md` with the file-read tool.
-- Use `gpd:explain <topic>` as the selected runtime command label while following that workflow.
-
-**If the researcher chooses option_id `help_all` (`Show all commands`):**
-
-- Use `gpd:help --all` as the selected runtime command label and follow its installed command contract directly.
-
 **If the researcher chooses option_id `reopen_recent` (`Reopen a different GPD project`):**
 
 - Do not silently switch projects from inside the runtime.
@@ -227,7 +184,7 @@ Normalize the reply to one stable `option_id`; labels are aliases only.
 <step name="guardrails">
 Keep the routing strict:
 
-- `gpd:start` is the chooser, not a second implementation of `gpd:new-project`, `gpd:resume-work`, `gpd:map-research`, `gpd:quick`, `gpd:explain`, or `gpd:help`.
+- `gpd:start` is the chooser, not a second implementation of downstream workflows.
 - Do not silently create project files from `gpd:start` itself.
 - Do not silently switch the user into a different project folder.
 - When in doubt between a fresh folder and an existing research folder, prefer `map-research` as the safer recommendation.

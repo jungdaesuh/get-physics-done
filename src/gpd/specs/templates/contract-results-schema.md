@@ -132,7 +132,8 @@ Rules:
 - `proof_audit.proof_artifact_path` must match a declared `proof_deliverables` path, and `proof_audit.audit_artifact_path` must point to a proof-redteam artifact.
 - A passed proof-bearing claim must also have every declared proof-specific acceptance test in `claims[].acceptance_tests[]` passing; proof-bearing claims must declare at least one such test (`claim_to_proof_alignment`, `proof_hypothesis_coverage`, `proof_parameter_coverage`, `proof_quantifier_domain`, `lemma_dependency_closure`, or `counterexample_search`).
 - If a PLAN reference has `must_surface: true`, the ledger must include a matching `contract_results.references.<reference-id>` entry.
-- For `must_surface` references, `completed_actions` must cover every `required_actions` item; do not mark the anchor as handled while leaving required actions only in prose.
+- For `must_surface` references in a passed/final-complete report, `completed_actions` must cover every `required_actions` item; do not mark the anchor as handled while leaving required actions only in prose.
+- For a verification gap report, unresolved `must_surface` references are valid only when the reference entry is explicit: use `status: missing`, `completed_actions: []`, and `missing_actions: [read, compare]` (or the exact missing subset), then keep the top-level verification `status: gaps_found`.
 - `required_actions`, `completed_actions`, and `missing_actions` use the same closed action vocabulary: `read`, `use`, `compare`, `cite`, `avoid`.
 - Every strict string list is trimmed before validation. Blank-after-trim entries are invalid, and duplicate-after-trim entries are invalid. This includes `linked_ids`, `completed_actions`, `missing_actions`, and the list-valued proof-audit coverage fields.
 - Artifact readers may recover singleton string/list drift and closed-enum case drift when parsing existing ledgers, but newly written YAML must still use canonical lists and exact lowercase literals.
@@ -148,7 +149,45 @@ Rules:
 - `status`, `proof_audit.completeness`, and evidence literals such as `confidence`, `quantifier_status`, and `counterexample_status` use the exact lowercase literals shown here. Near-matches like `Passed` or `High` are invalid.
 - `evidence[].confidence: high | medium | low | unreliable`
 - `evidence[]` accepts documented keys only; never `kind`, `path`, `source`, `summary`, `actual_output`, or `command`. Put detail in parent `summary`/`notes` or body.
+- If all you have is prose gap evidence, do not create `evidence[]`; use the entry `summary` / `notes` or body. `evidence[]` is only for typed evidence objects.
 - Inside `evidence[]`, list-typed proof coverage fields (`covered_hypothesis_ids`, `missing_hypothesis_ids`, `covered_parameter_symbols`, `missing_parameter_symbols`, `uncovered_conclusion_clause_ids`) must stay YAML lists even when they contain a single item. Keep quantifier coverage in `proof_audit.uncovered_quantifiers`, not in `evidence[]`.
+
+---
+
+## Compact Gap Report Crib
+
+For contract-backed `VERIFICATION.md` gap reports, keep this schema-owned skeleton visible and replace IDs with declared PLAN contract IDs:
+
+```yaml
+status: gaps_found
+contract_results:
+  claims:
+    claim-main:
+      status: blocked
+      summary: Decisive benchmark anchor was not produced or could not be compared.
+      linked_ids: [test-main, ref-main]
+  acceptance_tests:
+    test-main:
+      status: blocked
+      summary: Required benchmark comparison could not pass without the anchor.
+      linked_ids: [claim-main, ref-main]
+  references:
+    ref-main:
+      status: missing
+      completed_actions: []
+      missing_actions: [read, compare]
+      summary: Required benchmark reference was not surfaced.
+comparison_verdicts:
+  - subject_id: claim-main
+    subject_kind: claim
+    subject_role: decisive
+    reference_id: ref-main
+    comparison_kind: benchmark
+    verdict: inconclusive
+    notes: Missing decisive reference prevents comparison.
+```
+
+Do not add `contract_results.status` or `contract_results.summary`; do not use nested `status: gaps_found`; do not put string entries in `evidence[]`; do not add `comparison_verdicts[].evidence`.
 
 ---
 

@@ -44,6 +44,14 @@ def _routed_choice_labels(workflow: str) -> set[str]:
     return labels
 
 
+def _numbered_choices(section: str) -> list[str]:
+    return [
+        line.strip()
+        for line in section.splitlines()
+        if re.match(r"\s*\d+\.\s+", line)
+    ]
+
+
 def test_start_command_is_registered_and_projectless() -> None:
     assert "start" in list_commands()
     command = get_command("gpd:start")
@@ -101,6 +109,7 @@ def test_start_workflow_routes_to_existing_entrypoints() -> None:
         ("This folder looks new or mostly empty",),
         ("I will show the safest next steps first and the broader options second.",),
         ("Keep the numbered list short.",),
+        ("Do not add a separate capabilities menu or help menu",),
         ("Resume this project (recommended)",),
         ("Review the project status first",),
         ("Map this folder first (recommended)",),
@@ -159,7 +168,9 @@ def test_start_workflow_routes_to_existing_entrypoints() -> None:
         assert any(fragment in workflow for fragment in fragment_options)
 
     assert "- `Keep the numbered list short." not in workflow
-    assert "this is an internal structuring rule, not a line to show the researcher" in workflow
+    assert "this is an internal structuring rule, not a line to show the researcher" not in workflow
+    assert "Other useful options" not in workflow
+    assert "other useful options" not in workflow
 
     assert "Read `{GPD_INSTALL_DIR}/workflows/new-project.md` with the file-read tool." not in workflow
     assert "Read `{GPD_INSTALL_DIR}/workflows/help.md` with the file-read tool." not in workflow
@@ -179,6 +190,34 @@ def test_start_workflow_routes_to_existing_entrypoints() -> None:
     assert "Review visible progress - use `gpd:progress`" not in workflow
 
 
+def test_start_workflow_existing_research_unmapped_first_chooser_is_only_three_choices() -> None:
+    workflow = (WORKFLOWS_DIR / "start.md").read_text(encoding="utf-8")
+    existing_research_choices = _extract_between(
+        workflow,
+        "**This folder already has research files, but GPD is not set up here yet**",
+        "**This folder looks new or mostly empty**",
+    )
+
+    assert _numbered_choices(existing_research_choices) == [
+        "1. Map this folder first (recommended) - use `gpd:map-research`.",
+        "2. Take a guided tour first - use `gpd:tour`.",
+        "3. Start a brand-new GPD project anyway - use `gpd:new-project --minimal`.",
+    ]
+    assert re.findall(r"`(gpd:[^`]+)`", existing_research_choices) == [
+        "gpd:map-research",
+        "gpd:tour",
+        "gpd:new-project --minimal",
+    ]
+    assert not re.search(r"(?m)^\s*-\s+.+\s+- use `gpd:", existing_research_choices)
+    assert "Other useful options" not in existing_research_choices
+    assert "capabilities menu" not in existing_research_choices
+    assert "help menu" not in existing_research_choices
+    assert "gpd:help" not in existing_research_choices
+    assert "gpd:quick" not in existing_research_choices
+    assert "gpd:explain" not in existing_research_choices
+    assert "gpd:suggest-next" not in existing_research_choices
+
+
 def test_start_workflow_displayed_choice_labels_route_verbatim() -> None:
     workflow = (WORKFLOWS_DIR / "start.md").read_text(encoding="utf-8")
 
@@ -187,7 +226,6 @@ def test_start_workflow_displayed_choice_labels_route_verbatim() -> None:
 
     assert displayed_labels
     assert displayed_labels <= routed_labels
-    assert "Do one small bounded task" in displayed_labels
-    assert "Do one small bounded task" in routed_labels
-    assert "Do a small bounded task" not in routed_labels
+    assert "Do one small bounded task" not in displayed_labels
+    assert "Do one small bounded task" not in routed_labels
     assert "tour" in routed_labels

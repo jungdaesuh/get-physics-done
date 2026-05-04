@@ -302,7 +302,7 @@ Proof freshness summary: {phase_proof_review_status}
 </verification_context>
 
 Treat `project_contract` as authoritative only when `project_contract_gate.authoritative` is true. Use `protocol_bundle_verifier_extensions` as primary bundle-extension surface. Keep decisive comparison gaps legible at the claim / acceptance-test / reference level. If user input is required, return `gpd_return.status: checkpoint` and stop.
-Schema finalization is bounded: validator pass returns; after two schema-only repair failures, return `gpd_return.status: blocked` with latest errors.
+Schema finalization is bounded: validator pass returns; after the second validator failure total, including the initial failure and one repair rerun, return `gpd_return.status: blocked` with latest errors.
 
 <spawn_contract>
 write_scope:
@@ -318,7 +318,7 @@ shared_state_policy: return_only
 )
 ```
 
-If runtime delegation is unavailable, execute the handoff in the main context, but do not re-implement verifier policy here.
+If runtime delegation is unavailable, fallback verifier execution is still `gpd-verifier` execution. Before writing any contract-backed `${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md`: read `verification_report_skeleton_bridge` from the loaded `inventory_build` payload; write body-only evidence to a Markdown file that satisfies bridge `body_contract` (body-only Markdown with one fenced executed `python`/`bash` block, adjacent `**Output:**` plus fenced `output`, and a following `PASS`/`FAIL`/`INCONCLUSIVE` verdict); replace `BODY.md` in its `writer_command` with that file; and run the command. The writer serializes YAML and validates before canonical acceptance. Use `skeleton_command` only as read-only preview context; do not hand-author or reflow frontmatter, and keep command transcripts, hashes, oracle details, prose-only evidence, and `gpd_return` out of YAML. Read the runtime-projected `{GPD_AGENTS_DIR}/gpd-verifier.md` and schema refs for verifier policy, not for wrapper-side schema recreation. Then immediately apply `sync_verifier_output`; on validation failure, emit the blocked/final response from `sync_verifier_output` and stop. Do not wrapper-repair the canonical report.
 </step>
 
 <step name="sync_verifier_output">
@@ -333,7 +333,9 @@ Read the verifier-produced verification file or report path.
 - `gpd_return.status: checkpoint` means present the verifier checkpoint, collect user input, spawn a fresh verifier continuation, and end the stop with `## > Next Up`: primary `gpd:resume-work`, plus `gpd:verify-work ${phase_number}` and `gpd:suggest-next`. Do not overwrite canonical verification status in this workflow.
 - `gpd_return.status: blocked` or `failed` means keep the session fail-closed, present the issues, and end with `## > Next Up`: primary `gpd:verify-work ${phase_number}`, plus `gpd:resume-work` and `gpd:suggest-next`. Do not treat any preexisting verification file as a new verifier result on this path.
 - If the verifier agent fails to spawn or returns an error, keep the session fail-closed. End with the same `gpd:verify-work ${phase_number}` Next Up route. Do not let a stale existing verification file satisfy the success path.
-- If the canonical verification artifact is missing, unreadable, absent from `gpd_return.files_written`, or fails contract validation, treat the handoff as incomplete and request a fresh verifier continuation. Never trust the return text alone.
+- Any verifier-written canonical `VERIFICATION.md`, including gap reports and `blocked`/`failed` handoffs, must pass `gpd validate verification-contract "${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md"` before this wrapper accepts it as canonical.
+- If the artifact is missing, unreadable, absent from `gpd_return.files_written`, or fails validation, treat the handoff as incomplete: request a fresh verifier continuation when possible; otherwise surface a non-green stop with validator errors. Never present it as accepted or passed.
+- Fallback executions that reach this step after failed report validation stop here: emit the blocked/final response with latest validator errors. Do not list the invalid `VERIFICATION.md` as an authoritative artifact, do not route to gaps unless a schema-valid gap report exists, do not enter `gap_repair` or `complete_session`, and do not patch the canonical verification report from this wrapper.
 - Do not patch canonical verification frontmatter in this wrapper. Surface bounded-loop validator errors fail-closed with `## > Next Up`: `gpd:verify-work ${phase_number}`, `gpd:resume-work`, `gpd:suggest-next`.
 - If a canonical verification file already exists, preserve its authoritative frontmatter and append only the session-local overlay here.
 - Do not recompute canonical verification status in this workflow.
@@ -568,7 +570,7 @@ Update the verification file overlay:
 
 Clear the current check display to indicate completion.
 
-Validate the final verification file, then commit it.
+Run `gpd validate verification-contract "${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md"` before committing it; invalid reports stop non-green and do not advance state.
 
 ```bash
 gpd commit "verify(${phase_number}): complete research validation - {passed} passed, {issues} issues" --files "${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md"

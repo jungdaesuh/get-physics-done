@@ -46,6 +46,15 @@ def _assert_no_stale_state_repair_artifacts(root: Path) -> None:
     assert list(planning.glob("STATE.md.tmp.*")) == []
 
 
+def _state_file_bytes(root: Path) -> dict[str, bytes]:
+    planning = root / "GPD"
+    return {
+        "STATE.md": (planning / "STATE.md").read_bytes(),
+        "state.json": (planning / "state.json").read_bytes(),
+        "state.json.bak": (planning / "state.json.bak").read_bytes(),
+    }
+
+
 def test_sync_state_repair_uses_valid_backup_when_primary_json_is_corrupt_and_markdown_missing(
     tmp_path: Path,
 ) -> None:
@@ -167,6 +176,33 @@ def test_state_repair_sync_cli_repairs_root_selected_by_cwd_option(tmp_path: Pat
     assert payload["source_used"] == "state.json.bak"
     assert payload["validation_valid"] is True
     assert _stored_state(tmp_path)["position"]["current_phase"] == "05"
+    _assert_no_stale_state_repair_artifacts(tmp_path)
+
+
+def test_state_repair_sync_cli_fails_closed_when_primary_backup_and_markdown_are_unrecoverable(
+    tmp_path: Path,
+) -> None:
+    planning = tmp_path / "GPD"
+    planning.mkdir()
+    (planning / "PROJECT.md").write_text("# Project\n\nF10 bad-backup regression fixture.\n", encoding="utf-8")
+    (planning / "ROADMAP.md").write_text("# Roadmap\n\n- [ ] Phase 01\n", encoding="utf-8")
+    (planning / "state.json").write_text("{bad primary json\n", encoding="utf-8")
+    (planning / "state.json.bak").write_text("{bad backup json\n", encoding="utf-8")
+    (planning / "STATE.md").write_text("not a canonical state document\n", encoding="utf-8")
+    before_state_files = _state_file_bytes(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["--raw", "--cwd", str(tmp_path), "state", "repair-sync"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["project_root"] == tmp_path.resolve().as_posix()
+    assert payload["repaired"] is False
+    assert payload["state_mutated"] is False
+    assert _state_file_bytes(tmp_path) == before_state_files
     _assert_no_stale_state_repair_artifacts(tmp_path)
 
 

@@ -1,4 +1,4 @@
-"""Phase 9 spawn-contract inventory for canonical workflow handoffs."""
+"""Spawn-contract inventory for canonical workflow handoffs."""
 
 from __future__ import annotations
 

@@ -98,3 +98,26 @@ def test_sync_state_workflow_uses_staged_fields_instead_of_manual_state_probing(
     assert "JSON_EXISTS=$(test -f" not in text
     assert "cat GPD/STATE.md" not in text
     assert "cat GPD/state.json" not in text
+
+
+def test_sync_state_workflow_has_fail_closed_bad_backup_branch() -> None:
+    text = (WORKFLOWS_DIR / "sync-state.md").read_text(encoding="utf-8")
+
+    marker = "corrupt_state_bad_backup"
+    assert marker in text
+    bad_backup_branch = text[text.index(marker) : text.index(marker) + 800]
+    for required in (
+        "corrupt_state_bad_backup",
+        "unrecoverable_state_pair",
+        "gpd:health",
+        "manual repair",
+        "gpd:export-logs",
+    ):
+        assert required in bad_backup_branch
+
+    branch_lower = bad_backup_branch.lower()
+    assert "stop in read-only diagnosis" in branch_lower
+    assert "writes none" in branch_lower or "writes: none" in branch_lower
+    assert "no `state repair-sync`" in branch_lower
+    assert "backup promotion" in branch_lower
+    assert "state rewrite" in branch_lower

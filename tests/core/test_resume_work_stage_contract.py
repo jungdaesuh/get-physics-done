@@ -33,6 +33,14 @@ def _workflow_block(text: str, block_name: str) -> str:
     return text[start:end]
 
 
+def _command_is_explicitly_excluded(text: str, command: str) -> bool:
+    for match in re.finditer(re.escape(command), text):
+        window = text[max(0, match.start() - 160) : match.end() + 160].lower()
+        if re.search(r"\b(do not|don't|must not|forbid|forbidden|exclude|excluded|never|not)\b", window):
+            return True
+    return False
+
+
 def test_resume_work_stage_manifest_loads_and_preserves_stage_order() -> None:
     manifest = load_workflow_stage_manifest("resume-work")
 
@@ -148,6 +156,26 @@ def test_resume_work_quick_resume_refuses_auto_selected_recent_projects() -> Non
     assert initialize.index(auto_recent_gate) < initialize.index(new_project_gate)
     assert "quick resume is disabled" in quick_resume
     assert "do not continue automatically" in quick_resume
+
+
+def test_resume_work_partial_recoverable_repair_menu_blocks_downstream_actions() -> None:
+    text = (WORKFLOWS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    branch = _workflow_step(text, "determine_next_action")
+
+    for command in ("gpd:sync-state", "gpd:health", "gpd:resume-work"):
+        assert command in branch
+
+    assert "**If partial/recoverable state or `project_contract_gate.repair_required` needs repair:**" in branch
+    assert re.search(r"(?i)\bnext\b[^\n.]{0,80}gpd:sync-state", branch)
+
+    normalized = branch.lower()
+    assert "stop before" in normalized
+    assert "planning" in normalized
+    assert "execution" in normalized
+    assert re.search(r"\bmutat(e|es|ing|ion|ions)\b", normalized)
+
+    assert _command_is_explicitly_excluded(branch, "gpd:progress")
+    assert _command_is_explicitly_excluded(branch, "gpd:new-project")
 
 
 def test_init_resume_invokes_resume_context(monkeypatch: pytest.MonkeyPatch) -> None:

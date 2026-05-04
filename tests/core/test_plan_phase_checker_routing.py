@@ -54,6 +54,7 @@ def test_plan_phase_reloads_each_stage_and_validates_only_fresh_plan_files() -> 
     assert source.index("PLANNER_RETURN=$(") < source.index(
         'FRESH_PLAN_FILES=$(echo "$PLANNER_RETURN" | gpd json list .gpd_return.files_written --default "")'
     )
+    assert 'if [ -z "${FRESH_PLAN_FILES:-}" ]; then' in source
     assert 'FRESH_PLAN_FILES=$(echo "$PLANNER_RETURN" | gpd json list .gpd_return.files_written --default "")' in source
     assert "gpd validate handoff-artifacts -" in source
     assert "--allowed-root \"$PHASE_DIR\"" in source
@@ -62,8 +63,29 @@ def test_plan_phase_reloads_each_stage_and_validates_only_fresh_plan_files() -> 
     assert "[ -f \"$plan_file\" ] || continue" not in source
     assert "ERROR: planner artifact is missing or unreadable" in source
     assert 'for plan_file in $FRESH_PLAN_FILES;' in source
+    assert 'PLAN_PREFLIGHT=$(gpd --raw validate plan-preflight "$plan_file")' in source
+    assert "ERROR: plan-preflight failed for $plan_file" in source
     assert 'PLANS_CONTENT=""' in source
-    assert "Before the checker loop, validate only the fresh plan artifacts named by the planner return:" in source
+    assert (
+        "Before the checker loop or final status, validate only the fresh plan artifacts named by the "
+        "planner return or created in an explicit manual/main-context branch:"
+    ) in source
+
+
+def test_plan_phase_manual_plan_fallback_cannot_skip_fresh_plan_validators() -> None:
+    source = PLAN_PHASE.read_text(encoding="utf-8")
+
+    assert "Main-context plan or any manual bounded authoring branch" in source
+    assert "set `FRESH_PLAN_FILES` to the newly created path(s)" in source
+    assert "No full planner/checker loop is required for this fallback unless requested" in source
+    assert "a failing gate means `status: blocked`, not `planned_ready`/`green`" in source
+    assert "and no `gpd:execute-phase` route" in source
+    assert "gpd validate plan-contract \"$plan_file\"" in source
+    assert 'gpd --raw validate plan-preflight "$plan_file"' in source
+    assert (
+        "The `PHASE PLANNED` offer and `gpd:execute-phase` route require the fresh-plan validator gate above."
+        in source
+    )
 
 
 def test_plan_phase_captures_state_sensitive_spawn_returns() -> None:

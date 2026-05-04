@@ -49,8 +49,8 @@ WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 COMMANDS_DIR = REPO_ROOT / "src/gpd/commands"
 AGENTS_DIR = REPO_ROOT / "src/gpd/agents"
 REFERENCES_DIR = REPO_ROOT / "src/gpd/specs/references"
-FIXTURES_STAGE0 = REPO_ROOT / "tests" / "fixtures" / "stage0"
-FIXTURES_STAGE4 = REPO_ROOT / "tests" / "fixtures" / "stage4"
+CONTRACT_BASELINE_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "stage0"
+CONTRACT_RESULT_FIXTURES = REPO_ROOT / "tests" / "fixtures" / "stage4"
 PUBLICATION_SHARED_PREFLIGHT_INCLUDE = "@{GPD_INSTALL_DIR}/templates/paper/publication-manuscript-root-preflight.md"
 PUBLICATION_BOOTSTRAP_PREFLIGHT_INCLUDE = "@{GPD_INSTALL_DIR}/references/publication/publication-bootstrap-preflight.md"
 PUBLICATION_RESPONSE_WRITER_HANDOFF_INCLUDE = (
@@ -342,8 +342,8 @@ def _extract_between(content: str, start_marker: str, end_marker: str) -> str:
     return content[start:end]
 
 
-def _stage0_plan_with_contract_text() -> str:
-    return (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8")
+def _plan_with_contract_text() -> str:
+    return (CONTRACT_BASELINE_FIXTURES / "plan_with_contract.md").read_text(encoding="utf-8")
 
 
 def test_planner_templates_exist():
@@ -1012,9 +1012,11 @@ def test_slides_workflow_references_templates_and_existing_output_policy() -> No
     assert "main.nav" in workflow
     assert "main.snm" in workflow
     assert "source-bound skeleton" in workflow
+    assert "selected_publication_root" not in workflow
+    assert "selected_review_root" not in workflow
 
 
-def test_phase5_slides_prompt_covers_cleanup_non_git_and_thin_source_boundaries() -> None:
+def test_slides_prompt_covers_cleanup_non_git_and_thin_source_boundaries() -> None:
     workflow = (WORKFLOWS_DIR / "slides.md").read_text(encoding="utf-8")
 
     _assert_slides_public_label_local_preflight_guidance(workflow, shared_source=True)
@@ -1192,7 +1194,7 @@ def test_publication_review_round_detection_prompts_are_shell_safe_and_pair_resp
     assert "${REVIEW_ROOT}/REFEREE_RESPONSE{ROUND_SUFFIX}.md" in peer_review
     assert 'ROUND_SUFFIX="-R${ROUND}"' in peer_review
     assert "Repair the target-bound response artifacts before advancing." in peer_review
-    assert "without a paired author/referee response package" in peer_review
+    assert "Do not require a response package for every completed review." in peer_review
 
     assert "matching paired response package exists for the same round" in referee
     assert re.search(
@@ -1200,8 +1202,8 @@ def test_publication_review_round_detection_prompts_are_shell_safe_and_pair_resp
         referee,
     )
     assert (
-        "The pipeline increments the round number only when the prior report and the canonical paired "
-        "response artifacts are present" in reliability
+        "A completed review without that package stays valid for internal review, accept/no-change outcomes, "
+        "and fresh clearance reruns" in reliability
     )
     assert (
         "`${selected_publication_root}/AUTHOR-RESPONSE{round_suffix}.md` plus "
@@ -2429,7 +2431,7 @@ def test_verify_phase_and_gap_reverify_prompts_surface_contract_context_before_c
     assert "protocol_bundle_context" in execute_phase
 
 
-def test_stage4_templates_and_workflows_surface_contract_results_and_verdict_ledgers() -> None:
+def test_templates_and_workflows_surface_contract_results_and_verdict_ledgers() -> None:
     summary_template = (TEMPLATES_DIR / "summary.md").read_text(encoding="utf-8")
 
     assert "contract_results" in summary_template
@@ -2719,8 +2721,8 @@ def test_execute_phase_workflow_surfaces_project_contract_validation_gate() -> N
     assert "project_contract_load_info" in execute_workflow
     assert "visible-but-blocked contract as an approved execution contract" in execute_workflow
 
-    # Phase 5: claim<->deliverable alignment precheck is wired in as a step in
-    # execute-phase.md and references the helpers/CLI provided by lanes E2/E3.
+    # The claim<->deliverable alignment precheck is wired into execute-phase.md
+    # and references the helpers/CLI provided by the contract alignment layer.
     alignment_step = _extract_between(
         execute_workflow,
         '<step name="claim_deliverable_alignment_check">',
@@ -2880,12 +2882,12 @@ def test_verification_prompt_wiring_rejects_invalid_reference_and_proxy_scaffold
     phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
     (phase_dir / "01-01-PLAN.md").write_text(
-        _stage0_plan_with_contract_text(),
+        _plan_with_contract_text(),
         encoding="utf-8",
     )
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
-        (FIXTURES_STAGE4 / "verification_with_contract_results.md")
+        (CONTRACT_RESULT_FIXTURES / "verification_with_contract_results.md")
         .read_text(encoding="utf-8")
         .replace(
             "  references:\n"
@@ -2932,12 +2934,12 @@ def test_verification_prompt_wiring_requires_suggested_checks_for_compare_requir
     phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
     (phase_dir / "01-01-PLAN.md").write_text(
-        _stage0_plan_with_contract_text(),
+        _plan_with_contract_text(),
         encoding="utf-8",
     )
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
-        (FIXTURES_STAGE4 / "verification_with_contract_results.md")
+        (CONTRACT_RESULT_FIXTURES / "verification_with_contract_results.md")
         .read_text(encoding="utf-8")
         .replace(
             "status: passed\nscore: 3/3 contract targets verified\n",
@@ -3155,7 +3157,7 @@ def test_publication_workflows_describe_recursive_manuscript_tree_inputs() -> No
     write_paper = (WORKFLOWS_DIR / "write-paper.md").read_text(encoding="utf-8")
     respond = (WORKFLOWS_DIR / "respond-to-referees.md").read_text(encoding="utf-8")
 
-    assert "Flatten all `\\input{}` and `\\include{}` chains into a single submission root file." in arxiv_submission
+    assert "Keep `\\input{}` / `\\include{}` chains only if every source file is packaged" in arxiv_submission
     assert (
         "If the manuscript root is not already `paper/`, stage the package in a temporary submission tree"
         in arxiv_submission
@@ -3439,7 +3441,7 @@ def test_peer_review_command_limits_default_manuscript_targets_to_canonical_root
     assert "ask the user to point at a specific artifact path" in peer_review_command
 
 
-def test_peer_review_referee_surface_fail_closed_stage6_contract() -> None:
+def test_peer_review_referee_surface_fail_closed_final_adjudication_contract() -> None:
     referee = (AGENTS_DIR / "gpd-referee.md").read_text(encoding="utf-8")
     peer_review = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
     panel = (REFERENCES_DIR / "publication" / "peer-review-panel.md").read_text(encoding="utf-8")
@@ -4249,7 +4251,7 @@ def test_contract_models_match_prompted_schema_contracts() -> None:
     assert VerificationEvidence.model_config.get("extra") == "forbid"
 
 
-def test_stage5_execution_surfaces_use_bounded_review_cadence_and_first_result_gates() -> None:
+def test_execution_surfaces_use_bounded_review_cadence_and_first_result_gates() -> None:
     execute_phase = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
     execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
     resume_work = expand_at_includes(
@@ -4264,7 +4266,7 @@ def test_stage5_execution_surfaces_use_bounded_review_cadence_and_first_result_g
 
     assert "review_cadence" in execute_phase
     assert "FIRST_RESULT_GATE_REQUIRED" in execute_phase
-    # Dense cadence override — the Phase 4 risk-classifier short-circuit
+    # Dense cadence override: the risk-classifier short-circuit
     assert "Dense cadence override:" in execute_phase
     assert "treat every wave as risky" in execute_phase
 
@@ -4547,7 +4549,7 @@ def test_state_compaction_lifecycle_docs_do_not_claim_progress_mutates_state() -
     assert "Suggested by `gpd:progress`" in help_workflow
 
 
-def test_stage6_surfaces_protocol_bundle_context_across_planning_execution_and_verification() -> None:
+def test_protocol_bundle_context_surfaces_across_planning_execution_and_verification() -> None:
     planner_prompt = (TEMPLATES_DIR / "planner-subagent-prompt.md").read_text(encoding="utf-8")
     execute_phase = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
     execute_plan = (WORKFLOWS_DIR / "execute-plan.md").read_text(encoding="utf-8")
@@ -4575,7 +4577,7 @@ def test_stage6_surfaces_protocol_bundle_context_across_planning_execution_and_v
     assert "not a default route" in executor_guide
 
 
-def test_stage6_executor_bundle_fallback_stays_generic_when_no_bundle_fits() -> None:
+def test_executor_bundle_fallback_stays_generic_when_no_bundle_fits() -> None:
     executor_agent = (AGENTS_DIR / "gpd-executor.md").read_text(encoding="utf-8")
     executor_guide = (REFERENCES_DIR / "execution" / "executor-subfield-guide.md").read_text(encoding="utf-8")
 
@@ -4589,7 +4591,7 @@ def test_stage6_executor_bundle_fallback_stays_generic_when_no_bundle_fits() -> 
     )
 
 
-def test_stage7_runtime_parity_docs_use_canonical_model_resolution_and_generic_handoff_rules() -> None:
+def test_runtime_parity_docs_use_canonical_model_resolution_and_generic_handoff_rules() -> None:
     model_resolution = (REFERENCES_DIR / "orchestration" / "model-profile-resolution.md").read_text(encoding="utf-8")
     agent_delegation = (REFERENCES_DIR / "orchestration" / "agent-delegation.md").read_text(encoding="utf-8")
     execute_phase = (WORKFLOWS_DIR / "execute-phase.md").read_text(encoding="utf-8")
@@ -4646,7 +4648,7 @@ def test_verify_work_gap_closure_delegation_surfaces_contract_gate_inputs() -> N
     assert "The shared planner template owns the canonical planning policy and contract gate." not in verify_work
 
 
-def test_stage8_surfaces_decisive_comparisons_paper_quality_artifacts_and_profile_invariants() -> None:
+def test_decisive_comparisons_paper_quality_artifacts_and_profile_invariants_are_visible() -> None:
     compare_command = (COMMANDS_DIR / "compare-results.md").read_text(encoding="utf-8")
     compare_workflow = (WORKFLOWS_DIR / "compare-results.md").read_text(encoding="utf-8")
     internal_template = (TEMPLATES_DIR / "paper" / "internal-comparison.md").read_text(encoding="utf-8")
@@ -4821,7 +4823,7 @@ def test_respond_to_referees_arxiv_handoff_uses_public_positional_arxiv_target()
     assert "`$gpd-arxiv-submission --manuscript" not in respond
 
 
-def test_stage9_adaptive_mode_and_review_cadence_docs_stay_aligned() -> None:
+def test_adaptive_mode_and_review_cadence_docs_stay_aligned() -> None:
     research_phase = (WORKFLOWS_DIR / "research-phase.md").read_text(encoding="utf-8")
     verify_work = (WORKFLOWS_DIR / "verify-work.md").read_text(encoding="utf-8")
     plan_phase = (WORKFLOWS_DIR / "plan-phase.md").read_text(encoding="utf-8")

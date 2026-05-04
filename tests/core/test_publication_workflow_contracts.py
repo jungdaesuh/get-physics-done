@@ -157,7 +157,7 @@ def test_peer_review_workflow_requires_barriers_and_cleanup_before_downstream_st
     )
 
 
-def test_peer_review_stage_six_limits_writes_to_stage6_owned_artifacts() -> None:
+def test_peer_review_stage_six_limits_writes_to_stage_six_owned_artifacts() -> None:
     workflow = (WORKFLOWS_DIR / "peer-review.md").read_text(encoding="utf-8")
 
     assert "Your writable scope is limited to Stage 6-owned adjudication artifacts for this round:" in workflow

@@ -227,7 +227,7 @@ def test_resume_workflow_routes_recent_project_ambiguity_before_new_projects_and
         '**If `project_reentry_requires_selection` is true or `project_reentry_mode="ambiguous-recent-projects"`:**'
     )
     auto_recent_line = '**If `project_root_auto_selected` is true or `project_root_source="recent_project"`:**'
-    new_project_line = "**If `planning_exists` is false and no recent-project selection is required:** This is a new project - route to gpd:new-project and do not attempt STATE.md reconstruction."
+    new_project_line = "**If `planning_exists` is false and no recent-project selection is required:** If recoverable state exists, repair first. Otherwise route to gpd:new-project and do not attempt STATE.md reconstruction."
     reconstruction_line = "If STATE.md is missing but other artifacts exist and `planning_exists` is true:"
 
     assert ambiguity_line in workflow

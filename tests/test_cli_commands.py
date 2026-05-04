@@ -4431,7 +4431,7 @@ class TestReviewValidationCommands:
             ("literature-review", ["Sachdev-Ye-Kitaev model thermodynamics"], ["topic or research question"]),
         ],
     )
-    def test_command_context_phase3_helpers_accept_explicit_inputs_without_project(
+    def test_command_context_current_workspace_helpers_accept_explicit_inputs_without_project(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -4439,7 +4439,7 @@ class TestReviewValidationCommands:
         args: list[str],
         explicit_inputs: list[str],
     ) -> None:
-        outside_dir = tmp_path.parent / f"{tmp_path.name}-{command_name}-explicit-phase3"
+        outside_dir = tmp_path.parent / f"{tmp_path.name}-{command_name}-explicit-standalone"
         outside_dir.mkdir()
         monkeypatch.chdir(outside_dir)
 
@@ -4632,7 +4632,7 @@ class TestReviewValidationCommands:
             "sensitivity-analysis",
         ],
     )
-    def test_command_context_phase4_analysis_managed_outputs_anchor_to_invoking_workspace_without_initialized_project(
+    def test_command_context_analysis_managed_outputs_anchor_to_invoking_workspace_without_initialized_project(
         self,
         tmp_path: Path,
         command_name: str,
@@ -4655,7 +4655,7 @@ class TestReviewValidationCommands:
         assert managed_output_root == (workspace / "GPD" / "analysis").resolve(strict=False)
         assert managed_output_root != (ancestor_root / "GPD" / "analysis").resolve(strict=False)
 
-    def test_command_context_phase4_analysis_managed_outputs_preserve_project_root_when_initialized_project_exists(
+    def test_command_context_analysis_managed_outputs_preserve_project_root_when_initialized_project_exists(
         self,
         tmp_path: Path,
     ) -> None:
@@ -4731,7 +4731,7 @@ class TestReviewValidationCommands:
             ("explain", [], ["concept, result, method, notation, or paper"]),
         ],
     )
-    def test_command_context_phase3_helpers_allow_interactive_standalone_intake_without_project(
+    def test_command_context_current_workspace_helpers_allow_interactive_standalone_intake_without_project(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -4739,7 +4739,7 @@ class TestReviewValidationCommands:
         args: list[str],
         explicit_inputs: list[str],
     ) -> None:
-        outside_dir = tmp_path.parent / f"{tmp_path.name}-{command_name}-interactive-phase3"
+        outside_dir = tmp_path.parent / f"{tmp_path.name}-{command_name}-interactive-standalone"
         outside_dir.mkdir()
         monkeypatch.chdir(outside_dir)
 
@@ -7751,7 +7751,7 @@ class TestReviewValidationCommands:
         assert checks["tarball_under_managed_arxiv_root"]["passed"] is False
         assert "escapes managed arXiv root" in checks["tarball_under_managed_arxiv_root"]["detail"]
 
-    def test_validate_arxiv_package_rejects_bibliography_residue_and_bib_sources(
+    def test_validate_arxiv_package_accepts_packaged_bib_source_material(
         self,
         gpd_project: Path,
     ) -> None:
@@ -7780,15 +7780,13 @@ class TestReviewValidationCommands:
             catch_exceptions=False,
         )
 
-        assert result.exit_code == 1, result.output
+        assert result.exit_code == 0, result.output
         payload = json.loads(result.output)
         checks = {check["name"]: check for check in payload["checks"]}
-        assert checks["submission_tree_excludes_auxiliary_files"]["passed"] is False
-        assert ".bib source" in checks["submission_tree_excludes_auxiliary_files"]["detail"]
-        assert checks["submission_tex_ready"]["passed"] is False
-        assert "bibliography commands" in checks["submission_tex_ready"]["detail"]
-        assert checks["tarball_entries_safe"]["passed"] is False
-        assert checks["tarball_tex_ready"]["passed"] is False
+        assert checks["submission_tree_excludes_auxiliary_files"]["passed"] is True
+        assert checks["submission_tex_ready"]["passed"] is True
+        assert checks["tarball_entries_safe"]["passed"] is True
+        assert checks["tarball_tex_ready"]["passed"] is True
 
     def test_validate_arxiv_package_reuses_strict_preflight_response_freshness(
         self,

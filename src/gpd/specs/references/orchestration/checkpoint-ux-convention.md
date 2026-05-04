@@ -36,7 +36,7 @@ The `[Y/n/e]` convention does NOT apply to these checkpoints. Keep their existin
   - `specs/workflows/remove-phase.md` (phase deletion)
   - `specs/workflows/merge-phases.md` (phase merge)
   - `specs/workflows/undo.md` git-revert confirmation (`type "yes"/"no"`)
-- **Claim↔deliverable alignment precheck** (`specs/workflows/execute-phase.md`, Phase 5) — uses 4-option `Y/e/p/n` (proceed / edit CONTEXT / edit PLAN contract / abort).
+- **Claim↔deliverable alignment precheck** (`specs/workflows/execute-phase.md`) — uses 4-option `Y/e/p/n` (proceed / edit CONTEXT / edit PLAN contract / abort).
 - **First-result gate after its own trigger** — the whole point of the gate is to force a review, so it stops rather than accepting.
 - **Pre-fanout review / skeptical re-questioning gates** — same.
 - **Blocker triage** (`specs/workflows/autonomous.md` §6) — 3-option numeric (Fix and retry / Skip / Stop).

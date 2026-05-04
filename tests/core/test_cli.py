@@ -32,7 +32,7 @@ from gpd.core.costs import (
     CostSummary,
     _profile_tier_mix,
 )
-from gpd.core.frontmatter import FrontmatterParseError
+from gpd.core.frontmatter import FrontmatterParseError, extract_frontmatter, validate_frontmatter
 from gpd.core.health import (
     CheckStatus,
     DoctorReport,
@@ -945,7 +945,9 @@ def test_permissions_status_raw_includes_runtime_capabilities(tmp_path: Path) ->
 def test_observe_help_surfaces_read_only_execution_snapshot_command() -> None:
     result = runner.invoke(app, ["observe", "execution", "--help"])
     assert result.exit_code == 0
-    assert "Show the current local execution status without modifying project state." in result.output
+    assert "Show the current local execution status without modifying project state." in _normalize_cli_output(
+        result.output
+    )
 
 
 def test_observe_and_trace_help_label_read_only_and_writing_subcommands() -> None:
@@ -970,9 +972,8 @@ def test_observe_and_trace_help_label_read_only_and_writing_subcommands() -> Non
 
     trace_show_help = runner.invoke(app, ["trace", "show", "--help"])
     assert trace_show_help.exit_code == 0
-    assert (
-        "Inspect trace events with optional filters without modifying project state."
-        in _normalize_cli_output(trace_show_help.output)
+    assert "Inspect trace events with optional filters without modifying project state." in _normalize_cli_output(
+        trace_show_help.output
     )
 
     trace_stop_help = runner.invoke(app, ["trace", "stop", "--help"])
@@ -2870,6 +2871,847 @@ def test_validate_comparison_contract_help_surfaces_verdict_ledger_visibility() 
     assert "GPD/comparisons/*-COMPARISON.md" in normalized_output
 
 
+def _compact_plan_with_missing_must_surface_benchmark() -> str:
+    return (
+        "---\n"
+        "phase: 01-baseline\n"
+        "plan: 01\n"
+        "type: execute\n"
+        "wave: 1\n"
+        "depends_on: []\n"
+        "files_modified: []\n"
+        "interactive: false\n"
+        "conventions:\n"
+        "  units: natural\n"
+        "contract:\n"
+        "  schema_version: 1\n"
+        "  scope:\n"
+        "    question: Verify the fresh result against the decisive benchmark.\n"
+        "    in_scope: [stale verification refresh]\n"
+        "  context_intake:\n"
+        "    must_read_refs: [ref-stale-verification-benchmark]\n"
+        "    must_include_prior_outputs: [GPD/phases/00-baseline/00-SUMMARY.md]\n"
+        "    context_gaps: [The decisive benchmark artifact is intentionally absent.]\n"
+        "  claims:\n"
+        "    - id: claim-stale-verification\n"
+        "      statement: Current result agrees with the decisive benchmark.\n"
+        "      deliverables: [deliv-stale-verification-data]\n"
+        "      acceptance_tests: [test-stale-verification-decisive]\n"
+        "      references: [ref-stale-verification-benchmark]\n"
+        "  deliverables:\n"
+        "    - id: deliv-stale-verification-data\n"
+        "      kind: data\n"
+        "      path: artifacts/phase4/result.json\n"
+        "      description: Fresh numerical result to compare against the benchmark.\n"
+        "  references:\n"
+        "    - id: ref-stale-verification-benchmark\n"
+        "      kind: dataset\n"
+        "      locator: artifacts/benchmark/reference.json\n"
+        "      role: benchmark\n"
+        "      why_it_matters: Decisive benchmark for stale verification detection.\n"
+        "      applies_to: [claim-stale-verification]\n"
+        "      must_surface: true\n"
+        "      required_actions: [read, compare]\n"
+        "  acceptance_tests:\n"
+        "    - id: test-stale-verification-decisive\n"
+        "      subject: claim-stale-verification\n"
+        "      kind: benchmark\n"
+        "      procedure: Read and compare the decisive benchmark reference.\n"
+        "      pass_condition: Current result matches the benchmark within tolerance.\n"
+        "      evidence_required: [deliv-stale-verification-data, ref-stale-verification-benchmark]\n"
+        "  forbidden_proxies:\n"
+        "    - id: fp-stale-verification-prose-only\n"
+        "      subject: claim-stale-verification\n"
+        "      proxy: Prose-only pass without reading the decisive benchmark.\n"
+        "      reason: Would miss stale or absent benchmark evidence.\n"
+        "  uncertainty_markers:\n"
+        "    weakest_anchors: [Missing benchmark reference]\n"
+        "    disconfirming_observations: [Benchmark file is absent]\n"
+        "---\n\n"
+        "Plan body.\n"
+    )
+
+
+def _assert_forbidden_verification_fields_absent(value: object) -> None:
+    forbidden_fields = {"runtime", "computational_oracle", "gpd_return"}
+    if isinstance(value, dict):
+        assert not forbidden_fields.intersection(value)
+        for child in value.values():
+            _assert_forbidden_verification_fields_absent(child)
+    elif isinstance(value, list):
+        for child in value:
+            _assert_forbidden_verification_fields_absent(child)
+
+
+def _write_stale_refresh_skeleton_plan(project_root: Path) -> Path:
+    phase_dir = project_root / "GPD" / "phases" / "01-baseline"
+    phase_dir.mkdir(parents=True)
+    baseline_dir = project_root / "GPD" / "phases" / "00-baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "00-SUMMARY.md").write_text("prior baseline", encoding="utf-8")
+    plan_path = phase_dir / "01-PLAN.md"
+    plan_path.write_text(_compact_plan_with_missing_must_surface_benchmark(), encoding="utf-8")
+    return plan_path
+
+
+def _write_verification_body_file(tmp_path: Path, body: str, *, name: str = "verification-body.md") -> Path:
+    body_path = tmp_path / name
+    body_path.write_text(body, encoding="utf-8")
+    return body_path
+
+
+def _raw_payload_from_result(result) -> dict[str, object]:
+    candidates = [result.output]
+    try:
+        stderr = result.stderr
+    except ValueError:
+        stderr = ""
+    if stderr:
+        candidates.append(stderr)
+    for candidate in candidates:
+        text = candidate.strip()
+        if not text:
+            continue
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        assert isinstance(payload, dict)
+        return payload
+    raise AssertionError(f"result did not contain a JSON object:\n{result.output}")
+
+
+def _colon_rich_verification_body() -> str:
+    return (
+        "# Verification\n\n"
+        "## Evidence\n\n"
+        "The stale pass is not supported: current hash differs from the old report.\n\n"
+        "A separate runtime return would look like this and must stay out of YAML:\n\n"
+        "```yaml\n"
+        "gpd_return:\n"
+        "  status: completed\n"
+        "  message: Fresh schema-oriented gap report written.\n"
+        "```\n"
+    )
+
+
+def _body_without_oracle_evidence() -> str:
+    return (
+        "# Verification\n\n"
+        "## Evidence\n\n"
+        "The report records a gap: the benchmark reference is still absent.\n"
+        "This prose deliberately has no executed code block, no output block, and no verdict line.\n"
+    )
+
+
+def test_verification_report_skeleton_raw_uses_plan_contract_and_builder_payload(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    phase_dir = tmp_path / "GPD" / "phases" / "01-baseline"
+    phase_dir.mkdir(parents=True)
+    baseline_dir = tmp_path / "GPD" / "phases" / "00-baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "00-SUMMARY.md").write_text("prior baseline", encoding="utf-8")
+    plan_path = phase_dir / "01-PLAN.md"
+    plan_path.write_text(_compact_plan_with_missing_must_surface_benchmark(), encoding="utf-8")
+    calls: dict[str, object] = {}
+
+    def fake_builder(*, contract, plan_path, plan_contract_ref, status, **kwargs):
+        del kwargs
+        reference = contract.references[0]
+        claim = contract.claims[0]
+        test = contract.acceptance_tests[0]
+        calls["contract"] = contract
+        calls["plan_path"] = plan_path
+        calls["plan_contract_ref"] = plan_contract_ref
+        calls["status"] = status
+        return {
+            "frontmatter": {
+                "phase": "01-baseline",
+                "verified": "<fill-me>",
+                "status": status,
+                "score": "<fill-me>",
+                "plan_contract_ref": plan_contract_ref,
+                "contract_results": {
+                    "claims": {
+                        claim.id: {
+                            "status": "blocked",
+                            "summary": f"Blocked until {reference.id} is read and compared.",
+                        }
+                    },
+                    "deliverables": {},
+                    "acceptance_tests": {
+                        test.id: {
+                            "status": "blocked",
+                            "summary": f"Blocked until {reference.id} is available.",
+                        }
+                    },
+                    "references": {
+                        reference.id: {
+                            "status": "missing",
+                            "completed_actions": [],
+                            "missing_actions": list(reference.required_actions),
+                            "summary": f"Required benchmark artifact {reference.locator} is absent.",
+                        }
+                    },
+                    "forbidden_proxies": {},
+                    "uncertainty_markers": {
+                        "weakest_anchors": ["Missing benchmark reference"],
+                        "disconfirming_observations": ["Benchmark file is absent"],
+                    },
+                },
+                "comparison_verdicts": [
+                    {
+                        "subject_id": claim.id,
+                        "subject_kind": "claim",
+                        "subject_role": "decisive",
+                        "reference_id": reference.id,
+                        "comparison_kind": "benchmark",
+                        "metric": "reference_availability",
+                        "threshold": "benchmark artifact exists and is compared",
+                        "verdict": "inconclusive",
+                        "recommended_action": f"Restore {reference.locator} and rerun the comparison.",
+                    }
+                ],
+                "suggested_contract_checks": [
+                    {
+                        "check": "contract.benchmark_reproduction",
+                        "reason": f"{reference.id} is missing required read and compare actions.",
+                        "suggested_subject_kind": "acceptance_test",
+                        "suggested_subject_id": test.id,
+                        "evidence_path": "GPD/phases/01-baseline/01-VERIFICATION.md",
+                    }
+                ],
+            },
+            "frontmatter_yaml": (
+                "---\n"
+                "phase: 01-baseline\n"
+                "status: gaps_found\n"
+                f"plan_contract_ref: {plan_contract_ref}\n"
+                "contract_results:\n"
+                "  claims: {}\n"
+                "---\n"
+            ),
+            "markdown_draft": (
+                "---\n"
+                "phase: 01-baseline\n"
+                "status: gaps_found\n"
+                f"plan_contract_ref: {plan_contract_ref}\n"
+                "---\n\n"
+                "# Verification\n\n"
+                "## Validation Commands\n\n"
+                "```bash\n"
+                "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md\n"
+                "```\n"
+            ),
+            "validation_commands": [
+                "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md",
+            ],
+            "authoring_rules": ["Use the generated frontmatter as the starting YAML."],
+        }
+
+    monkeypatch.setattr(cli_module, "_load_verification_report_skeleton_builder", lambda: fake_builder)
+
+    result = runner.invoke(
+        app,
+        ["--raw", "verification-report", "skeleton", str(plan_path), "--status", "gaps_found"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    frontmatter = payload["frontmatter"]
+    references = frontmatter["contract_results"]["references"]
+    assert payload["plan_path"] == str(plan_path)
+    assert payload["plan_contract_ref"] == "GPD/phases/01-baseline/01-PLAN.md#/contract"
+    assert payload["target_status"] == "gaps_found"
+    assert frontmatter["plan_contract_ref"] == payload["plan_contract_ref"]
+    assert references["ref-stale-verification-benchmark"] == {
+        "status": "missing",
+        "completed_actions": [],
+        "missing_actions": ["read", "compare"],
+        "summary": "Required benchmark artifact artifacts/benchmark/reference.json is absent.",
+    }
+    assert frontmatter["comparison_verdicts"][0]["reference_id"] == "ref-stale-verification-benchmark"
+    assert frontmatter["suggested_contract_checks"][0]["check"] == "contract.benchmark_reproduction"
+    assert payload["frontmatter_yaml"].startswith("---\nphase: 01-baseline")
+    assert payload["markdown_draft"].startswith("---\nphase: 01-baseline")
+    assert payload["validation_commands"] == [
+        "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md",
+    ]
+    assert payload["authoring_rules"] == ["Use the generated frontmatter as the starting YAML."]
+    assert calls["plan_path"] == plan_path
+    assert calls["plan_contract_ref"] == payload["plan_contract_ref"]
+    assert calls["status"] == "gaps_found"
+    assert calls["contract"].references[0].must_surface is True
+    assert not (phase_dir / "01-VERIFICATION.md").exists()
+    _assert_forbidden_verification_fields_absent(payload)
+
+
+def test_verification_report_skeleton_raw_uses_real_builder(tmp_path: Path) -> None:
+    phase_dir = tmp_path / "GPD" / "phases" / "01-baseline"
+    phase_dir.mkdir(parents=True)
+    baseline_dir = tmp_path / "GPD" / "phases" / "00-baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "00-SUMMARY.md").write_text("prior baseline", encoding="utf-8")
+    plan_path = phase_dir / "01-PLAN.md"
+    plan_path.write_text(_compact_plan_with_missing_must_surface_benchmark(), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["--raw", "verification-report", "skeleton", str(plan_path), "--status", "gaps_found"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    frontmatter = payload["frontmatter"]
+    assert payload["plan_contract_ref"] == "GPD/phases/01-baseline/01-PLAN.md#/contract"
+    assert payload["target_report_path"] == str(phase_dir / "01-VERIFICATION.md")
+    assert frontmatter["status"] == "gaps_found"
+    assert frontmatter["contract_results"]["claims"]["claim-stale-verification"]["status"] == "blocked"
+    assert (
+        frontmatter["contract_results"]["acceptance_tests"]["test-stale-verification-decisive"]["status"] == "blocked"
+    )
+    assert frontmatter["contract_results"]["references"]["ref-stale-verification-benchmark"]["missing_actions"] == [
+        "read",
+        "compare",
+    ]
+    assert all("evidence" not in verdict for verdict in frontmatter["comparison_verdicts"])
+    assert "status: gaps_found" in payload["frontmatter_yaml"]
+    assert "evidence: []" not in payload["frontmatter_yaml"]
+    assert "linked_ids: []" not in payload["frontmatter_yaml"]
+    assert payload["markdown_draft"].startswith("---")
+    assert "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md" in payload["markdown_draft"]
+    _assert_forbidden_verification_fields_absent(payload)
+
+
+def test_verification_report_skeleton_default_prints_markdown_draft_not_rich_table(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    phase_dir = tmp_path / "GPD" / "phases" / "01-baseline"
+    phase_dir.mkdir(parents=True)
+    baseline_dir = tmp_path / "GPD" / "phases" / "00-baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "00-SUMMARY.md").write_text("prior baseline", encoding="utf-8")
+    plan_path = phase_dir / "01-PLAN.md"
+    plan_path.write_text(_compact_plan_with_missing_must_surface_benchmark(), encoding="utf-8")
+
+    def fake_builder(*, contract, plan_path, plan_contract_ref, status, **kwargs):
+        del kwargs
+        del contract, plan_path
+        return {
+            "frontmatter": {"phase": "01-baseline", "status": status, "plan_contract_ref": plan_contract_ref},
+            "frontmatter_yaml": (
+                f"---\nphase: 01-baseline\nstatus: gaps_found\nplan_contract_ref: {plan_contract_ref}\n---\n"
+            ),
+            "markdown_draft": (
+                "---\n"
+                "phase: 01-baseline\n"
+                "status: gaps_found\n"
+                f"plan_contract_ref: {plan_contract_ref}\n"
+                "---\n\n"
+                "# Verification\n\n"
+                "## Validation Commands\n\n"
+                "```bash\n"
+                "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md\n"
+                "```\n"
+            ),
+            "validation_commands": [
+                "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md",
+            ],
+            "authoring_rules": ["Do not hand-convert raw JSON."],
+        }
+
+    monkeypatch.setattr(cli_module, "_load_verification_report_skeleton_builder", lambda: fake_builder)
+
+    result = runner.invoke(app, ["verification-report", "skeleton", str(plan_path)], catch_exceptions=False)
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("---\nphase: 01-baseline")
+    assert "# Verification" in result.output
+    assert "gpd validate verification-contract GPD/phases/01-baseline/01-VERIFICATION.md" in result.output
+    assert "frontmatter" not in result.output
+    assert "target_status" not in result.output
+    assert "┏" not in result.output
+
+
+def test_verification_report_skeleton_frontmatter_format_prints_yaml_only(tmp_path: Path) -> None:
+    phase_dir = tmp_path / "GPD" / "phases" / "01-baseline"
+    phase_dir.mkdir(parents=True)
+    baseline_dir = tmp_path / "GPD" / "phases" / "00-baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "00-SUMMARY.md").write_text("prior baseline", encoding="utf-8")
+    plan_path = phase_dir / "01-PLAN.md"
+    plan_path.write_text(_compact_plan_with_missing_must_surface_benchmark(), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["verification-report", "skeleton", str(plan_path), "--format", "frontmatter"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("---\n")
+    assert "status: gaps_found" in result.output
+    assert "contract_results:" in result.output
+    assert "# Verification" not in result.output
+    assert "frontmatter:" not in result.output
+    assert "target_status:" not in result.output
+    assert "target_report_path:" not in result.output
+    assert "evidence: []" not in result.output
+    assert "linked_ids: []" not in result.output
+
+
+def test_verification_report_skeleton_format_json_outputs_json_without_raw(tmp_path: Path) -> None:
+    phase_dir = tmp_path / "GPD" / "phases" / "01-baseline"
+    phase_dir.mkdir(parents=True)
+    baseline_dir = tmp_path / "GPD" / "phases" / "00-baseline"
+    baseline_dir.mkdir(parents=True)
+    (baseline_dir / "00-SUMMARY.md").write_text("prior baseline", encoding="utf-8")
+    plan_path = phase_dir / "01-PLAN.md"
+    plan_path.write_text(_compact_plan_with_missing_must_surface_benchmark(), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["verification-report", "skeleton", str(plan_path), "--format", "json"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["frontmatter"]["status"] == "gaps_found"
+    assert payload["target_status"] == "gaps_found"
+    assert "frontmatter_yaml" in payload
+    assert "markdown_draft" in payload
+    assert "validation_commands" in payload
+    assert "authoring_rules" in payload
+
+
+def test_verification_report_skeleton_write_refuses_existing_without_force(tmp_path: Path) -> None:
+    plan_path = _write_stale_refresh_skeleton_plan(tmp_path)
+    target_path = plan_path.with_name("01-VERIFICATION.md")
+    original = "existing verification report\n"
+    target_path.write_text(original, encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        [
+            "verification-report",
+            "skeleton",
+            str(plan_path),
+            "--write",
+            "--output",
+            str(target_path),
+            "--validate",
+            "frontmatter",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "exists" in result.output.lower()
+    assert "--force" in result.output
+    assert target_path.read_text(encoding="utf-8") == original
+
+
+def test_verification_report_skeleton_write_creates_target_with_generated_yaml(tmp_path: Path) -> None:
+    plan_path = _write_stale_refresh_skeleton_plan(tmp_path)
+    target_path = plan_path.with_name("01-VERIFICATION.md")
+    colon_rich_score = "Freshness check failed: stale pass unsupported because benchmark is missing"
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "verification-report",
+            "skeleton",
+            str(plan_path),
+            "--write",
+            "--output",
+            str(target_path),
+            "--verified",
+            "2026-05-04T03:21:16Z",
+            "--score",
+            colon_rich_score,
+            "--validate",
+            "frontmatter",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = _raw_payload_from_result(result)
+    assert payload["written"] is True
+    assert payload["target_report_path"] == str(target_path)
+    assert target_path.exists()
+    content = target_path.read_text(encoding="utf-8")
+    frontmatter, body = extract_frontmatter(content)
+    assert frontmatter["status"] == "gaps_found"
+    assert frontmatter["verified"] == "2026-05-04T03:21:16Z"
+    assert frontmatter["score"] == colon_rich_score
+    assert frontmatter["plan_contract_ref"] == "GPD/phases/01-baseline/01-PLAN.md#/contract"
+    assert "gpd_return" not in frontmatter
+    assert "# Verification" in body
+    validation = validate_frontmatter(content, "verification", source_path=target_path)
+    assert validation.valid, validation.errors
+
+
+def test_verification_report_skeleton_write_body_file_keeps_colon_text_out_of_yaml(tmp_path: Path) -> None:
+    plan_path = _write_stale_refresh_skeleton_plan(tmp_path)
+    target_path = plan_path.with_name("01-VERIFICATION.md")
+    body_path = _write_verification_body_file(tmp_path, _colon_rich_verification_body())
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "verification-report",
+            "skeleton",
+            str(plan_path),
+            "--write",
+            "--output",
+            str(target_path),
+            "--body-file",
+            str(body_path),
+            "--validate",
+            "frontmatter",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = _raw_payload_from_result(result)
+    assert payload["written"] is True
+    content = target_path.read_text(encoding="utf-8")
+    frontmatter, body = extract_frontmatter(content)
+    assert "gpd_return" not in frontmatter
+    assert "The stale pass is not supported: current hash differs" in body
+    assert "gpd_return:\n  status: completed" in body
+    frontmatter_yaml = payload.get("frontmatter_yaml", "")
+    assert "The stale pass is not supported: current hash differs" not in str(frontmatter_yaml)
+    assert "gpd_return:" not in str(frontmatter_yaml)
+
+
+def test_verification_report_skeleton_write_contract_validation_blocks_replace_on_failure(tmp_path: Path) -> None:
+    plan_path = _write_stale_refresh_skeleton_plan(tmp_path)
+    target_path = plan_path.with_name("01-VERIFICATION.md")
+    original = "existing canonical report\n"
+    target_path.write_text(original, encoding="utf-8")
+    body_path = _write_verification_body_file(tmp_path, _body_without_oracle_evidence())
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "verification-report",
+            "skeleton",
+            str(plan_path),
+            "--write",
+            "--force",
+            "--output",
+            str(target_path),
+            "--body-file",
+            str(body_path),
+            "--validate",
+            "contract",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = _raw_payload_from_result(result)
+    assert payload["written"] is False
+    validation = payload["validation"]
+    assert isinstance(validation, dict)
+    assert validation["mode"] == "contract"
+    assert validation["valid"] is False
+    assert any("oracle" in error.lower() or "executed code block" in error.lower() for error in validation["errors"])
+    recovery = payload["recovery"]
+    assert isinstance(recovery, dict)
+    assert recovery["safe_next_step"] == "Edit only the Markdown body file, then rerun the writer command."
+    body_file_contract = recovery["body_file_contract"]
+    assert isinstance(body_file_contract, list)
+    assert any("body-only Markdown" in rule for rule in body_file_contract)
+    assert any("fenced executed" in rule and "fenced `output`" in rule for rule in body_file_contract)
+    assert any("PASS`/`FAIL`/`INCONCLUSIVE" in rule for rule in body_file_contract)
+    rerun_command = recovery["rerun_command"]
+    assert isinstance(rerun_command, str)
+    assert "gpd verification-report skeleton" in rerun_command
+    assert "--write" in rerun_command
+    assert "--force" in rerun_command
+    assert "--validate contract" in rerun_command
+    assert cli_module._format_display_path(body_path) in rerun_command
+    assert target_path.read_text(encoding="utf-8") == original
+
+
+def test_verification_report_skeleton_write_contract_validation_passes_with_oracle_body(tmp_path: Path) -> None:
+    plan_path = _write_stale_refresh_skeleton_plan(tmp_path)
+    target_path = plan_path.with_name("01-VERIFICATION.md")
+    body_path = _write_verification_body_file(tmp_path, _oracle_evidence_body())
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "verification-report",
+            "skeleton",
+            str(plan_path),
+            "--write",
+            "--output",
+            str(target_path),
+            "--body-file",
+            str(body_path),
+            "--validate",
+            "contract",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = _raw_payload_from_result(result)
+    assert payload["written"] is True
+    validation = payload["validation"]
+    assert isinstance(validation, dict)
+    assert validation["mode"] == "contract"
+    assert validation["valid"] is True
+    assert validation["errors"] == []
+    assert validation["oracle_evidence_count"] >= 1
+    assert "recovery" not in payload
+    content = target_path.read_text(encoding="utf-8")
+    _, body = extract_frontmatter(content)
+    assert "FAIL: relative error exceeds the benchmark tolerance." in body
+
+
+def test_verification_report_skeleton_raw_write_reports_validation_and_warnings(tmp_path: Path) -> None:
+    plan_path = _write_stale_refresh_skeleton_plan(tmp_path)
+    target_path = plan_path.with_name("01-VERIFICATION.md")
+
+    result = runner.invoke(
+        app,
+        [
+            "--raw",
+            "verification-report",
+            "skeleton",
+            str(plan_path),
+            "--write",
+            "--output",
+            str(target_path),
+            "--validate",
+            "frontmatter",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = _raw_payload_from_result(result)
+    assert payload["written"] is True
+    assert payload["target_report_path"] == str(target_path)
+    validation = payload["validation"]
+    assert isinstance(validation, dict)
+    assert validation["mode"] == "frontmatter"
+    assert validation["valid"] is True
+    assert validation["errors"] == []
+    assert isinstance(payload["warnings"], list) and payload["warnings"]
+    assert any("frontmatter" in warning.lower() for warning in payload["warnings"])
+    assert any("gpd_return" in warning for warning in payload["warnings"])
+
+
+def _write_benchmark_contract_phase(project_root: Path) -> Path:
+    phase_dir = project_root / "GPD" / "phases" / "01-benchmark"
+    phase_dir.mkdir(parents=True)
+    (phase_dir / "01-01-PLAN.md").write_text(
+        (FIXTURES_DIR / "plan_with_contract.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    return phase_dir
+
+
+def _oracle_evidence_body() -> str:
+    return (
+        "# Verification\n\n"
+        "```python\n"
+        "print({'relative_error': 0.04, 'threshold': 0.01})\n"
+        "```\n\n"
+        "**Output:**\n"
+        "```output\n"
+        "{'relative_error': 0.04, 'threshold': 0.01}\n"
+        "```\n\n"
+        "FAIL: relative error exceeds the benchmark tolerance.\n"
+    )
+
+
+def _invalid_verification_report_with_live_row_mistakes() -> str:
+    return (
+        "---\n"
+        "phase: 01-benchmark\n"
+        "verified: 2026-05-03T12:00:00Z\n"
+        "status: failed\n"
+        "score: 0/3 contract targets verified\n"
+        "runtime: codex\n"
+        "computational_oracle:\n"
+        "  status: passed\n"
+        "plan_contract_ref: GPD/phases/01-benchmark/01-01-PLAN.md#/contract\n"
+        "contract_results:\n"
+        "  claims:\n"
+        "    - id: claim-benchmark\n"
+        "      status: failed\n"
+        "      summary: Benchmark comparison currently misses tolerance.\n"
+        "  deliverables:\n"
+        "    - id: deliv-figure\n"
+        "      status: passed\n"
+        "      summary: Figure exists with the comparison overlay.\n"
+        "  acceptance_tests:\n"
+        "    - id: test-benchmark\n"
+        "      status: failed\n"
+        "      summary: Benchmark comparison exceeds tolerance.\n"
+        "  references:\n"
+        "    - id: ref-benchmark\n"
+        "      status: completed\n"
+        "      completed_actions: [read, compare, cite]\n"
+        "      missing_actions: []\n"
+        "  forbidden_proxies:\n"
+        "    - id: fp-benchmark\n"
+        "      status: rejected\n"
+        "  uncertainty_markers:\n"
+        "    weakest_anchors: [Reference tolerance interpretation]\n"
+        "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n"
+        "comparison_verdicts:\n"
+        "  - subject_id: claim-benchmark\n"
+        "    subject_kind: claim\n"
+        "    subject_role: decisive\n"
+        "    reference_id: ref-benchmark\n"
+        "    comparison_kind: benchmark\n"
+        "    metric: relative_error\n"
+        '    threshold: "<= 0.01"\n'
+        "    verdict: fail\n"
+        "    reason: The live report used a non-canonical explanation key.\n"
+        "---\n\n"
+        f"{_oracle_evidence_body()}"
+    )
+
+
+def _verification_report_with_explicit_missing_reference_gap() -> str:
+    return (
+        "---\n"
+        "phase: 01-benchmark\n"
+        "verified: 2026-05-03T12:00:00Z\n"
+        "status: gaps_found\n"
+        "score: 0/3 contract targets verified\n"
+        "plan_contract_ref: GPD/phases/01-benchmark/01-01-PLAN.md#/contract\n"
+        "contract_results:\n"
+        "  claims:\n"
+        "    claim-benchmark:\n"
+        "      status: blocked\n"
+        "      summary: Benchmark cannot be verified until ref-benchmark is read and compared.\n"
+        "      linked_ids: [deliv-figure, test-benchmark, ref-benchmark]\n"
+        "  deliverables:\n"
+        "    deliv-figure:\n"
+        "      status: blocked\n"
+        "      path: figures/benchmark.png\n"
+        "      summary: Figure cannot be accepted without the benchmark comparison.\n"
+        "      linked_ids: [claim-benchmark, test-benchmark, ref-benchmark]\n"
+        "  acceptance_tests:\n"
+        "    test-benchmark:\n"
+        "      status: blocked\n"
+        "      summary: Benchmark comparison is blocked because the decisive reference is unavailable.\n"
+        "      linked_ids: [claim-benchmark, deliv-figure, ref-benchmark]\n"
+        "  references:\n"
+        "    ref-benchmark:\n"
+        "      status: missing\n"
+        "      completed_actions: []\n"
+        "      missing_actions: [read, compare, cite]\n"
+        "      summary: Benchmark anchor is unavailable, so required actions remain missing.\n"
+        "  forbidden_proxies:\n"
+        "    fp-benchmark:\n"
+        "      status: rejected\n"
+        "      notes: Qualitative trend agreement was not accepted without the numerical benchmark.\n"
+        "  uncertainty_markers:\n"
+        "    weakest_anchors: [Missing benchmark reference]\n"
+        "    unvalidated_assumptions: [No independent tolerance interpretation]\n"
+        "    competing_explanations: [Normalization could explain the discrepancy]\n"
+        "    disconfirming_observations: [Benchmark agreement is not established]\n"
+        "comparison_verdicts:\n"
+        "  - subject_id: claim-benchmark\n"
+        "    subject_kind: claim\n"
+        "    subject_role: decisive\n"
+        "    reference_id: ref-benchmark\n"
+        "    comparison_kind: benchmark\n"
+        "    metric: relative_error\n"
+        '    threshold: "<= 0.01"\n'
+        "    verdict: inconclusive\n"
+        "    recommended_action: Read and compare the benchmark reference before accepting the result.\n"
+        "    notes: The decisive reference is not available in this verification pass.\n"
+        "suggested_contract_checks:\n"
+        "  - check: Read and compare the benchmark reference.\n"
+        "    reason: ref-benchmark is missing read, compare, and cite actions.\n"
+        "    suggested_subject_kind: reference\n"
+        "    suggested_subject_id: ref-benchmark\n"
+        "    evidence_path: GPD/phases/01-benchmark/01-VERIFICATION.md\n"
+        "---\n\n"
+        f"{_oracle_evidence_body()}"
+    )
+
+
+def test_validate_verification_contract_accepts_explicit_missing_reference_gap(tmp_path: Path) -> None:
+    phase_dir = _write_benchmark_contract_phase(tmp_path)
+    verification_path = phase_dir / "01-VERIFICATION.md"
+    verification_path.write_text(_verification_report_with_explicit_missing_reference_gap(), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "verification-contract", str(verification_path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["valid"] is True
+    assert payload["errors"] == []
+
+
+def test_validate_verification_contract_rejects_live_row_mistakes_from_product_validators(
+    tmp_path: Path,
+) -> None:
+    from gpd.core.correctness_validators import validate_verification_oracle_evidence
+    from gpd.core.frontmatter import validate_frontmatter
+
+    phase_dir = _write_benchmark_contract_phase(tmp_path)
+    verification_path = phase_dir / "01-VERIFICATION.md"
+    content = _invalid_verification_report_with_live_row_mistakes()
+    verification_path.write_text(content, encoding="utf-8")
+
+    schema_result = validate_frontmatter(content, "verification", source_path=verification_path)
+    oracle_result = validate_verification_oracle_evidence(content, source_path=verification_path)
+    expected_errors = [*schema_result.errors, *oracle_result.errors]
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "verification-contract", str(verification_path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["valid"] is False
+    assert payload["missing"] == schema_result.missing
+    assert payload["present"] == schema_result.present
+    assert payload["schema_name"] == schema_result.schema_name
+    assert payload["oracle_evidence_count"] == oracle_result.evidence_count
+    assert payload["errors"] == expected_errors
+    assert oracle_result.valid is True
+    assert "status: must be one of passed, gaps_found, expert_needed, human_needed" in expected_errors
+    assert any(error.startswith("runtime:") for error in expected_errors)
+    assert any(error.startswith("computational_oracle:") for error in expected_errors)
+    assert any("contract_results:" in error and "claims" in error for error in expected_errors)
+    assert any(
+        "comparison_verdicts:" in error and "reason" in error and "Extra inputs are not permitted" in error
+        for error in expected_errors
+    )
+
+
 def test_validate_command_context_help_surfaces_registry_argument_name() -> None:
     result = runner.invoke(app, ["validate", "command-context", "--help"])
     assert result.exit_code == 0
@@ -3021,6 +3863,24 @@ def _plan_with_tool_requirements(tool_requirements_block: str) -> str:
     return fixture.replace("interactive: false\n", f"interactive: false\n{tool_requirements_block}", 1)
 
 
+def _plan_with_prose_contract_anchors_only() -> str:
+    return (
+        "---\n"
+        "phase: 01\n"
+        "plan_id: 01-01\n"
+        "title: Execute the deterministic fixture baseline\n"
+        "status: planned_ready\n"
+        "command_authority: $gpd-plan-phase 01\n"
+        "execution_authority: $gpd-execute-phase 01\n"
+        "---\n"
+        "\n"
+        "## Contract Anchors\n"
+        "\n"
+        "- Observable: `obs-benchmark`\n"
+        "- Claim under test: `claim-benchmark`\n"
+    )
+
+
 def _plan_with_knowledge_controls(
     *,
     knowledge_gate: str | None = None,
@@ -3055,6 +3915,25 @@ def test_validate_plan_preflight_passes_when_no_specialized_tools_are_declared(t
     assert payload["passed"] is True
     assert payload["requirements"] == []
     assert payload["guidance"] == "No machine-checkable specialized tool requirements declared."
+
+
+def test_validate_plan_preflight_rejects_invalid_frontmatter_before_tool_checks(tmp_path: Path) -> None:
+    plan_path = tmp_path / "01-01-PLAN.md"
+    plan_path.write_text(_plan_with_prose_contract_anchors_only(), encoding="utf-8")
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "plan-preflight", str(plan_path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert payload["validation_passed"] is False
+    assert payload["passed"] is False
+    assert payload["requirements"] == []
+    assert "Missing required frontmatter field: plan" in payload["errors"]
+    assert "Missing required frontmatter field: contract" in payload["errors"]
 
 
 def test_validate_plan_preflight_blocks_on_missing_required_wolfram(

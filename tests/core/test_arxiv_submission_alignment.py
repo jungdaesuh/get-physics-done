@@ -91,7 +91,7 @@ def test_arxiv_submission_workflow_resolves_manifest_based_manuscript_root_witho
         'gpd --raw validate arxiv-package --materialize --submission-dir "$SUBMISSION_DIR" --tarball "$PACKAGE_TARBALL"'
         in workflow
     )
-    assert "reruns strict `arxiv-submission` review preflight internally" in workflow
+    assert "reruns strict `arxiv-submission` review preflight" in workflow
     assert "the executable arXiv package validator must pass" in workflow
     assert "latest-response discovery" in workflow
     assert "latest response artifacts already reached" not in workflow
@@ -200,7 +200,7 @@ def test_arxiv_package_validator_detects_citations_in_included_tex_files(tmp_pat
 
     tex_check = _check_by_name(result, "submission_tex_ready")
     assert tex_check.passed is False
-    assert "citation commands but no inlined thebibliography or packaged .bbl material" in tex_check.detail
+    assert "citation commands but no packaged .bib, packaged .bbl, or inlined bibliography material" in tex_check.detail
 
 
 def test_arxiv_package_validator_accepts_included_tex_bibliography_material(tmp_path: Path) -> None:
@@ -226,6 +226,32 @@ def test_arxiv_package_validator_accepts_included_tex_bibliography_material(tmp_
         manuscript_entrypoint="paper/main.tex",
     )
 
+    assert _check_by_name(result, "submission_tex_ready").passed is True
+
+
+def test_arxiv_package_validator_accepts_packaged_bib_source_material(tmp_path: Path) -> None:
+    submission_dir = tmp_path / "GPD" / "publication" / "paper" / "arxiv" / "submission"
+    submission_dir.mkdir(parents=True)
+    (submission_dir / "main.tex").write_text(
+        (
+            "\\documentclass{article}\\begin{document}\n"
+            "Citation \\cite{known-result}.\\bibliographystyle{plain}\\bibliography{refs}\n"
+            "\\end{document}\n"
+        ),
+        encoding="utf-8",
+    )
+    (submission_dir / "refs.bib").write_text(
+        "@article{known-result,title={Known Result}}\n",
+        encoding="utf-8",
+    )
+
+    result = validate_arxiv_package(
+        project_root=tmp_path,
+        subject_slug="paper",
+        manuscript_entrypoint="paper/main.tex",
+    )
+
+    assert _check_by_name(result, "submission_tree_excludes_auxiliary_files").passed is True
     assert _check_by_name(result, "submission_tex_ready").passed is True
 
 
@@ -275,3 +301,27 @@ def test_arxiv_package_validator_rejects_unsafe_publication_subject_slug(tmp_pat
     check = _check_by_name(result, "managed_arxiv_root")
     assert check.passed is False
     assert "publication subject slug" in check.detail
+
+
+def test_arxiv_package_materialize_refuses_invalid_in_tree_subject_slug(tmp_path: Path) -> None:
+    submission_dir = tmp_path / "GPD" / "publication" / "bad slug" / "arxiv" / "submission"
+    submission_dir.mkdir(parents=True)
+    (submission_dir / "main.tex").write_text(
+        "\\documentclass{article}\\begin{document}Ready.\\end{document}\n",
+        encoding="utf-8",
+    )
+    tarball = tmp_path / "GPD" / "publication" / "bad slug" / "arxiv" / ARXIV_TARBALL_NAME
+
+    result = validate_arxiv_package(
+        project_root=tmp_path,
+        subject_slug="bad slug",
+        manuscript_entrypoint="paper/main.tex",
+        submission_dir=submission_dir,
+        tarball=tarball,
+        materialize=True,
+    )
+
+    assert result.materialized is False
+    assert not tarball.exists()
+    assert _check_by_name(result, "managed_arxiv_root").passed is False
+    assert _check_by_name(result, "tarball_materialized").passed is False

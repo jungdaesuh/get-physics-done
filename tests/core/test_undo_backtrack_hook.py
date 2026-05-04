@@ -1,4 +1,4 @@
-"""Phase 7 spec-text contract test for the ``gpd:undo`` backtrack hook."""
+"""Spec-text contract test for the ``gpd:undo`` backtrack hook."""
 
 from __future__ import annotations
 
@@ -21,14 +21,10 @@ def test_undo_offers_record_backtrack_post_step() -> None:
 
     offer_start = text.index('<step name="offer_record_backtrack">')
     offer_end = text.find("</step>", offer_start)
-    assert offer_end != -1, (
-        "offer_record_backtrack step is missing a closing </step> tag"
-    )
+    assert offer_end != -1, "offer_record_backtrack step is missing a closing </step> tag"
     body = text[offer_start:offer_end]
 
-    assert "gpd:record-backtrack" in body, (
-        "offer_record_backtrack step must reference 'gpd:record-backtrack'"
-    )
+    assert "gpd:record-backtrack" in body, "offer_record_backtrack step must reference 'gpd:record-backtrack'"
     assert "[Y/n]" in body or "[Y/n/e]" in body, (
         "offer_record_backtrack step must use the '[Y/n]' or '[Y/n/e]' Enter-is-accept convention"
     )

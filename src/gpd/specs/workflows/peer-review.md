@@ -285,15 +285,10 @@ if [[ "$LATEST_RESPONSE_STATE" == "complete" && "$LATEST_REVIEW_STATE" != "compl
 fi
 
 if [[ "$LATEST_REVIEW_STATE" == "complete" ]]; then
-  if [[ "$LATEST_RESPONSE_STATE" != "complete" ]]; then
-    echo "ERROR: Found a complete prior review round for the resolved target without a paired author/referee response package. Finish the response round before advancing."
-    exit 1
-  fi
-  if [[ "$LATEST_RESPONSE_ROUND" != "$LATEST_REVIEW_ROUND" ]]; then
-    echo "ERROR: Latest response round does not match the latest review round for the resolved target. Repair the target-bound review record before advancing."
-    exit 1
-  fi
   ROUND=$((LATEST_REVIEW_ROUND + 1))
+  if [[ "$LATEST_RESPONSE_STATE" == "complete" && "$LATEST_RESPONSE_ROUND" -gt "$LATEST_REVIEW_ROUND" ]]; then
+    ROUND=$((LATEST_RESPONSE_ROUND + 1))
+  fi
   if [[ $ROUND -ge 2 ]]; then
     ROUND_SUFFIX="-R${ROUND}"
   fi
@@ -302,9 +297,11 @@ fi
 
 Set:
 
-- `ROUND=1`, `ROUND_SUFFIX=""` when `INIT` reports no complete prior target-bound review/response package
-- `ROUND=N+1` only when `INIT` reports a complete latest review bundle and a matching complete latest response bundle for the same resolved target manuscript
+- `ROUND=1`, `ROUND_SUFFIX=""` when `INIT` reports no complete prior target-bound review bundle
+- `ROUND=N+1` when `INIT` reports a complete latest review bundle for round `N`
+- If a complete response bundle exists for a later round than the latest complete review, start from `latest_response_round + 1`; the response round records manuscript-change scope that now needs review
 - If `INIT` reports a partial or invalid latest review/response bundle, stop fail-closed and repair it before advancing
+- Do not require a response package for every completed review. Internal reviews, accept/no-change outcomes, and fresh clearance reruns may advance without author/referee response artifacts.
 - Do not infer the next round from a lone report, author response, referee response, or mismatched suffix under `GPD/`
 
 Stage artifacts for revision rounds should use the same suffix:

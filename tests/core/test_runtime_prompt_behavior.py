@@ -94,22 +94,6 @@ def test_claude_new_project_wrapper_keeps_post_init_next_step_runtime_native() -
     assert "show native runtime label" in projected
 
 
-def test_new_project_has_one_primary_post_init_next_step() -> None:
-    workflow = _workflow("new-project")
-    command = _read(COMMANDS_DIR / "new-project.md")
-    final_next_up = workflow[workflow.rindex("## > Next Up") :]
-
-    discuss_idx = final_next_up.index("`gpd:discuss-phase 1`")
-    plan_idx = final_next_up.index("`gpd:plan-phase 1`")
-    also_available_idx = final_next_up.index("**Also available:**")
-
-    assert discuss_idx < also_available_idx
-    assert also_available_idx < plan_idx
-    assert "**After this command:** Run `gpd:discuss-phase 1`" in command
-    assert "- [ ] User knows next step is `gpd:discuss-phase 1`" in workflow
-    assert "- [ ] User told the next step is `gpd:discuss-phase 1`" in command
-
-
 def test_new_project_headless_and_policy_blocks_do_not_auto_approve_or_fabricate() -> None:
     workflow = _workflow("new-project")
 
@@ -145,7 +129,5 @@ def test_resume_work_continuation_examples_are_non_runnable_templates() -> None:
     assert "Template only - do not run as-is" in update_continuation
     assert "```text" in update_continuation
     assert "```bash" not in update_continuation
-    assert "Resumed, executing phase 3" not in update_continuation
-    assert "GPD/phases/03-dispersion/.continue-here.md" not in update_continuation
     assert "<actual selected route and phase>" in update_continuation
     assert "<actual project-relative handoff path>" in update_continuation

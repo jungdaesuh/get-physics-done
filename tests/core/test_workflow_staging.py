@@ -493,6 +493,7 @@ def test_known_init_fields_for_verify_work_include_proof_gate_and_artifact_conte
     assert "project_contract_validation" in known_init_fields
     assert "selected_protocol_bundle_ids" in known_init_fields
     assert "protocol_bundle_verifier_extensions" in known_init_fields
+    assert "verification_report_skeleton_bridge" in known_init_fields
     assert "derived_manuscript_proof_review_status" in known_init_fields
     assert "reference_artifact_files" in known_init_fields
     assert "reference_artifacts_content" in known_init_fields

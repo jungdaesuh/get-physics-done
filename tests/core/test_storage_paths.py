@@ -139,7 +139,7 @@ def test_assess_output_path_matches_explicit_gpd_managed_policy(tmp_path: Path) 
         (("literature",), "GPD/literature/curvature-flow-bounds-REVIEW.md"),
     ],
 )
-def test_phase3_managed_output_policies_resolve_under_expected_gpd_roots(
+def test_managed_output_policies_resolve_under_expected_gpd_roots(
     tmp_path: Path,
     subtree: tuple[str, ...],
     relative_output: str,
@@ -343,9 +343,7 @@ def test_validate_final_output_accepts_policy_owned_gpd_managed_paths(tmp_path: 
     assert layout.validate_managed_output(
         "GPD/publication/curvature-flow/manuscript/main.tex",
         policy=policy,
-    ) == (
-        layout.internal_root / "publication" / "curvature-flow" / "manuscript" / "main.tex"
-    )
+    ) == (layout.internal_root / "publication" / "curvature-flow" / "manuscript" / "main.tex")
 
 
 def test_validate_commit_target_allows_internal_docs_but_rejects_internal_artifacts_and_scratch_paths(

@@ -1,4 +1,4 @@
-"""Focused assertions for Phase 10 execution return application wiring."""
+"""Focused assertions for execution return application wiring."""
 
 from pathlib import Path
 

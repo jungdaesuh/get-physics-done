@@ -45,6 +45,11 @@ RUNTIME_ALIAS_MAP = build_canonical_alias_map(adapter.tool_name_map for adapter 
 FULL_RUNTIME_MATRIX = tuple(descriptor.runtime_name for descriptor in iter_runtime_descriptors())
 _SHARED_INSTALL = get_shared_install_metadata()
 _INSTALL_CACHE: dict[tuple[str, tuple[str, ...]], Path] = {}
+VERIFIER_SCHEMA_INCLUDE_SUFFIXES = (
+    "templates/verification-report.md",
+    "templates/contract-results-schema.md",
+    "references/shared/canonical-schema-discipline.md",
+)
 
 
 def expected_opencode_bridge(target: Path, *, is_global: bool = False, explicit_target: bool = False) -> str:
@@ -89,6 +94,14 @@ def _collect_textual_artifacts(root: Path) -> str:
         except (OSError, UnicodeDecodeError):
             continue
     return "\n".join(chunks)
+
+
+def _raw_include_count(text: str, include_suffix: str) -> int:
+    return sum(
+        1
+        for line in text.splitlines()
+        if line.strip().startswith("@") and line.strip().endswith(include_suffix)
+    )
 
 
 def _install_real_repo_for_runtime(tmp_path: Path, runtime: str, source_root: Path = REPO_GPD_ROOT) -> Path:
@@ -396,11 +409,11 @@ def test_installed_peer_review_prompt_keeps_publication_lane_boundary(
     peer_review = _canonicalize_runtime_markdown(peer_review, runtime=runtime)
 
     assert (
-        "Keep GPD-authored auxiliary review artifacts under the selected GPD-owned publication/review roots exposed by centralized preflight."
+        "Use centralized preflight's selected publication/review roots for GPD-authored review artifacts."
         in peer_review
     )
     assert (
-        "The manuscript itself and any manuscript-local publication manifests stay rooted at the resolved manuscript directory."
+        "Keep the manuscript and manuscript-local publication manifests rooted at the resolved manuscript directory."
         in peer_review
     )
 
@@ -418,9 +431,8 @@ def test_installed_verifier_prompt_surface_keeps_one_wrapper_and_stays_within_bu
     assert verifier.count("## Agent Requirements") == 1
     assert verifier.index("## Agent Requirements") < verifier.index("## Bootstrap Discipline")
     if descriptor.native_include_support:
-        assert verifier.count("verification-report.md") == 1
-        assert verifier.count("contract-results-schema.md") == 1
-        assert verifier.count("canonical-schema-discipline.md") == 1
+        for include_suffix in VERIFIER_SCHEMA_INCLUDE_SUFFIXES:
+            assert _raw_include_count(verifier, include_suffix) == 1
     else:
         assert verifier.count("# Verification Report Template") == 1
         assert verifier.count("# Contract Results Schema") == 1
@@ -510,6 +522,7 @@ def test_installed_referee_latex_template_exists_and_matches_source(
     assert source_template.exists()
     assert installed_template.exists()
     assert installed_template.read_bytes() == source_template.read_bytes()
+
 
 # ---------------------------------------------------------------------------
 # Claude Code: install → read back → compare

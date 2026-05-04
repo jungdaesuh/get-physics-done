@@ -158,7 +158,8 @@
         "protocol_bundle_count",
         "protocol_bundle_context",
         "protocol_bundle_verifier_extensions",
-        "active_reference_context"
+        "active_reference_context",
+        "verification_report_skeleton_bridge"
       ],
       "loaded_authorities": [
         "workflows/verify-work.md",

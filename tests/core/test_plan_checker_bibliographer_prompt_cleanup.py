@@ -1,4 +1,4 @@
-"""Focused assertions for Phase 11 plan-checker and bibliographer prompt cleanup."""
+"""Focused assertions for plan-checker and bibliographer prompt cleanup."""
 
 from __future__ import annotations
 

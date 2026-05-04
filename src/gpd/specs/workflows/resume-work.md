@@ -65,7 +65,7 @@ The shared resume resolver distinguishes:
 
 The resolver is canonical-first: `state.json.continuation` wins; bounded segment and recorded handoff fields define the primary target; derived execution head supplies live status. Do not treat one `.continue-here.md` or live snapshot as sole authority.
 
-**If `planning_exists` is false and no recent-project selection is required:** This is a new project - route to gpd:new-project and do not attempt STATE.md reconstruction.
+**If `planning_exists` is false and no recent-project selection is required:** If recoverable state exists, repair first. Otherwise route to gpd:new-project and do not attempt STATE.md reconstruction.
 **If `state_exists` is false but `roadmap_exists` or `project_exists` is true:** Offer to reconstruct STATE.md from the existing project artifacts.
 
 If `active_resume_kind="bounded_segment"` and `active_bounded_segment` exists, treat that as the primary bounded resume target. The derived execution head may still project the bounded segment when canonical continuation is missing or incomplete, but it does not define a second resume system.
@@ -377,6 +377,10 @@ Present complete research project status to user:
 <step name="determine_next_action">
 Based on project state, determine the most logical next action:
 
+**If partial/recoverable state or `project_contract_gate.repair_required` needs repair:**
+-> Stop before planning, mutation, execution, reconstruction, or continuation update; writes none; next `gpd:sync-state`
+-> Choices exactly: `gpd:sync-state`, `gpd:health`, `gpd:resume-work` after repair; exclude `gpd:progress` and `gpd:new-project`
+
 **If `project_contract_gate.authoritative` is false:**
 -> Primary: Repair the blocked contract or state-integrity issue before planning or execution
 -> Option: Inspect the blocked contract context and supporting diagnostics without resuming downstream work
@@ -428,6 +432,8 @@ Based on project state, determine the most logical next action:
 
 <step name="offer_options">
 Present contextual options based on project state:
+
+**If partial/recoverable state or `project_contract_gate.repair_required` needs repair:** keep writes none and show only `gpd:sync-state`, `gpd:health`, `gpd:resume-work` after repair.
 
 ```
 What would you like to do?
@@ -540,7 +546,7 @@ If STATE.md is missing but other artifacts exist and `planning_exists` is true:
 
 Reconstruct and write STATE.md, then proceed normally.
 
-If `planning_exists` is false, skip reconstruction and route to `gpd:new-project` instead.
+If `planning_exists` is false, repair recoverable state first; otherwise skip reconstruction and route to `gpd:new-project`.
 
 This handles cases where:
 

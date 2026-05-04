@@ -1,4 +1,4 @@
-"""Phase 36 assertions for the new-project scout seam."""
+"""Assertions for the new-project scout contract."""
 
 from __future__ import annotations
 

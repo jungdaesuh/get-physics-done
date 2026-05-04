@@ -1,4 +1,4 @@
-"""Phase 7 spec-text contract tests for the ``gpd:record-backtrack`` workflow."""
+"""Spec-text contract tests for the ``gpd:record-backtrack`` workflow."""
 
 from __future__ import annotations
 
@@ -34,20 +34,14 @@ def _step_body(text: str, step_name: str) -> str:
 
 def test_record_backtrack_creates_file_and_appends_row() -> None:
     spec_path = WORKFLOWS_DIR / "record-backtrack.md"
-    assert spec_path.exists(), (
-        f"record-backtrack workflow spec missing at {spec_path}"
-    )
+    assert spec_path.exists(), f"record-backtrack workflow spec missing at {spec_path}"
 
     text = spec_path.read_text(encoding="utf-8")
 
-    assert "# Project Backtracks" in text, (
-        "record-backtrack.md must embed the '# Project Backtracks' template header"
-    )
+    assert "# Project Backtracks" in text, "record-backtrack.md must embed the '# Project Backtracks' template header"
 
     schema_header = "| " + " | ".join(BACKTRACK_COLUMNS) + " |"
-    assert schema_header in text, (
-        "record-backtrack.md must define the exact 11-column BACKTRACKS.md table schema"
-    )
+    assert schema_header in text, "record-backtrack.md must define the exact 11-column BACKTRACKS.md table schema"
 
     assert '<step name="check_backtracks_file">' in text, (
         "record-backtrack.md must define a '<step name=\"check_backtracks_file\">' step"
@@ -60,9 +54,7 @@ def test_record_backtrack_creates_file_and_appends_row() -> None:
 
     append_body = _step_body(text, "append_backtrack")
     row_format = "| " + " | ".join(f"{{{field}}}" for field in FINAL_BACKTRACK_FIELDS) + " |"
-    assert row_format in append_body, (
-        "append_backtrack must append exactly one row using the 11-column schema order"
-    )
+    assert row_format in append_body, "append_backtrack must append exactly one row using the 11-column schema order"
 
 
 def test_record_backtrack_dedupes_on_identical_trigger_plus_why() -> None:
@@ -99,9 +91,5 @@ def test_record_backtrack_auto_copies_to_insights_when_promote_candidate() -> No
     assert ("promote=true" in body) or ("promote: true" in body), (
         "promote_to_insights step must be conditional on 'promote=true' or 'promote: true'"
     )
-    assert "GPD/INSIGHTS.md" in body, (
-        "promote_to_insights step must reference GPD/INSIGHTS.md as the target file"
-    )
-    assert "Execution Deviations" in body, (
-        "promote_to_insights step must target the '## Execution Deviations' section"
-    )
+    assert "GPD/INSIGHTS.md" in body, "promote_to_insights step must reference GPD/INSIGHTS.md as the target file"
+    assert "Execution Deviations" in body, "promote_to_insights step must target the '## Execution Deviations' section"

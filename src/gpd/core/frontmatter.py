@@ -269,6 +269,107 @@ def _prefixed_validation_errors(field_name: str, exc: Exception) -> list[str]:
     return [f"{field_name}: {exc}"]
 
 
+def _dedupe_messages(messages: list[str]) -> list[str]:
+    """Return messages in first-seen order without duplicates."""
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for message in messages:
+        if message in seen:
+            continue
+        seen.add(message)
+        deduped.append(message)
+    return deduped
+
+
+def _contract_results_diagnostic_hints(exc: Exception) -> list[str]:
+    """Return local hints for common contract-results schema mixups."""
+
+    if not isinstance(exc, PydanticValidationError):
+        return []
+
+    hints: list[str] = []
+    subject_sections = {"claims", "deliverables", "acceptance_tests"}
+    for error in exc.errors():
+        loc = tuple(error.get("loc", ()))
+        if len(loc) >= 3 and loc[0] in subject_sections and loc[-1] == "status":
+            if error.get("input") == "gaps_found":
+                location = ".".join(str(part) for part in loc)
+                hints.append(
+                    f"{location}: gaps_found is a top-level verification status, not a nested "
+                    "contract_results status; use passed, partial, failed, blocked, or not_attempted"
+                )
+        elif len(loc) >= 3 and loc[0] == "forbidden_proxies" and loc[-1] == "status":
+            if error.get("input") == "passed":
+                location = ".".join(str(part) for part in loc)
+                hints.append(
+                    f"{location}: forbidden proxy status cannot be passed; use rejected when the proxy "
+                    "was ruled out, or violated/unresolved when it remains a problem"
+                )
+        elif loc == ("status",):
+            hints.append(
+                "status: contract_results has no aggregate status; use top-level verification.status "
+                "for passed, gaps_found, expert_needed, or human_needed"
+            )
+
+    return _dedupe_messages(hints)
+
+
+def _comparison_verdicts_diagnostic_hints(exc: Exception) -> list[str]:
+    """Return local hints for common comparison-verdict schema mixups."""
+
+    cause = exc if isinstance(exc, PydanticValidationError) else exc.__cause__
+    if not isinstance(cause, PydanticValidationError):
+        return []
+
+    index_prefix = ""
+    if match := re.match(r"\[(\d+)\]\s+", str(exc)):
+        index_prefix = f"[{match.group(1)}] "
+
+    hints: list[str] = []
+    for error in cause.errors():
+        loc = tuple(error.get("loc", ()))
+        if loc == ("evidence",):
+            hints.append(
+                f"{index_prefix}evidence: comparison_verdicts do not carry evidence; "
+                "attach evidence under contract_results entries"
+            )
+        elif loc == ("comparison_kind",) and error.get("input") == "reproducibility":
+            hints.append(
+                f"{index_prefix}comparison_kind: reproducibility is an acceptance-test kind, not a "
+                "comparison verdict kind; use benchmark, prior_work, experiment, cross_method, baseline, or other"
+            )
+
+    return _dedupe_messages(hints)
+
+
+def _raw_comparison_verdict_contract_id_errors(value: object, contract: ResearchContract) -> list[str]:
+    """Return contract-ID diagnostics for raw verdicts that failed schema parsing."""
+
+    if not isinstance(value, list):
+        return []
+
+    known_subject_ids = (
+        {claim.id for claim in contract.claims}
+        | {deliverable.id for deliverable in contract.deliverables}
+        | {test.id for test in contract.acceptance_tests}
+        | {reference.id for reference in contract.references}
+    )
+    known_reference_ids = {reference.id for reference in contract.references}
+
+    errors: list[str] = []
+    for index, entry in enumerate(value):
+        if not isinstance(entry, dict):
+            continue
+        subject_id = entry.get("subject_id")
+        if isinstance(subject_id, str) and subject_id not in known_subject_ids:
+            errors.append(f"comparison_verdicts: [{index}] references unknown subject_id {subject_id}")
+        reference_id = entry.get("reference_id")
+        if isinstance(reference_id, str) and reference_id not in known_reference_ids:
+            errors.append(f"comparison_verdicts: [{index}] references unknown reference_id {reference_id}")
+    return _dedupe_messages(errors)
+
+
 def _source_path_project_root(source_path: Path | None) -> Path | None:
     """Return the project root inferred from a file source path, when available."""
 
@@ -604,6 +705,11 @@ UNSUPPORTED_FRONTMATTER_FIELDS: dict[str, dict[str, str]] = {
         "verification_inputs": "verification_inputs is not part of the contract-first verification schema; use contract_results and comparison_verdicts instead",
         "contract_evidence": "contract_evidence is not part of the contract-first verification schema; use contract_results instead",
         "independently_confirmed": "independently_confirmed is not part of the contract-first verification schema; keep aggregate confirmation counts in body prose instead",
+        "artifact_hashes": "artifact_hashes is runtime hash scratch, not verification frontmatter; put hashes in body evidence or structured contract_results evidence",
+        "stale_artifact_hashes_rejected": "stale_artifact_hashes_rejected is stale-hash scratch, not verification frontmatter; put hashes in body evidence or structured contract_results evidence",
+        "runtime": "runtime is session metadata, not verification frontmatter; keep runtime details in body evidence or return envelopes",
+        "computational_oracle": "computational_oracle is enforced by the verification-contract validator from body evidence, not an ad hoc frontmatter flag",
+        "gpd_return": "gpd_return is a return envelope, not verification frontmatter; keep typed return data outside YAML frontmatter",
     },
 }
 
@@ -1414,6 +1520,7 @@ def _summary_contract_errors(
     *,
     project_root: Path | None = None,
     artifact_dir: Path | None = None,
+    allow_incomplete_must_surface_references: bool = False,
 ) -> list[str]:
     """Return summary-to-contract alignment issues for a contract-backed plan."""
 
@@ -1519,7 +1626,12 @@ def _summary_contract_errors(
         completed = set(usage.completed_actions)
         missing = set(reference.required_actions) - completed
         if reference.must_surface and missing:
-            errors.append(f"Reference {reference.id} missing required_actions in summary: {', '.join(sorted(missing))}")
+            recorded_missing = set(usage.missing_actions)
+            if allow_incomplete_must_surface_references and usage.status == "missing" and missing <= recorded_missing:
+                continue
+            errors.append(
+                f"Reference {reference.id} missing required_actions in completed_actions: " + ", ".join(sorted(missing))
+            )
 
     for verdict in comparison_verdicts:
         if verdict.subject_id not in known_subject_ids:
@@ -1629,6 +1741,7 @@ def _verification_contract_errors(
         comparison_verdicts,
         project_root=project_root,
         artifact_dir=artifact_dir,
+        allow_incomplete_must_surface_references=True,
     )
 
     decisive_incomplete = False
@@ -1993,14 +2106,20 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
         contract_results = None
         comparison_verdicts: list[ComparisonVerdict] = []
         suggested_contract_checks: list[SuggestedContractCheck] = []
+        contract_results_parse_failed = False
+        comparison_verdicts_parse_failed = False
         try:
             contract_results = _parse_contract_results(meta)
         except (PydanticValidationError, TypeError, ValueError) as exc:
+            contract_results_parse_failed = True
             errors.extend(_prefixed_validation_errors("contract_results", exc))
+            errors.extend(f"contract_results: {hint}" for hint in _contract_results_diagnostic_hints(exc))
         try:
             comparison_verdicts = _parse_comparison_verdicts(meta)
         except (PydanticValidationError, TypeError, ValueError) as exc:
+            comparison_verdicts_parse_failed = True
             errors.extend(_prefixed_validation_errors("comparison_verdicts", exc))
+            errors.extend(f"comparison_verdicts: {hint}" for hint in _comparison_verdicts_diagnostic_hints(exc))
 
         if schema_name == "verification":
             try:
@@ -2028,8 +2147,18 @@ def validate_frontmatter(content: str, schema_name: str, source_path: Path | Non
             if plan_contract is not None:
                 if not isinstance(plan_contract_ref, str):
                     errors.append("plan_contract_ref: required for contract-backed plan")
+                if comparison_verdicts_parse_failed:
+                    errors.extend(
+                        _raw_comparison_verdict_contract_id_errors(
+                            meta.get("comparison_verdicts"),
+                            plan_contract,
+                        )
+                    )
                 if contract_results is None:
-                    errors.append("contract_results: required for contract-backed plan")
+                    if contract_results_parse_failed and "contract_results" in meta:
+                        errors.append("contract_results: present but invalid; contract alignment skipped")
+                    else:
+                        errors.append("contract_results: required for contract-backed plan")
                 else:
                     if schema_name == "verification":
                         verification_errors = _verification_contract_errors(

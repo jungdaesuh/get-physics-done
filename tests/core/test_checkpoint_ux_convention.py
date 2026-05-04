@@ -1,4 +1,4 @@
-"""Phase 8.A assertions for the `[Y/n/e]` checkpoint UX convention."""
+"""Assertions for the `[Y/n/e]` checkpoint UX convention."""
 
 from __future__ import annotations
 
@@ -24,8 +24,7 @@ def test_checkpoint_human_verify_uses_y_n_e_idiom_in_canonical_templates() -> No
     # Canonical checkpoint spec should use [Y/n/e] in template + render template
     # + 4+ worked examples (>= 6 total occurrences).
     assert checkpoints.count("[Y/n/e]") >= 6, (
-        f"expected >=6 occurrences of '[Y/n/e]' in checkpoints.md, "
-        f"found {checkpoints.count('[Y/n/e]')}"
+        f"expected >=6 occurrences of '[Y/n/e]' in checkpoints.md, found {checkpoints.count('[Y/n/e]')}"
     )
 
     # Planner's replaced L758 template should use [Y/n/e] at least once.
@@ -33,15 +32,12 @@ def test_checkpoint_human_verify_uses_y_n_e_idiom_in_canonical_templates() -> No
 
     # No old literal Type "confirmed" resume-signal text should remain inside
     # <resume-signal>...</resume-signal> tags in checkpoints.md.
-    resume_signals = re.findall(
-        r"<resume-signal>(.*?)</resume-signal>", checkpoints, re.DOTALL
-    )
+    resume_signals = re.findall(r"<resume-signal>(.*?)</resume-signal>", checkpoints, re.DOTALL)
     assert resume_signals, "expected at least one <resume-signal> block in checkpoints.md"
 
     for signal in resume_signals:
         assert "confirmed" not in signal, (
-            f"found legacy 'confirmed' resume-signal text inside a "
-            f"<resume-signal> tag: {signal!r}"
+            f"found legacy 'confirmed' resume-signal text inside a <resume-signal> tag: {signal!r}"
         )
 
     # Every <resume-signal> in checkpoints.md should either use the [Y/n/e]
@@ -49,20 +45,14 @@ def test_checkpoint_human_verify_uses_y_n_e_idiom_in_canonical_templates() -> No
     # or a labeled-options colon pattern).
     for signal in resume_signals:
         has_y_n_e = "[Y/n/e]" in signal
-        has_decision_shape = (
-            "Select:" in signal
-            or "Paste" in signal
-            or signal.strip().startswith("[")
-        )
+        has_decision_shape = "Select:" in signal or "Paste" in signal or signal.strip().startswith("[")
         assert has_y_n_e or has_decision_shape, (
             f"<resume-signal> neither uses [Y/n/e] nor a decision/action pattern: {signal!r}"
         )
 
 
 def test_checkpoint_ux_convention_doc_exists_and_enumerates_carve_outs() -> None:
-    assert _CONVENTION_PATH.exists(), (
-        f"expected canonical checkpoint-ux-convention.md at {_CONVENTION_PATH}"
-    )
+    assert _CONVENTION_PATH.exists(), f"expected canonical checkpoint-ux-convention.md at {_CONVENTION_PATH}"
     convention = _CONVENTION_PATH.read_text(encoding="utf-8")
 
     assert "[Y/n/e]" in convention, "convention doc must contain '[Y/n/e]'"
@@ -75,17 +65,11 @@ def test_checkpoint_ux_convention_doc_exists_and_enumerates_carve_outs() -> None
         ("claim",),
         ("first-result gate",),
     ]
-    missing = [
-        group[0]
-        for group in required_token_groups
-        if not any(tok in lowered for tok in group)
-    ]
+    missing = [group[0] for group in required_token_groups if not any(tok in lowered for tok in group)]
     assert not missing, f"convention doc missing carve-out tokens: {missing}"
 
     line_count = len(convention.splitlines())
-    assert line_count < 200, (
-        f"convention doc should be concise (<200 lines), found {line_count}"
-    )
+    assert line_count < 200, f"convention doc should be concise (<200 lines), found {line_count}"
 
     # Cross-reference to the checkpoint taxonomy doc.
     assert "checkpoints.md" in convention or "orchestration/checkpoints" in convention, (
@@ -133,15 +117,8 @@ def test_y_n_prompts_unified_and_carve_outs_preserved() -> None:
         # or a numeric multi-option decision menu (e.g., transition.md's
         # 3-option skip-incomplete rail).
         has_y_n_prompt = "(y/n)" in text.lower()
-        has_multichar = (
-            '"yes"' in text
-            or '"no"' in text
-            or "'yes'" in text
-            or "'no'" in text
-        )
-        has_numeric_options = bool(
-            re.search(r"(?m)^\s*1\.\s+\S", text) and re.search(r"(?m)^\s*2\.\s+\S", text)
-        )
+        has_multichar = '"yes"' in text or '"no"' in text or "'yes'" in text or "'no'" in text
+        has_numeric_options = bool(re.search(r"(?m)^\s*1\.\s+\S", text) and re.search(r"(?m)^\s*2\.\s+\S", text))
         assert has_y_n_prompt or has_multichar or has_numeric_options, (
             f"carve-out {path} lost its destructive-rail prompt shape "
             "(expected '(y/n)', a '\"yes\"'/'\"no\"' confirmation, or a "

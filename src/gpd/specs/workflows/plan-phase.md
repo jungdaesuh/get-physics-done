@@ -616,7 +616,7 @@ Do not restate template-owned contract gates, tangent control, tool-requirement 
 PLANNER_HANDOFF_STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 PLANNER_RETURN=$(
 task(
-  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + filled_prompt + "\n\n<spawn_contract>\nwrite_scope:\n  mode: scoped_write\n  allowed_paths:\n    - \"{phase_dir}/*-PLAN.md\"\nexpected_artifacts:\n  - \"readable {phase_dir}/*-PLAN.md named in gpd_return.files_written\"\nshared_state_policy: return_only\nartifact_gate: orchestrator validates files_written, scope, freshness, readability, suffix, and plan-contract\n</spawn_contract>",
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + filled_prompt + "\n\n<spawn_contract>\nwrite_scope:\n  mode: scoped_write\n  allowed_paths:\n    - \"{phase_dir}/*-PLAN.md\"\nexpected_artifacts:\n  - \"readable {phase_dir}/*-PLAN.md named in gpd_return.files_written\"\nshared_state_policy: return_only\nartifact_gate: orchestrator validates files_written, scope, freshness, readability, suffix, plan-contract, and plan-preflight\n</spawn_contract>",
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
@@ -631,6 +631,8 @@ task(
 
 **If the planner agent fails to spawn or returns an error:** Do not infer completion from existing `PLAN.md` files. Without a fresh typed `gpd_return` naming `files_written`, keep the handoff incomplete. Offer: Retry planner / Main-context plan / Abort.
 
+If the user chooses Main-context plan or any manual bounded authoring branch, it is not an override. Set `PLANNER_HANDOFF_STARTED_AT` before writing, write only `${PHASE_DIR}/*-PLAN.md`, set `FRESH_PLAN_FILES` to the newly created path(s), and run the artifact plus validator gate below once. No full planner/checker loop is required for this fallback unless requested, but a failing gate means `status: blocked`, not `planned_ready`/`green`, and no `gpd:execute-phase` route.
+
 Ignore presentation headings; route on structured `gpd_return.status`, `files_written`, and the on-disk artifact check.
 
 - **`gpd_return.status: completed`:** Accept only after `gpd_return.files_written` names at least one fresh, readable `${PHASE_DIR}/*-PLAN.md`; do not trust return text or preexisting files alone. Display plan count. In `AUTONOMY=supervised`, show draft plans and get user confirmation before checker or next-step output. If `--skip-verify` or `plan_checker_enabled` is false, skip to step 13 only when no proof-bearing plans were written; proof-bearing plans still need checker review or an equivalent main-context audit. Otherwise: step 10.
@@ -639,10 +641,12 @@ Ignore presentation headings; route on structured `gpd_return.status`, `files_wr
 
 On completed returns, consume `gpd_return.roadmap_updates` before checker review or next-step output. The planner returns proposed roadmap edits; the orchestrator applies them to `GPD/ROADMAP.md` and verifies placeholders/count against fresh `*-PLAN.md` artifacts. If missing, malformed, or unapplied, treat the handoff as incomplete: Retry planner / Apply manually / Abort.
 
-Before the checker loop, validate only the fresh plan artifacts named by the planner return:
+Before the checker loop or final status, validate only the fresh plan artifacts named by the planner return or created in an explicit manual/main-context branch:
 
 ```bash
-FRESH_PLAN_FILES=$(echo "$PLANNER_RETURN" | gpd json list .gpd_return.files_written --default "")
+if [ -z "${FRESH_PLAN_FILES:-}" ]; then
+  FRESH_PLAN_FILES=$(echo "$PLANNER_RETURN" | gpd json list .gpd_return.files_written --default "")
+fi
 if [ -z "$FRESH_PLAN_FILES" ]; then
   echo "ERROR: planner returned completed without naming fresh PLAN.md artifacts"
   exit 1
@@ -666,6 +670,11 @@ for plan_file in $FRESH_PLAN_FILES; do
   esac
   [ -r "$plan_file" ] || { echo "ERROR: planner artifact is missing or unreadable: $plan_file"; exit 1; }
   gpd validate plan-contract "$plan_file" || exit 1
+  PLAN_PREFLIGHT=$(gpd --raw validate plan-preflight "$plan_file") || {
+    echo "ERROR: plan-preflight failed for $plan_file"
+    echo "$PLAN_PREFLIGHT"
+    exit 1
+  }
 done
 ```
 
@@ -675,7 +684,7 @@ done
 
 If the planner returns `gpd_return.status: checkpoint`, present the checkpoint to the user, collect the response, and spawn a fresh `gpd-planner` continuation handoff with the updated context. Keep this path distinct from checker-driven revision.
 
-Before continuing, verify that the planner's expected `PLAN.md` artifacts still exist and are readable. If the planner continuation changes the plans, re-run the explicit plan-contract validation against the refreshed `gpd_return.files_written` set before checker review.
+Before continuing, verify that the planner's expected `PLAN.md` artifacts still exist and are readable. If the planner continuation changes the plans, re-run the explicit plan-contract and plan-preflight validation against the refreshed `gpd_return.files_written` set before checker review.
 
 Only after the planner returns `completed` should the workflow advance to checker review.
 
@@ -890,7 +899,7 @@ Keep the revision prompt scoped to targeted checker fixes. Do not restate templa
 PLANNER_HANDOFF_STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 PLANNER_RETURN=$(
 task(
-  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + revision_prompt + "\n\n<spawn_contract>\nwrite_scope:\n  mode: scoped_write\n  allowed_paths:\n    - \"{phase_dir}/*-PLAN.md\"\nexpected_artifacts:\n  - \"revised readable {phase_dir}/*-PLAN.md named in gpd_return.files_written\"\nshared_state_policy: return_only\nartifact_gate: orchestrator validates files_written, scope, freshness, readability, suffix, and plan-contract before re-checking\n</spawn_contract>",
+  prompt="First, read {GPD_AGENTS_DIR}/gpd-planner.md for your role and instructions.\n\n" + revision_prompt + "\n\n<spawn_contract>\nwrite_scope:\n  mode: scoped_write\n  allowed_paths:\n    - \"{phase_dir}/*-PLAN.md\"\nexpected_artifacts:\n  - \"revised readable {phase_dir}/*-PLAN.md named in gpd_return.files_written\"\nshared_state_policy: return_only\nartifact_gate: orchestrator validates files_written, scope, freshness, readability, suffix, plan-contract, and plan-preflight before re-checking\n</spawn_contract>",
   subagent_type="gpd-planner",
   model="{planner_model}",
   readonly=false,
@@ -913,7 +922,7 @@ Offer: 1) Force proceed, 2) Provide guidance and retry, 3) Abandon
 
 Route to `<offer_next>`.
 
-**Structured final status convention:** For clean bounded non-autonomous planning that creates or updates the expected `*-PLAN.md` artifact, has `checkpoint: none`, and has no stale verification, proof-audit, dirty-git, contract, convention, or checker gate, report `status: green`. Execution remaining as the next command is not by itself a yellow condition.
+**Structured final status convention:** For clean bounded non-autonomous planning that creates or updates the expected `*-PLAN.md` artifact, has `checkpoint: none`, and has no stale verification, proof-audit, dirty-git, contract, preflight, convention, or checker gate, report `status: green`. Execution remaining as the next command is not by itself a yellow condition. The `PHASE PLANNED` offer and `gpd:execute-phase` route require the fresh-plan validator gate above.
 
 </process>
 

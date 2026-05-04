@@ -1,4 +1,4 @@
-"""Focused assertions for the Phase 11 coordinator-routing outliers."""
+"""Focused assertions for coordinator-routing contracts."""
 
 from __future__ import annotations
 

@@ -772,17 +772,16 @@ def assert_start_workflow_router_contract(content: str) -> None:
 
     for label, options in (
         ("start recommended-next-steps heading", ("Recommended next steps:",)),
-        ("start other-useful-options heading", ("Other useful options",)),
+        (
+            "start primary-choices-only boundary",
+            ("only the commands that fit the detected folder state",),
+        ),
         ("start resume-work surface", _runtime_command_fragments("resume-work")),
         ("start progress surface", _runtime_command_fragments("progress")),
-        ("start suggest-next surface", _runtime_command_fragments("suggest-next")),
-        ("start quick surface", _runtime_command_fragments("quick")),
         ("start tour surface", _runtime_command_fragments("tour")),
         ("start map-research surface", _runtime_command_fragments("map-research")),
         ("start new-project --minimal surface", _runtime_command_fragments("new-project --minimal")),
         ("start new-project surface", _runtime_command_fragments("new-project")),
-        ("start explain surface", _runtime_command_fragments("explain")),
-        ("start help --all surface", _runtime_command_fragments("help --all")),
         (
             "start minimal-command-contract handoff",
             _runtime_command_contract_handoff_fragments("new-project --minimal"),
@@ -790,10 +789,6 @@ def assert_start_workflow_router_contract(content: str) -> None:
         (
             "start new-project-command-contract handoff",
             _runtime_command_contract_handoff_fragments("new-project"),
-        ),
-        (
-            "start help-command-contract handoff",
-            _runtime_command_contract_handoff_fragments("help --all"),
         ),
     ):
         _assert_contains_any(content, options, label=label)

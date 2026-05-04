@@ -27,10 +27,7 @@ def _verification_with_contract_results() -> str:
         (FIXTURES_STAGE4 / "verification_with_contract_results.md")
         .read_text(encoding="utf-8")
         .replace(
-            "  forbidden_proxies:\n"
-            "    fp-benchmark:\n"
-            "      status: rejected\n"
-            "comparison_verdicts:\n",
+            "  forbidden_proxies:\n    fp-benchmark:\n      status: rejected\ncomparison_verdicts:\n",
             "  forbidden_proxies:\n"
             "    fp-benchmark:\n"
             "      status: rejected\n"
@@ -38,6 +35,160 @@ def _verification_with_contract_results() -> str:
             "    weakest_anchors: [Reference tolerance interpretation]\n"
             "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n"
             "comparison_verdicts:\n",
+            1,
+        )
+    )
+
+
+def _write_benchmark_contract_phase(project_root: Path) -> Path:
+    phase_dir = project_root / "GPD" / "phases" / "01-benchmark"
+    phase_dir.mkdir(parents=True)
+    (phase_dir / "01-01-PLAN.md").write_text(
+        (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    return phase_dir
+
+
+def _verification_gap_report_with_missing_reference_actions() -> str:
+    return dedent(
+        """\
+        ---
+        phase: 01-benchmark
+        verified: 2026-05-03T12:00:00Z
+        status: gaps_found
+        score: 1/3 contract targets verified
+        plan_contract_ref: GPD/phases/01-benchmark/01-01-PLAN.md#/contract
+        contract_results:
+          claims:
+            claim-benchmark:
+              status: blocked
+              summary: Benchmark reference is missing, so the claim cannot pass.
+          deliverables:
+            deliv-figure:
+              status: blocked
+              path: figures/benchmark.png
+              summary: Deliverable acceptance depends on the unresolved benchmark comparison.
+          acceptance_tests:
+            test-benchmark:
+              status: blocked
+              summary: Benchmark comparison cannot run until ref-benchmark is available.
+          references:
+            ref-benchmark:
+              status: missing
+              completed_actions: [read]
+              missing_actions: [compare, cite]
+              summary: Benchmark reference was surfaced, but unresolved required actions remain.
+          forbidden_proxies:
+            fp-benchmark:
+              status: rejected
+              notes: Qualitative trend agreement was not accepted as a benchmark proxy.
+          uncertainty_markers:
+            weakest_anchors: [Missing benchmark reference]
+            unvalidated_assumptions: [No independent tolerance interpretation]
+            competing_explanations: [Normalization could explain the discrepancy]
+            disconfirming_observations: [Benchmark agreement is unresolved]
+        comparison_verdicts:
+          - subject_id: claim-benchmark
+            subject_kind: claim
+            subject_role: decisive
+            reference_id: ref-benchmark
+            comparison_kind: benchmark
+            metric: relative_error
+            threshold: "<= 0.01"
+            verdict: inconclusive
+            recommended_action: Restore ref-benchmark and complete the benchmark comparison.
+            notes: The decisive reference is unavailable during this verification pass.
+        suggested_contract_checks:
+          - check: contract.benchmark_reproduction
+            reason: Missing reference actions keep the benchmark unresolved.
+            suggested_subject_kind: reference
+            suggested_subject_id: ref-benchmark
+            evidence_path: GPD/phases/01-benchmark/01-VERIFICATION.md
+        ---
+
+        # Verification
+
+        The benchmark comparison remains unresolved because the decisive reference is missing.
+        """
+    )
+
+
+def _stale_refresh_invalid_verification_report_with_schema_mistakes() -> str:
+    return (
+        _verification_gap_report_with_missing_reference_actions()
+        .replace(
+            "score: 1/3 contract targets verified\n",
+            "score: 1/3 contract targets verified\n"
+            "artifact_hashes:\n"
+            "  artifacts/phase4/result.json: sha256:fresh-artifact-hash\n"
+            "stale_artifact_hashes_rejected:\n"
+            "  artifacts/phase4/result.json:\n"
+            "    stale: sha256:stale-artifact-hash\n"
+            "    current: sha256:fresh-artifact-hash\n"
+            "gpd_return:\n"
+            "  status: success\n"
+            "  summary: This return envelope belongs outside verification frontmatter.\n",
+            1,
+        )
+        .replace(
+            "contract_results:\n"
+            "  claims:\n"
+            "    claim-benchmark:\n"
+            "      status: blocked\n"
+            "      summary: Benchmark reference is missing, so the claim cannot pass.\n",
+            "contract_results:\n"
+            "  status: gaps_found\n"
+            "  summary: Aggregate contract status is not a contract_results field.\n"
+            "  claims:\n"
+            "    claim-benchmark:\n"
+            "      status: gaps_found\n"
+            "      summary: Benchmark reference is missing, so the claim cannot pass.\n"
+            "      evidence:\n"
+            "        - Fresh artifact hash was checked.\n"
+            "        - Benchmark reference was missing.\n",
+            1,
+        )
+        .replace(
+            "    test-benchmark:\n"
+            "      status: blocked\n"
+            "      summary: Benchmark comparison cannot run until ref-benchmark is available.\n",
+            "    test-benchmark:\n"
+            "      status: gaps_found\n"
+            "      summary: Benchmark comparison cannot run until ref-benchmark is available.\n",
+            1,
+        )
+        .replace(
+            "    fp-benchmark:\n"
+            "      status: rejected\n"
+            "      notes: Qualitative trend agreement was not accepted as a benchmark proxy.\n",
+            "    fp-benchmark:\n"
+            "      status: passed\n"
+            "      notes: Qualitative trend agreement was not accepted as a benchmark proxy.\n"
+            "      evidence:\n"
+            "        - Stale hash rejection was described as proxy success.\n",
+            1,
+        )
+        .replace(
+            "  - subject_id: claim-benchmark\n"
+            "    subject_kind: claim\n"
+            "    subject_role: decisive\n"
+            "    reference_id: ref-benchmark\n"
+            "    comparison_kind: benchmark\n",
+            "  - subject_id: artifacts/phase4/result.json\n"
+            "    subject_kind: deliverable\n"
+            "    subject_role: decisive\n"
+            "    reference_id: current_artifact_hash\n"
+            "    comparison_kind: reproducibility\n",
+            1,
+        )
+        .replace(
+            "    recommended_action: Restore ref-benchmark and complete the benchmark comparison.\n"
+            "    notes: The decisive reference is unavailable during this verification pass.\n",
+            "    recommended_action: Restore ref-benchmark and complete the benchmark comparison.\n"
+            "    evidence:\n"
+            "      - Evidence belongs under contract_results entries, not verdicts.\n"
+            "    notes: The decisive reference is unavailable during this verification pass.\n",
             1,
         )
     )
@@ -89,9 +240,13 @@ def _proof_audit_block(
         _sha256_path(_proof_artifact_path(phase_dir)) if proof_artifact_sha256 is None else proof_artifact_sha256
     )
     resolved_audit_artifact_sha256 = (
-        _sha256_path(_proof_redteam_artifact_path(phase_dir)) if audit_artifact_sha256 is None else audit_artifact_sha256
+        _sha256_path(_proof_redteam_artifact_path(phase_dir))
+        if audit_artifact_sha256 is None
+        else audit_artifact_sha256
     )
-    resolved_claim_statement_sha256 = _proof_claim_statement_sha256() if claim_statement_sha256 is None else claim_statement_sha256
+    resolved_claim_statement_sha256 = (
+        _proof_claim_statement_sha256() if claim_statement_sha256 is None else claim_statement_sha256
+    )
     return (
         "      proof_audit:\n"
         f"        completeness: {completeness}\n"
@@ -340,12 +495,16 @@ def test_validate_frontmatter_summary_accepts_contract_results() -> None:
 
 
 def test_validate_frontmatter_summary_rejects_missing_uncertainty_markers_for_contract_backed_summary() -> None:
-    content = (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
-        "  uncertainty_markers:\n"
-        "    weakest_anchors: [Reference tolerance interpretation]\n"
-        "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n",
-        "",
-        1,
+    content = (
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "  uncertainty_markers:\n"
+            "    weakest_anchors: [Reference tolerance interpretation]\n"
+            "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n",
+            "",
+            1,
+        )
     )
 
     result = validate_frontmatter(content, "summary")
@@ -380,7 +539,9 @@ def test_validate_frontmatter_verification_rejects_passed_proof_claim_without_co
     )
 
     assert result.valid is False
-    assert any("claim claim-proof status=passed requires proof_audit.completeness=complete" in error for error in result.errors)
+    assert any(
+        "claim claim-proof status=passed requires proof_audit.completeness=complete" in error for error in result.errors
+    )
 
 
 def test_validate_frontmatter_verification_rejects_passed_proof_claim_without_passed_proof_specific_acceptance_test(
@@ -404,8 +565,7 @@ def test_validate_frontmatter_verification_rejects_passed_proof_claim_without_pa
 
     assert result.valid is False
     assert any(
-        "claim claim-proof status=passed requires all declared proof-specific acceptance_tests to pass"
-        in error
+        "claim claim-proof status=passed requires all declared proof-specific acceptance_tests to pass" in error
         for error in result.errors
     )
 
@@ -450,7 +610,10 @@ def test_validate_frontmatter_verification_rejects_passed_proof_claim_when_named
     )
 
     assert result.valid is False
-    assert any("claim claim-proof proof_audit does not cover required parameter symbols: r_0" in error for error in result.errors)
+    assert any(
+        "claim claim-proof proof_audit does not cover required parameter symbols: r_0" in error
+        for error in result.errors
+    )
 
 
 def test_validate_frontmatter_verification_rejects_passed_proof_claim_with_unclear_quantifier_status(
@@ -507,8 +670,7 @@ def test_validate_frontmatter_verification_rejects_passed_proof_claim_with_proof
 
     assert result.valid is False
     assert any(
-        "claim claim-proof proof_audit.proof_artifact_path must match a declared proof_deliverables path"
-        in error
+        "claim claim-proof proof_audit.proof_artifact_path must match a declared proof_deliverables path" in error
         for error in result.errors
     )
 
@@ -539,8 +701,7 @@ def test_validate_frontmatter_verification_rejects_passed_proof_claim_with_non_r
 
     assert result.valid is False
     assert any(
-        "claim claim-proof proof_audit.audit_artifact_path must point to a proof-redteam artifact"
-        in error
+        "claim claim-proof proof_audit.audit_artifact_path must point to a proof-redteam artifact" in error
         for error in result.errors
     )
 
@@ -622,7 +783,9 @@ def test_validate_frontmatter_verification_rejects_passed_proof_claim_with_unrea
     )
 
     assert result.valid is False
-    assert any("proof_audit audit_artifact_path does not resolve to a readable file" in error for error in result.errors)
+    assert any(
+        "proof_audit audit_artifact_path does not resolve to a readable file" in error for error in result.errors
+    )
 
 
 def test_validate_frontmatter_verification_rejects_status_passed_with_incomplete_reference_ledger(
@@ -630,33 +793,41 @@ def test_validate_frontmatter_verification_rejects_status_passed_with_incomplete
 ) -> None:
     phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
-    (phase_dir / "01-01-PLAN.md").write_text((FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"), encoding="utf-8")
+    (phase_dir / "01-01-PLAN.md").write_text(
+        (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"), encoding="utf-8"
+    )
     verification_path = phase_dir / "01-VERIFICATION.md"
     content = _verification_with_contract_results().replace(
         "    ref-benchmark:\n"
         "      status: completed\n"
         "      completed_actions: [read, compare, cite]\n"
         "      missing_actions: []\n",
-        "    ref-benchmark:\n"
-        "      status: not_applicable\n"
-        "      completed_actions: []\n"
-        "      missing_actions: []\n",
+        "    ref-benchmark:\n      status: not_applicable\n      completed_actions: []\n      missing_actions: []\n",
         1,
     )
 
     result = validate_frontmatter(content, "verification", source_path=verification_path)
 
     assert result.valid is False
-    assert any("status: passed is inconsistent with non-completed contract_results references" in error for error in result.errors)
+    assert any(
+        "status: passed is inconsistent with non-completed contract_results references" in error
+        for error in result.errors
+    )
 
 
-def test_validate_frontmatter_verification_rejects_missing_uncertainty_markers_for_contract_backed_verification() -> None:
-    content = (FIXTURES_STAGE4 / "verification_with_contract_results.md").read_text(encoding="utf-8").replace(
-        "  uncertainty_markers:\n"
-        "    weakest_anchors: [Verification spot-check coverage]\n"
-        "    disconfirming_observations: [Independent rerun misses the benchmark tolerance]\n",
-        "",
-        1,
+def test_validate_frontmatter_verification_rejects_missing_uncertainty_markers_for_contract_backed_verification() -> (
+    None
+):
+    content = (
+        (FIXTURES_STAGE4 / "verification_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "  uncertainty_markers:\n"
+            "    weakest_anchors: [Verification spot-check coverage]\n"
+            "    disconfirming_observations: [Independent rerun misses the benchmark tolerance]\n",
+            "",
+            1,
+        )
     )
 
     result = validate_frontmatter(content, "verification")
@@ -676,8 +847,7 @@ def test_validate_frontmatter_verification_rejects_missing_uncertainty_markers_f
                 "    claim-benchmark:\n"
                 "      status: passed\n"
                 "      summary: Benchmark claim verified against the decisive anchor.\n",
-                "    claim-benchmark:\n"
-                "      summary: Benchmark claim verified against the decisive anchor.\n",
+                "    claim-benchmark:\n      summary: Benchmark claim verified against the decisive anchor.\n",
                 1,
             ),
         ),
@@ -686,11 +856,8 @@ def test_validate_frontmatter_verification_rejects_missing_uncertainty_markers_f
             (FIXTURES_STAGE4 / "verification_with_contract_results.md")
             .read_text(encoding="utf-8")
             .replace(
-                "    claim-benchmark:\n"
-                "      status: passed\n"
-                "      summary: Claim independently verified.\n",
-                "    claim-benchmark:\n"
-                "      summary: Claim independently verified.\n",
+                "    claim-benchmark:\n      status: passed\n      summary: Claim independently verified.\n",
+                "    claim-benchmark:\n      summary: Claim independently verified.\n",
                 1,
             ),
         ),
@@ -711,25 +878,25 @@ def test_validate_frontmatter_contract_results_rejects_omitted_status_fields(
     [
         (
             "summary",
-            (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+            (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+            .read_text(encoding="utf-8")
+            .replace(
                 "  uncertainty_markers:\n"
                 "    weakest_anchors: [Reference tolerance interpretation]\n"
                 "    disconfirming_observations: [Benchmark agreement disappears once normalization is fixed]\n",
-                "  uncertainty_markers:\n"
-                "    weakest_anchors: []\n"
-                "    disconfirming_observations: []\n",
+                "  uncertainty_markers:\n    weakest_anchors: []\n    disconfirming_observations: []\n",
                 1,
             ),
         ),
         (
             "verification",
-            (FIXTURES_STAGE4 / "verification_with_contract_results.md").read_text(encoding="utf-8").replace(
+            (FIXTURES_STAGE4 / "verification_with_contract_results.md")
+            .read_text(encoding="utf-8")
+            .replace(
                 "  uncertainty_markers:\n"
                 "    weakest_anchors: [Verification spot-check coverage]\n"
                 "    disconfirming_observations: [Independent rerun misses the benchmark tolerance]\n",
-                "  uncertainty_markers:\n"
-                "    weakest_anchors: []\n"
-                "    disconfirming_observations: []\n",
+                "  uncertainty_markers:\n    weakest_anchors: []\n    disconfirming_observations: []\n",
                 1,
             ),
         ),
@@ -773,7 +940,9 @@ def test_validate_frontmatter_summary_with_source_path_accepts_canonical_plan_co
         encoding="utf-8",
     )
     summary_path = phase_dir / "01-SUMMARY.md"
-    summary_path.write_text((FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8"), encoding="utf-8")
+    summary_path.write_text(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8"), encoding="utf-8"
+    )
 
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
@@ -873,7 +1042,9 @@ def test_validate_frontmatter_summary_with_source_path_rejects_unknown_contract_
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "claim-benchmark:",
             "claim-unknown:",
             1,
@@ -896,7 +1067,9 @@ def test_validate_frontmatter_summary_with_source_path_rejects_unknown_linked_id
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "linked_ids: [deliv-figure, test-benchmark, ref-benchmark]",
             "linked_ids: [deliv-figure, test-benchmark, ref-missing]",
             1,
@@ -908,7 +1081,8 @@ def test_validate_frontmatter_summary_with_source_path_rejects_unknown_linked_id
 
     assert result.valid is False
     assert any(
-        "claim claim-benchmark linked_ids references unknown contract id ref-missing" in error for error in result.errors
+        "claim claim-benchmark linked_ids references unknown contract id ref-missing" in error
+        for error in result.errors
     )
 
 
@@ -921,7 +1095,9 @@ def test_validate_frontmatter_summary_with_source_path_rejects_unknown_evidence_
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "reference_id: ref-benchmark",
             "reference_id: ref-missing",
             1,
@@ -948,10 +1124,11 @@ def test_validate_frontmatter_summary_with_source_path_accepts_forbidden_proxy_e
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "          reference_id: ref-benchmark\n",
-            "          reference_id: ref-benchmark\n"
-            "          forbidden_proxy_id: fp-benchmark\n",
+            "          reference_id: ref-benchmark\n          forbidden_proxy_id: fp-benchmark\n",
             1,
         ),
         encoding="utf-8",
@@ -974,10 +1151,11 @@ def test_validate_frontmatter_summary_with_source_path_rejects_unknown_forbidden
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "          reference_id: ref-benchmark\n",
-            "          reference_id: ref-benchmark\n"
-            "          forbidden_proxy_id: fp-missing\n",
+            "          reference_id: ref-benchmark\n          forbidden_proxy_id: fp-missing\n",
             1,
         ),
         encoding="utf-8",
@@ -1084,7 +1262,9 @@ def test_validate_frontmatter_summary_with_source_path_reports_referenced_plan_c
         encoding="utf-8",
     )
     summary_path = phase_dir / "01-SUMMARY.md"
-    summary_path.write_text((FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8"), encoding="utf-8")
+    summary_path.write_text(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8"), encoding="utf-8"
+    )
 
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
@@ -1114,7 +1294,9 @@ def test_validate_frontmatter_summary_with_source_path_reports_referenced_plan_c
         encoding="utf-8",
     )
     summary_path = phase_dir / "01-SUMMARY.md"
-    summary_path.write_text((FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8"), encoding="utf-8")
+    summary_path.write_text(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8"), encoding="utf-8"
+    )
 
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
@@ -1163,8 +1345,7 @@ def test_validate_frontmatter_verification_with_adjacent_contract_backed_plan_re
     )
     verification_path = artifact_dir / "01-VERIFICATION.md"
     verification_path.write_text(
-        _verification_with_contract_results()
-        .replace(
+        _verification_with_contract_results().replace(
             "plan_contract_ref: GPD/phases/01-benchmark/01-01-PLAN.md#/contract\n",
             "",
             1,
@@ -1570,7 +1751,7 @@ def test_verify_summary_requires_plan_contract_ref_for_contract_backed_plan(tmp_
         (
             (FIXTURES_STAGE4 / "summary_with_contract_results.md")
             .read_text(encoding="utf-8")
-            .replace('plan_contract_ref: GPD/phases/01-benchmark/01-01-PLAN.md#/contract\n', "")
+            .replace("plan_contract_ref: GPD/phases/01-benchmark/01-01-PLAN.md#/contract\n", "")
         ),
         encoding="utf-8",
     )
@@ -1586,10 +1767,14 @@ def test_verify_summary_rejects_unknown_contract_ids(tmp_path: Path) -> None:
     phase_dir.mkdir(parents=True)
     plan_path = phase_dir / "01-01-PLAN.md"
     plan_path.write_text((FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"), encoding="utf-8")
-    summary_content = (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
-        "claim-benchmark:",
-        "claim-unknown:",
-        1,
+    summary_content = (
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "claim-benchmark:",
+            "claim-unknown:",
+            1,
+        )
     )
     summary_path = phase_dir / "01-01-SUMMARY.md"
     summary_path.write_text(summary_content, encoding="utf-8")
@@ -1659,7 +1844,9 @@ def test_validate_frontmatter_summary_rejects_missing_contract_results_coverage(
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "  deliverables:\n"
             "    deliv-figure:\n"
             "      status: passed\n"
@@ -1717,7 +1904,9 @@ def test_validate_frontmatter_summary_rejects_non_contract_comparison_verdict_su
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
     assert result.valid is False
-    assert any("comparison_verdicts:" in error and "acceptance_test' or 'reference'" in error for error in result.errors)
+    assert any(
+        "comparison_verdicts:" in error and "acceptance_test' or 'reference'" in error for error in result.errors
+    )
 
 
 @pytest.mark.parametrize("role", ["supporting", "supplemental"])
@@ -1732,7 +1921,9 @@ def test_validate_frontmatter_summary_allows_non_decisive_comparison_tension_wit
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "comparison_verdicts:\n",
             "comparison_verdicts:\n"
             "  - subject_id: claim-benchmark\n"
@@ -1807,7 +1998,9 @@ def test_validate_frontmatter_summary_requires_decisive_role_for_decisive_compar
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
     assert result.valid is False
-    assert any("Missing decisive comparison_verdict for acceptance test test-benchmark" in error for error in result.errors)
+    assert any(
+        "Missing decisive comparison_verdict for acceptance test test-benchmark" in error for error in result.errors
+    )
 
 
 @pytest.mark.parametrize("comparison_kind", ["benchmark", "prior_work", "experiment", "cross_method", "baseline"])
@@ -1823,7 +2016,9 @@ def test_validate_frontmatter_summary_rejects_missing_subject_role_for_decisive_
     reference_line = "    reference_id: ref-benchmark\n" if comparison_kind not in {"cross_method"} else ""
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "comparison_verdicts:\n",
             "comparison_verdicts:\n"
             "  - subject_id: claim-benchmark\n"
@@ -1857,7 +2052,9 @@ def test_validate_frontmatter_summary_rejects_unanchored_decisive_external_compa
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "comparison_verdicts:\n",
             "comparison_verdicts:\n"
             "  - subject_id: claim-benchmark\n"
@@ -1877,8 +2074,7 @@ def test_validate_frontmatter_summary_rejects_unanchored_decisive_external_compa
 
     assert result.valid is False
     assert any(
-        f"must include reference_id or use subject_kind: reference for decisive {comparison_kind} comparisons"
-        in error
+        f"must include reference_id or use subject_kind: reference for decisive {comparison_kind} comparisons" in error
         for error in result.errors
     )
 
@@ -1932,7 +2128,9 @@ def test_validate_frontmatter_summary_rejects_prior_work_verdict_for_benchmark_a
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
     assert result.valid is False
-    assert any("Missing decisive comparison_verdict for acceptance test test-benchmark" in error for error in result.errors)
+    assert any(
+        "Missing decisive comparison_verdict for acceptance test test-benchmark" in error for error in result.errors
+    )
 
 
 def test_validate_frontmatter_summary_accepts_decisive_cross_method_without_reference_anchor(
@@ -1947,7 +2145,11 @@ def test_validate_frontmatter_summary_accepts_decisive_cross_method_without_refe
         .replace("required_actions: [read, compare, cite]", "required_actions: [read, cite]", 1)
         .replace("kind: benchmark", "kind: cross_method", 1)
         .replace("procedure: Compare against the benchmark reference", "procedure: Compare the independent methods", 1)
-        .replace("pass_condition: Matches reference within tolerance", "pass_condition: Independent methods agree within tolerance", 1),
+        .replace(
+            "pass_condition: Matches reference within tolerance",
+            "pass_condition: Independent methods agree within tolerance",
+            1,
+        ),
         encoding="utf-8",
     )
     summary_path = phase_dir / "01-SUMMARY.md"
@@ -1955,11 +2157,8 @@ def test_validate_frontmatter_summary_accepts_decisive_cross_method_without_refe
         (FIXTURES_STAGE4 / "summary_with_contract_results.md")
         .read_text(encoding="utf-8")
         .replace(
-            "    subject_role: decisive\n"
-            "    reference_id: ref-benchmark\n"
-            "    comparison_kind: benchmark\n",
-            "    subject_role: decisive\n"
-            "    comparison_kind: cross_method\n",
+            "    subject_role: decisive\n    reference_id: ref-benchmark\n    comparison_kind: benchmark\n",
+            "    subject_role: decisive\n    comparison_kind: cross_method\n",
             1,
         ),
         encoding="utf-8",
@@ -1980,7 +2179,9 @@ def test_validate_frontmatter_summary_rejects_contract_results_context_usage(tmp
     )
     summary_path = phase_dir / "01-SUMMARY.md"
     summary_path.write_text(
-        (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
             "  uncertainty_markers:\n",
             "  context_usage:\n"
             "    prior-baseline:\n"
@@ -1998,7 +2199,9 @@ def test_validate_frontmatter_summary_rejects_contract_results_context_usage(tmp
     assert any("contract_results:" in error and "context_usage" in error for error in result.errors)
 
 
-def test_validate_frontmatter_summary_requires_decisive_verdict_even_when_comparison_not_attempted(tmp_path: Path) -> None:
+def test_validate_frontmatter_summary_requires_decisive_verdict_even_when_comparison_not_attempted(
+    tmp_path: Path,
+) -> None:
     phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
     (phase_dir / "01-01-PLAN.md").write_text(
@@ -2008,7 +2211,11 @@ def test_validate_frontmatter_summary_requires_decisive_verdict_even_when_compar
     original = (
         (FIXTURES_STAGE4 / "summary_with_contract_results.md")
         .read_text(encoding="utf-8")
-        .replace("status: passed\n      summary: Benchmark claim verified against the decisive anchor.\n", "status: not_attempted\n      summary: Benchmark claim remains open.\n", 1)
+        .replace(
+            "status: passed\n      summary: Benchmark claim verified against the decisive anchor.\n",
+            "status: not_attempted\n      summary: Benchmark claim remains open.\n",
+            1,
+        )
         .replace(
             "status: passed\n      summary: Benchmark reproduced within the contracted tolerance.\n",
             "status: not_attempted\n      summary: Benchmark comparison has not been run yet.\n",
@@ -2023,7 +2230,9 @@ def test_validate_frontmatter_summary_requires_decisive_verdict_even_when_compar
     result = validate_frontmatter(summary_path.read_text(encoding="utf-8"), "summary", source_path=summary_path)
 
     assert result.valid is False
-    assert any("Missing decisive comparison_verdict for acceptance test test-benchmark" in error for error in result.errors)
+    assert any(
+        "Missing decisive comparison_verdict for acceptance test test-benchmark" in error for error in result.errors
+    )
 
 
 def test_validate_frontmatter_verification_rejects_mismatched_suggested_contract_check_binding(
@@ -2038,7 +2247,11 @@ def test_validate_frontmatter_verification_rejects_mismatched_suggested_contract
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
         _verification_with_contract_results()
-        .replace("status: passed\nscore: 3/3 contract targets verified\n", "status: gaps_found\nscore: 3/3 contract targets verified\n", 1)
+        .replace(
+            "status: passed\nscore: 3/3 contract targets verified\n",
+            "status: gaps_found\nscore: 3/3 contract targets verified\n",
+            1,
+        )
         .replace(
             "comparison_verdicts:\n",
             "suggested_contract_checks:\n"
@@ -2059,7 +2272,10 @@ def test_validate_frontmatter_verification_rejects_mismatched_suggested_contract
     )
 
     assert result.valid is False
-    assert any("references test-benchmark as claim, but the contract declares it as acceptance_test" in error for error in result.errors)
+    assert any(
+        "references test-benchmark as claim, but the contract declares it as acceptance_test" in error
+        for error in result.errors
+    )
 
 
 def test_validate_frontmatter_verification_rejects_half_bound_suggested_contract_check(tmp_path: Path) -> None:
@@ -2072,7 +2288,11 @@ def test_validate_frontmatter_verification_rejects_half_bound_suggested_contract
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
         _verification_with_contract_results()
-        .replace("status: passed\nscore: 3/3 contract targets verified\n", "status: gaps_found\nscore: 3/3 contract targets verified\n", 1)
+        .replace(
+            "status: passed\nscore: 3/3 contract targets verified\n",
+            "status: gaps_found\nscore: 3/3 contract targets verified\n",
+            1,
+        )
         .replace(
             "comparison_verdicts:\n",
             "suggested_contract_checks:\n"
@@ -2092,7 +2312,9 @@ def test_validate_frontmatter_verification_rejects_half_bound_suggested_contract
     )
 
     assert result.valid is False
-    assert any("must provide suggested_subject_kind and suggested_subject_id together" in error for error in result.errors)
+    assert any(
+        "must provide suggested_subject_kind and suggested_subject_id together" in error for error in result.errors
+    )
 
 
 def test_validate_frontmatter_verification_rejects_extra_keys_in_suggested_contract_check(tmp_path: Path) -> None:
@@ -2148,8 +2370,7 @@ def test_validate_frontmatter_verification_rejects_extra_keys_in_suggested_contr
 
     assert result.valid is False
     assert any(
-        "suggested_contract_checks: [0] check_id: Extra inputs are not permitted" in error
-        for error in result.errors
+        "suggested_contract_checks: [0] check_id: Extra inputs are not permitted" in error for error in result.errors
     )
 
 
@@ -2162,8 +2383,7 @@ def test_validate_frontmatter_verification_rejects_passed_status_with_partial_co
     )
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
-        _verification_with_contract_results()
-        .replace(
+        _verification_with_contract_results().replace(
             "      status: passed\n      summary: Claim independently verified.\n",
             "      status: partial\n      summary: Claim still needs the decisive rerun.\n",
             1,
@@ -2193,8 +2413,7 @@ def test_validate_frontmatter_verification_rejects_passed_status_with_suggested_
     )
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
-        _verification_with_contract_results()
-        .replace(
+        _verification_with_contract_results().replace(
             "comparison_verdicts:\n",
             "suggested_contract_checks:\n"
             "  - check: Add decisive normalization benchmark comparison\n"
@@ -2218,7 +2437,9 @@ def test_validate_frontmatter_verification_rejects_passed_status_with_suggested_
     assert "status: passed is inconsistent with non-empty suggested_contract_checks" in result.errors
 
 
-def test_validate_frontmatter_verification_rejects_passed_status_with_unresolved_forbidden_proxy(tmp_path: Path) -> None:
+def test_validate_frontmatter_verification_rejects_passed_status_with_unresolved_forbidden_proxy(
+    tmp_path: Path,
+) -> None:
     phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
     phase_dir.mkdir(parents=True)
     (phase_dir / "01-01-PLAN.md").write_text(
@@ -2227,8 +2448,7 @@ def test_validate_frontmatter_verification_rejects_passed_status_with_unresolved
     )
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
-        _verification_with_contract_results()
-        .replace(
+        _verification_with_contract_results().replace(
             "      status: rejected\n",
             "      status: unresolved\n      notes: Proxy rejection remains open pending the decisive rerun.\n",
             1,
@@ -2247,12 +2467,7 @@ def test_validate_frontmatter_verification_rejects_passed_status_with_unresolved
 
 
 def test_validate_frontmatter_verification_rejects_non_canonical_status(tmp_path: Path) -> None:
-    phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
-    phase_dir.mkdir(parents=True)
-    (phase_dir / "01-01-PLAN.md").write_text(
-        (FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
+    phase_dir = _write_benchmark_contract_phase(tmp_path)
     verification_path = phase_dir / "01-VERIFICATION.md"
     verification_path.write_text(
         _verification_with_contract_results().replace("status: passed\n", "status: validating\n", 1),
@@ -2269,23 +2484,92 @@ def test_validate_frontmatter_verification_rejects_non_canonical_status(tmp_path
     assert "status: must be one of passed, gaps_found, expert_needed, human_needed" in result.errors
 
 
+def test_validate_frontmatter_allows_missing_must_surface_reference_in_gap_report(tmp_path: Path) -> None:
+    phase_dir = _write_benchmark_contract_phase(tmp_path)
+    verification_path = phase_dir / "01-VERIFICATION.md"
+    content = _verification_gap_report_with_missing_reference_actions()
+    verification_path.write_text(content, encoding="utf-8")
+
+    result = validate_frontmatter(content, "verification", source_path=verification_path)
+
+    assert result.valid is True
+    assert result.errors == []
+
+
+def test_validate_frontmatter_verification_rejects_stale_refresh_invalid_schema_mistakes(tmp_path: Path) -> None:
+    phase_dir = _write_benchmark_contract_phase(tmp_path)
+    verification_path = phase_dir / "01-VERIFICATION.md"
+    content = _stale_refresh_invalid_verification_report_with_schema_mistakes()
+    verification_path.write_text(content, encoding="utf-8")
+
+    result = validate_frontmatter(content, "verification", source_path=verification_path)
+
+    assert result.valid is False
+    assert "status: must be one of passed, gaps_found, expert_needed, human_needed" not in result.errors
+    assert any(error.startswith("artifact_hashes:") and "runtime hash scratch" in error for error in result.errors)
+    assert any(
+        error.startswith("stale_artifact_hashes_rejected:") and "stale-hash scratch" in error for error in result.errors
+    )
+    assert any(error.startswith("gpd_return:") and "return envelope" in error for error in result.errors)
+    assert "contract_results: claims.claim-benchmark.evidence.0 must be an object, not str" in result.errors
+    assert "contract_results: claims.claim-benchmark.evidence.1 must be an object, not str" in result.errors
+    assert "contract_results: forbidden_proxies.fp-benchmark.evidence.0 must be an object, not str" in result.errors
+    assert any(
+        "forbidden_proxies.fp-benchmark.status" in error
+        and "Input should be 'rejected', 'violated', 'unresolved' or 'not_applicable'" in error
+        for error in result.errors
+    )
+    assert any(
+        "forbidden_proxies.fp-benchmark.status: forbidden proxy status cannot be passed" in error
+        for error in result.errors
+    )
+    assert any(
+        "claims.claim-benchmark.status: gaps_found is a top-level verification status" in error
+        for error in result.errors
+    )
+    assert any(
+        "acceptance_tests.test-benchmark.status: gaps_found is a top-level verification status" in error
+        for error in result.errors
+    )
+    assert "contract_results: status: Extra inputs are not permitted" in result.errors
+    assert any("contract_results: status: contract_results has no aggregate status" in error for error in result.errors)
+    assert "contract_results: summary: Extra inputs are not permitted" in result.errors
+    assert any("[0] comparison_kind: Input should be" in error for error in result.errors)
+    assert any("[0] evidence: Extra inputs are not permitted" in error for error in result.errors)
+    assert any(
+        "comparison_verdicts: [0] evidence: comparison_verdicts do not carry evidence" in error
+        for error in result.errors
+    )
+    assert any(
+        "comparison_verdicts: [0] comparison_kind: reproducibility is an acceptance-test kind" in error
+        for error in result.errors
+    )
+    assert "comparison_verdicts: [0] references unknown subject_id artifacts/phase4/result.json" in result.errors
+    assert "comparison_verdicts: [0] references unknown reference_id current_artifact_hash" in result.errors
+    assert "contract_results: present but invalid; contract alignment skipped" in result.errors
+    assert "contract_results: required for contract-backed plan" not in result.errors
+
+
 def test_verify_summary_requires_must_surface_reference_actions(tmp_path: Path) -> None:
-    phase_dir = tmp_path / "GPD" / "phases" / "01-benchmark"
-    phase_dir.mkdir(parents=True)
-    plan_path = phase_dir / "01-01-PLAN.md"
-    plan_path.write_text((FIXTURES_STAGE0 / "plan_with_contract.md").read_text(encoding="utf-8"), encoding="utf-8")
-    summary_content = (FIXTURES_STAGE4 / "summary_with_contract_results.md").read_text(encoding="utf-8").replace(
-        "completed_actions: [read, compare, cite]",
-        "completed_actions: [read]",
-        1,
-    ).replace(
-        "status: completed",
-        "status: missing",
-        1,
-    ).replace(
-        "missing_actions: []",
-        "missing_actions: [compare, cite]",
-        1,
+    phase_dir = _write_benchmark_contract_phase(tmp_path)
+    summary_content = (
+        (FIXTURES_STAGE4 / "summary_with_contract_results.md")
+        .read_text(encoding="utf-8")
+        .replace(
+            "completed_actions: [read, compare, cite]",
+            "completed_actions: [read]",
+            1,
+        )
+        .replace(
+            "status: completed",
+            "status: missing",
+            1,
+        )
+        .replace(
+            "missing_actions: []",
+            "missing_actions: [compare, cite]",
+            1,
+        )
     )
     summary_path = phase_dir / "01-01-SUMMARY.md"
     summary_path.write_text(summary_content, encoding="utf-8")
@@ -2293,7 +2577,9 @@ def test_verify_summary_requires_must_surface_reference_actions(tmp_path: Path) 
     result = verify_summary(tmp_path, summary_path)
 
     assert result.passed is False
-    assert any("Reference ref-benchmark missing required_actions in summary" in error for error in result.errors)
+    assert any(
+        "Reference ref-benchmark missing required_actions in completed_actions" in error for error in result.errors
+    )
 
 
 def test_verify_summary_requires_decisive_comparison_verdict_when_comparison_was_attempted(tmp_path: Path) -> None:

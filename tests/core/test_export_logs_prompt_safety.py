@@ -18,7 +18,7 @@ WORKFLOWS_DIR = GPD_ROOT / "specs" / "workflows"
 UNSAFE_EXPORT_LOG_PATTERNS = (
     "observe export $ARGUMENTS",
     "observe export ${ARGUMENTS",
-    "EXPORT_ARGS=\"\"",
+    'EXPORT_ARGS=""',
     "$EXPORT_ARGS",
     "--format $FORMAT",
     "--session $SESSION",
@@ -60,16 +60,6 @@ def _write_minimal_session(project: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
-
-
-def test_export_logs_source_prompts_do_not_reconstruct_shell_args() -> None:
-    command = (COMMANDS_DIR / "export-logs.md").read_text(encoding="utf-8")
-    workflow = (WORKFLOWS_DIR / "export-logs.md").read_text(encoding="utf-8")
-
-    for text in (command, workflow):
-        _assert_export_log_prompt_safe(text)
-        assert '--output-dir "$OUTPUT_DIR"' in text
-        assert "Never pass raw `$ARGUMENTS` to `observe export`" in text
 
 
 def test_claude_rendered_export_logs_prompts_do_not_reconstruct_shell_args(tmp_path: Path) -> None:

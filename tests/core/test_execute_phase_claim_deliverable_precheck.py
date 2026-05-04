@@ -1,8 +1,8 @@
-"""Phase 5 contract tests for the `claim_deliverable_alignment_check` precheck step.
+"""Contract tests for the `claim_deliverable_alignment_check` precheck step.
 
 Grep-on-spec-text assertions that pin the precheck step's presence, location,
 gating, suppression, abort handling, and side-by-side render shape. These
-tests mirror the style of `tests/core/test_phase22_execute_phase_ownership.py`:
+tests mirror the style of `tests/core/test_execute_phase_ownership_boundaries.py`:
 load `execute-phase.md` once, assert on substrings.
 """
 

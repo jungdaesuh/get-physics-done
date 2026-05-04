@@ -1,8 +1,10 @@
-"""Focused assertions for Phase 20 verify-work child-return seams."""
+"""Focused assertions for verify-work child-return contracts."""
 
 from __future__ import annotations
 
 from pathlib import Path
+
+from gpd.core.context import _build_verification_report_skeleton_bridge
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_DIR = REPO_ROOT / "src/gpd/agents"
@@ -12,6 +14,39 @@ WORKFLOWS_DIR = REPO_ROOT / "src/gpd/specs/workflows"
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def test_verify_work_inventory_bridge_exposes_writer_command_and_preview_command(tmp_path: Path) -> None:
+    phase_info = {
+        "directory": "GPD/phases/01-setup",
+        "phase_number": "01",
+        "plans": ["01-PLAN.md"],
+    }
+
+    bridge = _build_verification_report_skeleton_bridge(tmp_path, phase_info)
+
+    assert bridge["skeleton_command"] == (
+        f"gpd verification-report skeleton {(tmp_path / 'GPD/phases/01-setup/01-PLAN.md').as_posix()} "
+        "--format markdown --status gaps_found"
+    )
+    assert bridge["writer_command"] == (
+        f"gpd verification-report skeleton {(tmp_path / 'GPD/phases/01-setup/01-PLAN.md').as_posix()} "
+        f"--write --output {(tmp_path / 'GPD/phases/01-setup/01-VERIFICATION.md').as_posix()} --force "
+        "--body-file BODY.md --validate contract --status gaps_found"
+    )
+    body_contract = bridge["body_contract"]
+    assert "`BODY.md` is body-only Markdown" in str(body_contract)
+    assert "one fenced executed `python`/`bash` block" in str(body_contract)
+    assert "adjacent `**Output:**` plus fenced `output` block" in str(body_contract)
+    assert "following `PASS`/`FAIL`/`INCONCLUSIVE` verdict line" in str(body_contract)
+    assert "prose bullets alone are invalid" in str(body_contract)
+    assert "--raw" not in str(bridge["skeleton_command"])
+    assert "run writer_command" in str(bridge["fallback_rule"])
+    assert "body-only evidence" in str(bridge["fallback_rule"])
+    assert "satisfies body_contract" in str(bridge["fallback_rule"])
+    assert "Use skeleton_command as preview context only" in str(bridge["fallback_rule"])
+    assert "hand-author or reflow VERIFICATION.md frontmatter" in str(bridge["fallback_rule"])
+    assert "use the generated frontmatter as the starting YAML" not in str(bridge["fallback_rule"])
 
 
 def test_verify_work_verifier_handoff_stays_one_shot_and_routes_on_typed_status() -> None:
@@ -25,7 +60,7 @@ def test_verify_work_verifier_handoff_stays_one_shot_and_routes_on_typed_status(
         in workflow
     )
     assert (
-        "If the canonical verification artifact is missing, unreadable, absent from `gpd_return.files_written`, or fails contract validation, treat the handoff as incomplete and request a fresh verifier continuation. Never trust the return text alone."
+        "If the artifact is missing, unreadable, absent from `gpd_return.files_written`, or fails validation, treat the handoff as incomplete: request a fresh verifier continuation when possible; otherwise surface a non-green stop with validator errors. Never present it as accepted or passed."
         in workflow
     )
     assert (
@@ -53,6 +88,14 @@ def test_verify_work_verifier_sync_requires_artifact_gate_before_downstream_rout
     assert "`${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md` exists on disk and is readable" in workflow
     assert "the same path appears in `gpd_return.files_written`" in workflow
     assert 'gpd validate verification-contract "${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md"' in workflow
+    assert (
+        'Any verifier-written canonical `VERIFICATION.md`, including gap reports and `blocked`/`failed` handoffs, must pass `gpd validate verification-contract "${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md"` before this wrapper accepts it as canonical.'
+        in workflow
+    )
+    assert (
+        "If the artifact is missing, unreadable, absent from `gpd_return.files_written`, or fails validation, treat the handoff as incomplete: request a fresh verifier continuation when possible; otherwise surface a non-green stop with validator errors. Never present it as accepted or passed."
+        in workflow
+    )
     assert "Do not recompute canonical verification status in this workflow." in workflow
     assert "If a canonical verification file already existed before this run" in workflow
     assert (
@@ -60,7 +103,10 @@ def test_verify_work_verifier_sync_requires_artifact_gate_before_downstream_rout
         in workflow
     )
     assert "Write to `${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md`." in workflow
-    assert "Validate the final verification file, then commit it." in workflow
+    assert (
+        'Run `gpd validate verification-contract "${PHASE_DIR_ABS}/${phase_number}-VERIFICATION.md"` before committing it; invalid reports stop non-green and do not advance state.'
+        in workflow
+    )
     assert (
         workflow.count(
             "Changed verification files fail `gpd pre-commit-check` when this header is missing or mismatched against the active lock."
@@ -69,6 +115,49 @@ def test_verify_work_verifier_sync_requires_artifact_gate_before_downstream_rout
     )
     assert "If the verifier agent fails to spawn or returns an error, keep the session fail-closed." in workflow
     assert "Do not let a stale existing verification file satisfy the success path." in workflow
+
+
+def test_verify_work_fallback_failed_validation_stops_at_sync_gate() -> None:
+    workflow = _read(WORKFLOWS_DIR / "verify-work.md")
+
+    fallback_fragments = (
+        "fallback verifier execution is still `gpd-verifier` execution",
+        "verification_report_skeleton_bridge",
+        "write body-only evidence",
+        "satisfies bridge `body_contract`",
+        "one fenced executed `python`/`bash` block",
+        "adjacent `**Output:**` plus fenced `output`",
+        "following `PASS`/`FAIL`/`INCONCLUSIVE` verdict",
+        "replace `BODY.md` in its `writer_command`",
+        "The writer serializes YAML and validates before canonical acceptance.",
+        "Use `skeleton_command` only as read-only preview context",
+        "do not hand-author or reflow frontmatter",
+        "keep command transcripts, hashes, oracle details, prose-only evidence, and `gpd_return` out of YAML",
+        "Read the runtime-projected `{GPD_AGENTS_DIR}/gpd-verifier.md` and schema refs for verifier policy",
+        "not for wrapper-side schema recreation",
+        "Do not wrapper-repair the canonical report.",
+    )
+    sync_stop = (
+        "- Fallback executions that reach this step after failed report validation stop here: emit the blocked/final response with latest validator errors. "
+        "Do not list the invalid `VERIFICATION.md` as an authoritative artifact, do not route to gaps unless a schema-valid gap report exists, do not enter `gap_repair` or `complete_session`, "
+        "and do not patch the canonical verification report from this wrapper."
+    )
+
+    for fragment in fallback_fragments:
+        assert fragment in workflow
+    assert sync_stop in workflow
+    assert (
+        "Schema finalization is bounded: validator pass returns; after the second validator failure total, including the initial failure and one repair rerun, return `gpd_return.status: blocked` with latest errors."
+        in workflow
+    )
+
+    assert workflow.index("verification_report_skeleton_bridge") < workflow.index('<step name="sync_verifier_output">')
+    assert workflow.index("writer_command") < workflow.index('<step name="sync_verifier_output">')
+    assert workflow.index(sync_stop) < workflow.index(
+        'INTERACTIVE_VALIDATION_INIT=$(gpd --raw init verify-work "${PHASE_ARG}" --stage interactive_validation)'
+    )
+    assert workflow.index(sync_stop) < workflow.index('<step name="load_gap_repair_stage">')
+    assert workflow.index(sync_stop) < workflow.index('<step name="complete_session">')
 
 
 def test_verify_work_gap_plan_checker_routes_on_canonical_gpd_return_status() -> None:

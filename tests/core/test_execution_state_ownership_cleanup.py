@@ -1,4 +1,4 @@
-"""Focused assertions for Phase 11 execution-state ownership cleanup."""
+"""Focused assertions for execution-state ownership cleanup."""
 
 from __future__ import annotations
 
@@ -27,4 +27,3 @@ def test_agent_infrastructure_points_spawned_child_returns_at_canonical_applicat
 
     assert "gpd apply-return-updates <summary-file>" in text
     assert "gpd state advance" not in text
-

@@ -57,7 +57,9 @@ class TestRoadmapCheckboxMatching:
         (gpd_dir / "ROADMAP.md").write_text(roadmap_content, encoding="utf-8")
         return tmp_path
 
-    def test_phase1_not_matched_by_phase10(self, tmp_path: Path) -> None:
+    def test_roadmap_checkbox_matching_keeps_phase_one_separate_from_phase_ten(
+        self, tmp_path: Path
+    ) -> None:
         from gpd.core.phases import roadmap_analyze
 
         roadmap = (
@@ -81,7 +83,9 @@ class TestRoadmapCheckboxMatching:
         assert phase1.roadmap_complete is False
         assert phase10.roadmap_complete is True
 
-    def test_phase1_checked_independently_of_phase10(self, tmp_path: Path) -> None:
+    def test_roadmap_completion_tracks_phase_one_independently_from_phase_ten(
+        self, tmp_path: Path
+    ) -> None:
         from gpd.core.phases import roadmap_analyze
 
         roadmap = (

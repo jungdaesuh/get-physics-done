@@ -1,4 +1,4 @@
-"""Phase 22 assertions for `execute-phase` ownership boundaries."""
+"""Assertions for `execute-phase` ownership boundaries."""
 
 from __future__ import annotations
 

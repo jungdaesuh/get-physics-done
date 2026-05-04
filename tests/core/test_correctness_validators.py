@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from textwrap import dedent
 
@@ -163,8 +164,9 @@ def test_validate_comparison_contract_cli_rejects_malformed_verdict(tmp_path: Pa
     result = runner.invoke(app, ["--raw", "validate", "comparison-contract", str(comparison_path)])
 
     assert result.exit_code == 1, result.output
-    assert "comparison_verdicts" in result.output
-    assert "Extra inputs are not permitted" in result.output
+    payload = json.loads(result.output)
+    assert payload["valid"] is False
+    assert any("comparison_verdicts" in error and "extra" in error for error in payload["errors"])
 
 
 def test_validate_comparison_contract_cli_requires_verdicts(tmp_path: Path) -> None:
@@ -190,4 +192,6 @@ def test_validate_comparison_contract_cli_requires_verdicts(tmp_path: Path) -> N
     result = runner.invoke(app, ["--raw", "validate", "comparison-contract", str(comparison_path)])
 
     assert result.exit_code == 1, result.output
-    assert "comparison_verdicts: required" in result.output
+    payload = json.loads(result.output)
+    assert payload["valid"] is False
+    assert "comparison_verdicts: required" in payload["errors"]

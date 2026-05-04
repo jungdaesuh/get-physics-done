@@ -184,10 +184,10 @@ fi
 
 Keep the packaging rules arXiv-specific and deterministic:
 
-1. Flatten all `\input{}` and `\include{}` chains into a single submission root file.
-2. Inline the `.bbl` bibliography and remove any remaining `\bibliography{}` commands.
+1. Keep `\input{}` / `\include{}` chains only if every source file is packaged; flatten only as repair.
+2. Include bibliography material as packaged `.bib`, packaged `.bbl`, or inlined `thebibliography`; do not require `.bbl` inlining for a complete `.bib` workflow.
 3. Copy or convert figures into arXiv-compatible formats only.
-4. Reject unresolved placeholders such as `RESULT PENDING`, `\cite{MISSING:...}`, or unresolved `TODO` / `FIXME` markers.
+4. Reject unresolved placeholders (`RESULT PENDING`, `\cite{MISSING:...}`, `TODO`, `FIXME`).
 5. Package ancillary files only when they are present and relevant.
 6. Remove LaTeX auxiliary files, editor backups, and metadata noise from the submission tree.
 7. Generate `00README.XXX` only when the submission contains more than one file.
@@ -199,15 +199,15 @@ Use these arXiv-specific checks:
 | Issue | Action |
 |---|---|
 | TIFF figures | Convert to PNG before packaging |
-| PDF figures | Keep only if the manuscript is using `pdflatex` and `\pdfoutput=1` is present before `\documentclass` |
+| PDF figures | Keep for PDFLaTeX-compatible processing; do not require `\pdfoutput=1` |
 | EPS figures | Warn if fonts are not embedded |
 | Abstract too long | Warn if the abstract exceeds the arXiv metadata limit |
 | Total package size | Fail if the package exceeds the arXiv limit |
-| Missing bibliography flattening | Fail closed |
+| Missing bibliography material | Fail if citation-bearing TeX lacks packaged `.bib`, packaged `.bbl`, or inlined bibliography |
 
 If the manuscript root is not already `paper/`, stage the package in a temporary submission tree that preserves the resolved manuscript root as the upload entrypoint and keeps the root-level file layout flat. The managed package root still remains `${PACKAGE_ROOT}` under `GPD/`.
 
-After `${SUBMISSION_DIR}` is populated, materialize and validate with the executable package boundary. It reruns strict `arxiv-submission` review preflight internally, keeps `${SUBMISSION_DIR}` and `${PACKAGE_TARBALL}` under `${PACKAGE_ROOT}`, rejects unsafe tar paths, symlinks, aux files, placeholders, empty cites/refs, bibliography-command residue, and requires the main `.tex` at tar root:
+Then materialize and validate with the executable package boundary. It reruns strict `arxiv-submission` review preflight, keeps `${SUBMISSION_DIR}` and `${PACKAGE_TARBALL}` under `${PACKAGE_ROOT}`, rejects unsafe tar paths, symlinks, aux files, placeholders, empty cites/refs, missing bibliography material, and requires the main `.tex` at tar root:
 
 ```bash
 if [ -n "${ARGUMENTS:-}" ]; then
@@ -243,10 +243,10 @@ Use `PACKAGE_VALIDATION` from `gpd --raw validate arxiv-package --materialize` a
 - figure count
 - quality score / status, if available
 - LaTeX smoke-check status
-- bibliography flattening status
+- bibliography source/material status
 - figure compatibility status
 - placeholder scan status
-- `\pdfoutput=1` status
+- TeX processing compatibility status
 - manual submission steps still required
 
 Do not treat prose-only success as complete. The tarball must be under `GPD/publication/${subject_slug}/arxiv/`, the executable arXiv package validator must pass, and manuscript-root / latest-review gates must hold.

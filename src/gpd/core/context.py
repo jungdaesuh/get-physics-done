@@ -181,6 +181,9 @@ from gpd.core.workflow_staging import (
     VERIFY_WORK_REFERENCE_RUNTIME_FIELDS as _VERIFY_WORK_REFERENCE_RUNTIME_FIELDS,
 )
 from gpd.core.workflow_staging import (
+    VERIFY_WORK_SCHEMA_BRIDGE_FIELDS as _VERIFY_WORK_SCHEMA_BRIDGE_FIELDS,
+)
+from gpd.core.workflow_staging import (
     VERIFY_WORK_STAGE_ALLOWED_TOOLS as _VERIFY_WORK_STAGE_ALLOWED_TOOLS,
 )
 from gpd.core.workflow_staging import (
@@ -3627,6 +3630,90 @@ def _try_find_phase(cwd: Path, phase: str) -> dict | None:
     return result.model_dump()
 
 
+def _verify_work_expected_plan_path(cwd: Path, phase_info: dict | None) -> str | None:
+    if not phase_info:
+        return None
+    phase_dir = phase_info.get("directory")
+    phase_number = phase_info.get("phase_number")
+    if not phase_dir or not phase_number:
+        return None
+
+    fallback_plan = f"{phase_number}{PLAN_SUFFIX}"
+    plans = phase_info.get("plans")
+    plan_name = fallback_plan
+    if isinstance(plans, list) and plans:
+        plan_name = fallback_plan if fallback_plan in plans else str(plans[0])
+    return (cwd / str(phase_dir) / plan_name).as_posix()
+
+
+def _verify_work_expected_verification_path(cwd: Path, phase_info: dict | None) -> str | None:
+    if not phase_info:
+        return None
+    phase_dir = phase_info.get("directory")
+    phase_number = phase_info.get("phase_number")
+    if not phase_dir or not phase_number:
+        return None
+    return (cwd / str(phase_dir) / f"{phase_number}{VERIFICATION_SUFFIX}").as_posix()
+
+
+def _verify_work_schema_sources() -> list[dict[str, str]]:
+    package_root = Path(__file__).resolve().parents[1]
+    return [
+        {
+            "name": "verifier_agent",
+            "runtime_ref": "{GPD_AGENTS_DIR}/gpd-verifier.md",
+            "source_path": (package_root / "agents" / "gpd-verifier.md").as_posix(),
+        },
+        {
+            "name": "verification_report_template",
+            "runtime_ref": "{GPD_INSTALL_DIR}/templates/verification-report.md",
+            "source_path": (package_root / "specs" / "templates" / "verification-report.md").as_posix(),
+        },
+        {
+            "name": "contract_results_schema",
+            "runtime_ref": "{GPD_INSTALL_DIR}/templates/contract-results-schema.md",
+            "source_path": (package_root / "specs" / "templates" / "contract-results-schema.md").as_posix(),
+        },
+    ]
+
+
+def _build_verification_report_skeleton_bridge(cwd: Path, phase_info: dict | None) -> dict[str, object]:
+    from gpd.core.verification_report import VERIFICATION_REPORT_BODY_CONTRACT
+
+    plan_path = _verify_work_expected_plan_path(cwd, phase_info)
+    verification_path = _verify_work_expected_verification_path(cwd, phase_info)
+    skeleton_command = (
+        f"gpd verification-report skeleton {shlex.quote(plan_path)} --format markdown --status gaps_found"
+        if plan_path
+        else None
+    )
+    writer_command = (
+        f"gpd verification-report skeleton {shlex.quote(plan_path)} --write "
+        f"--output {shlex.quote(verification_path)} --force --body-file BODY.md --validate contract "
+        "--status gaps_found"
+        if plan_path and verification_path
+        else None
+    )
+    validation_command = (
+        f"gpd validate verification-contract {shlex.quote(verification_path)}" if verification_path else None
+    )
+    return {
+        "command_name": "gpd verification-report skeleton",
+        "skeleton_command": skeleton_command,
+        "writer_command": writer_command,
+        "body_contract": VERIFICATION_REPORT_BODY_CONTRACT,
+        "schema_sources": _verify_work_schema_sources(),
+        "expected_target_plan_path": plan_path,
+        "expected_verification_path": verification_path,
+        "validation_command": validation_command,
+        "fallback_rule": (
+            "Fallback verifier execution must write body-only evidence to BODY.md that satisfies body_contract, "
+            "run writer_command, and accept expected_verification_path only when writer validation passes. "
+            "Use skeleton_command as preview context only; do not hand-author or reflow VERIFICATION.md frontmatter."
+        ),
+    }
+
+
 def _infer_next_unplanned_roadmap_phase(cwd: Path) -> str | None:
     """Return the first roadmap phase that still needs planning."""
 
@@ -4866,6 +4953,12 @@ def init_verify_work(cwd: Path, phase: str | None, stage: str | None = None) -> 
     if required_fields & _VERIFY_WORK_STATE_MEMORY_FIELDS:
         staged_source.update(_build_state_memory_runtime_context(cwd))
 
+    if required_fields & _VERIFY_WORK_SCHEMA_BRIDGE_FIELDS:
+        staged_source["verification_report_skeleton_bridge"] = _build_verification_report_skeleton_bridge(
+            cwd,
+            phase_info,
+        )
+
     missing_fields = [field for field in stage_def.required_init_fields if field not in staged_source]
     if missing_fields:
         raise ValueError(f"verify-work stage {stage!r} requires unavailable init field(s): {', '.join(missing_fields)}")
@@ -4885,7 +4978,8 @@ def _resolve_write_paper_external_authoring_intake_for_init(
 
     if not has_write_paper_external_authoring_intake(subject):
         return None
-    if _path_exists(effective_cwd, f"{PLANNING_DIR_NAME}/{PROJECT_FILENAME}"):
+    state_exists, roadmap_exists, project_exists = recoverable_project_context(effective_cwd)
+    if state_exists or roadmap_exists or project_exists:
         raise ValueError(reject_write_paper_intake_inside_project_detail())
 
     resolution = resolve_write_paper_external_authoring_intake(

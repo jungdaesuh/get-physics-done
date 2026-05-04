@@ -127,15 +127,7 @@ Never claim to have produced an editable native deck unless the corresponding de
 </step>
 
 <step name="publication_framing">
-Publication and response gates are target-bound for slides:
-
-| Deck frame | Gate behavior |
-|---|---|
-| ordinary seminar/paper-talk/group/class/project deck | no publication gate; report `publication_root: not_applicable`, `review_root: not_applicable`, `review_state: not_required`, `response_state: not_required`, `checkpoint: none`, `next_step: none` |
-| final/revised/submission/arXiv/referee-response deck | inspect selected review/response roots for the target manuscript |
-| incomplete/stale response round | write draft-labeled slides only; report `checkpoint: response_gate`, `publication_root: not_applicable`, and `next_step: gpd:respond-to-referees --manuscript <resolved manuscript> --report <selected_publication_root>/REFEREE-REPORT{round_suffix}.md` |
-
-Use the canonical referee report under `selected_publication_root` for `--report`; default project manuscripts use `GPD/REFEREE-REPORT{round_suffix}.md` or `GPD/REFEREE-REPORT.md`.
+Slides are presentation artifacts, not publication gates. For ordinary, final, revised, arXiv, or referee-response decks, do not require or satisfy publication/review/response roots. Report `publication_root: not_applicable`, `review_root: not_applicable`, `review_state: not_required`, `response_state: not_required`, `checkpoint: none`, and `next_step: none`. If the user asks for a referee-response deck, use source material already present or ask for the report path; do not infer response workflow state. For response-gated slides, `--report` points to the canonical referee report path supplied by the response/publication workflow; default project manuscripts use `--report GPD/REFEREE-REPORT.md` or the round-suffixed peer.
 </step>
 
 <step name="verify_output">

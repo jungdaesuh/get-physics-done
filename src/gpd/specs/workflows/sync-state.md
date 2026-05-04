@@ -26,6 +26,8 @@ PROJECT_ROOT=$(echo "$SYNC_BOOTSTRAP_INIT" | gpd json get .project_root)
 
 Use `sync_bootstrap.required_init_fields` from `SYNC_BOOTSTRAP_INIT`. Use `project_root` from the init payload as the only write/read root; do not use the shell launch directory. `init_root_policy` and `project_reentry_guidance` are authoritative: sync-state is current-workspace-only and must not inspect or repair a recent project from another folder. Do not re-probe `GPD/STATE.md`, `GPD/state.json`, or `GPD/state.json.bak` by hand during routing.
 
+If init reports `corrupt_state_bad_backup` / `unrecoverable_state_pair`, fail closed: stop in read-only diagnosis, writes none, no `state repair-sync`, backup promotion, or state rewrite. Offer only `gpd:health`, manual repair, and `gpd:export-logs`.
+
 **If `state_md_exists` and `state_json_exists` are both false, and `state_json_backup_exists` is true:**
 
 ```
@@ -125,6 +127,7 @@ Use `conflict_analysis.required_init_fields` from `CONFLICT_ANALYSIS_INIT`. Do n
 state.json is authoritative for structured fields, and STATE.md is regenerated as the markdown projection of that authority.
 
 This workflow is intentionally fail-closed: no recency heuristics, no user prompt, and no silent promotion of markdown-only edits into structured state when `state.json` is still readable.
+Do not move or delete files from the prompt.
 </step>
 
 <step name="reconcile">
@@ -197,7 +200,7 @@ gpd --cwd "$PROJECT_ROOT" commit \
 <failure_handling>
 
 - **STATE.md corrupt:** The backend repair path regenerates markdown from valid structured state. If primary JSON is missing or corrupt, it prefers a valid `state.json.bak` before considering markdown. Malformed markdown-only recovery fails closed.
-- **state.json corrupt (invalid JSON):** The backend repair path uses the recovery-aware state loader and valid backup state when available. Do not move or delete files from the prompt.
+- **state.json corrupt (invalid JSON):** The backend repair path uses the recovery-aware state loader and valid backup when available; if backup is also unusable, use the fail-closed bad-backup branch.
 - **Both files exist but disagree:** Treat the mismatch as a reportable drift, not a bidirectional merge request. Use `state.json` for structured fields and regenerate `STATE.md` from it unless `state.json` is unreadable.
 - **Regeneration fails validation:** Stop and report the blocking issues. Do not stage or commit the pair.
 

@@ -1,6 +1,6 @@
-"""Phase 9 — shallow-mode roadmap and standard-mode Next-Up ordering contract.
+"""Shallow-mode roadmap and standard-mode Next-Up ordering contract.
 
-All other supervised-default invariants are covered by dedicated phase tests
+All other supervised-default invariants are covered by dedicated contract tests
 (see test_config.py, test_onboarding_surfaces.py, test_planner_backtracks_
 consultation.py, test_execute_phase_claim_deliverable_precheck.py,
 test_dense_cadence_gates.py, test_checkpoint_ux_convention.py,
@@ -14,6 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS_DIR = REPO_ROOT / "src" / "gpd" / "specs" / "workflows"
+COMMANDS_DIR = REPO_ROOT / "src" / "gpd" / "commands"
 
 
 def _section_from_last_marker(text: str, marker: str) -> str:
@@ -35,4 +36,11 @@ def test_new_project_emits_shallow_roadmap_and_standard_next_up_order() -> None:
     standard_next_up = _section_from_last_marker(new_project, "## > Next Up")
     plan_idx = standard_next_up.index("`gpd:plan-phase 1`")
     discuss_idx = standard_next_up.index("`gpd:discuss-phase 1`")
+    also_available_idx = standard_next_up.index("**Also available:**")
     assert discuss_idx < plan_idx
+    assert discuss_idx < also_available_idx < plan_idx
+
+    command = (COMMANDS_DIR / "new-project.md").read_text(encoding="utf-8")
+    assert "**After this command:** Run `gpd:discuss-phase 1`" in command
+    assert "- [ ] User knows next step is `gpd:discuss-phase 1`" in new_project
+    assert "- [ ] User told the next step is `gpd:discuss-phase 1`" in command

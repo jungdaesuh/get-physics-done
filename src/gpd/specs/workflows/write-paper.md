@@ -109,7 +109,7 @@ Final-state vocabulary for `write-paper`:
 | allowed manuscript/support writes landed, downstream review/submission remains | `command_execution_state: wrote_artifacts`; reserve `stopped_at_checkpoint` for no-write stops |
 | project-backed overclaim/review gaps | keep target-bound review state (`missing` vs `incomplete`) and next step such as `gpd:peer-review ${MANUSCRIPT_ENTRYPOINT}` |
 
-Once material writes, bibliography/artifact state, and the next blocking checkpoint are known, finalize before optional polish; skip wording cleanup, throwaway schema probes, second-pass hashes, and non-decisive validation. Emit `BEGIN_PHASE5_FINAL` immediately when a live audit harness requires it.
+Once material writes, bibliography/artifact state, and the next blocking checkpoint are known, finalize before optional polish; skip wording cleanup, throwaway schema probes, second-pass hashes, and non-decisive validation. Emit `BEGIN_PHASE5_FINAL` immediately when a live audit harness requires it; do not spend budget on broad wording cleanup.
 
 If the normalized write-paper argument payload begins with `--`, pass it to the validators after an end-of-options marker so the validator CLI does not reinterpret intake flags as validator options.
 

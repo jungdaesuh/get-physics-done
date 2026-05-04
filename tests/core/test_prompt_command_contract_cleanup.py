@@ -171,14 +171,10 @@ def test_start_workflow_routes_choices_by_stable_option_ids() -> None:
         "resume_work",
         "sync_state",
         "progress",
-        "suggest_next",
         "map_research",
         "new_project_minimal",
         "new_project_full",
         "tour",
-        "quick",
-        "explain",
-        "help_all",
         "reopen_recent",
     }
 

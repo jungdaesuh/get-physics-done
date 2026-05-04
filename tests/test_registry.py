@@ -1886,7 +1886,7 @@ class TestDiscovery:
         assert reviewer_skill.category == "research"
         assert {"gpd-literature-review", "gpd-literature-reviewer"}.issubset(registry.list_skills())
 
-    def test_phase3_current_workspace_helper_commands_remain_project_aware_in_registry(self) -> None:
+    def test_current_workspace_helper_commands_remain_project_aware_in_registry(self) -> None:
         registry.invalidate_cache()
 
         for command_name in (
@@ -2064,12 +2064,62 @@ class TestRegistryPromptIncludeInlining:
     def test_verifier_system_prompt_keeps_verifier_routing_stub_and_schema_references_visible(self) -> None:
         agent = registry.get_agent("gpd-verifier")
 
-        assert "## Domain Routing Stub" in agent.system_prompt
-        assert "Load only the matching domain checklist pack(s);" in agent.system_prompt
-        assert "# Verification Report Template" in agent.system_prompt
-        assert "# Contract Results Schema" in agent.system_prompt
-        assert "# Canonical Schema Discipline" in agent.system_prompt
+        durable_fragments = (
+            "## Domain Routing Stub",
+            "Load only the matching domain checklist pack(s);",
+            "# Verification Report Template",
+            "# Contract Results Schema",
+            "# Canonical Schema Discipline",
+            "Fallback report-writer rule",
+            "`verification_report_skeleton_bridge`",
+            "`writer_command`",
+            "body-only evidence",
+            "Follow `body_contract` when present",
+            "body-only Markdown",
+            "one fenced executed `python`/`bash` block",
+            "adjacent `**Output:**` plus fenced `output`",
+            "following `PASS`/`FAIL`/`INCONCLUSIVE` verdict",
+            "Do not hand-author or reflow `VERIFICATION.md` YAML",
+            "Use `skeleton_command` only as a read-only preview",
+            "Keep `gpd_return`, computational-oracle/runtime details, command transcripts, hashes, and prose-only evidence out of frontmatter",
+            "Omit ambiguous `evidence[]`",
+            "contract-results-schema.md#compact-gap-report-crib",
+            "# Compact Gap Report Crib",
+            "Do not add `contract_results.status` or `contract_results.summary`",
+            "perform exactly one bounded repair pass",
+            "After the second validator failure total",
+            "stop all edits and return `gpd_return.status: blocked`",
+            "only after the canonical report passes frontmatter and contract validation",
+        )
+        for fragment in durable_fragments:
+            assert fragment in agent.system_prompt
+        assert "max two targeted repairs" not in agent.system_prompt
         assert "<!-- [included:" not in agent.system_prompt
+
+    def test_verify_work_skill_surface_keeps_fallback_schema_bridge_visible(self) -> None:
+        skill = registry.get_skill("gpd-verify-work")
+
+        durable_fragments = (
+            "fallback verifier execution is still `gpd-verifier` execution",
+            "verification_report_skeleton_bridge",
+            "write body-only evidence",
+            "satisfies bridge `body_contract`",
+            "one fenced executed `python`/`bash` block",
+            "adjacent `**Output:**` plus fenced `output`",
+            "following `PASS`/`FAIL`/`INCONCLUSIVE` verdict",
+            "replace `BODY.md` in its `writer_command`",
+            "The writer serializes YAML and validates before canonical acceptance.",
+            "Use `skeleton_command` only as read-only preview context",
+            "do not hand-author or reflow frontmatter",
+            "keep command transcripts, hashes, oracle details, prose-only evidence, and `gpd_return` out of YAML",
+            "Read the runtime-projected `{GPD_AGENTS_DIR}/gpd-verifier.md` and schema refs for verifier policy",
+            "not for wrapper-side schema recreation",
+            "do not route to gaps unless a schema-valid gap report exists",
+        )
+
+        assert skill.source_kind == "command"
+        for fragment in durable_fragments:
+            assert fragment in skill.content
 
     def test_project_researcher_system_prompt_keeps_one_shot_checkpoint_contract_visible(self) -> None:
         agent = registry.get_skill("gpd-project-researcher")

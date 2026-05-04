@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from gpd.core.frontmatter import validate_frontmatter, verify_plan_structure
+from gpd.core.correctness_validators import validate_verification_oracle_evidence
+from gpd.core.frontmatter import extract_frontmatter, validate_frontmatter, verify_plan_structure
 
 
 def _plan_markdown(*, extra_frontmatter: str = "") -> str:
@@ -80,6 +81,80 @@ def _plan_markdown(*, extra_frontmatter: str = "") -> str:
     return "\n".join(lines)
 
 
+def _gaps_found_verification_markdown() -> str:
+    return "\n".join(
+        [
+            "---",
+            "phase: 01-test",
+            "verified: 2026-05-03T12:00:00Z",
+            "status: gaps_found",
+            "score: 2/3 contract targets verified",
+            "plan_contract_ref: GPD/phases/01-test/01-01-PLAN.md#/contract",
+            "contract_results:",
+            "  claims:",
+            "    claim-main:",
+            "      status: failed",
+            "      summary: Benchmark miss remains above tolerance.",
+            "      linked_ids: [deliv-main, test-main, ref-main]",
+            "  deliverables:",
+            "    deliv-main:",
+            "      status: passed",
+            "      path: figures/main.png",
+            "      summary: Benchmark figure exists with the comparison overlay.",
+            "      linked_ids: [claim-main, test-main]",
+            "  acceptance_tests:",
+            "    test-main:",
+            "      status: failed",
+            "      summary: Benchmark comparison exceeds the contracted tolerance.",
+            "      linked_ids: [claim-main, deliv-main, ref-main]",
+            "  references:",
+            "    ref-main:",
+            "      status: completed",
+            "      completed_actions: [read, compare, cite]",
+            "      missing_actions: []",
+            "      summary: Published benchmark anchor was read and compared.",
+            "  forbidden_proxies:",
+            "    fp-main:",
+            "      status: rejected",
+            "      notes: Qualitative trend matching was not accepted as sufficient evidence.",
+            "  uncertainty_markers:",
+            "    weakest_anchors: [Reference tolerance interpretation]",
+            "    disconfirming_observations: [Benchmark agreement disappears after normalization fix]",
+            "comparison_verdicts:",
+            "  - subject_id: claim-main",
+            "    subject_kind: claim",
+            "    subject_role: decisive",
+            "    reference_id: ref-main",
+            "    comparison_kind: benchmark",
+            "    metric: relative_error",
+            '    threshold: "<= 0.01"',
+            "    verdict: fail",
+            "    recommended_action: Re-run after the normalization fix.",
+            "suggested_contract_checks:",
+            "  - check: re-run-benchmark-after-normalization",
+            "    reason: The decisive benchmark comparison currently fails tolerance.",
+            "    suggested_subject_kind: acceptance_test",
+            "    suggested_subject_id: test-main",
+            "    evidence_path: GPD/phases/01-test/01-VERIFICATION.md",
+            "---",
+            "",
+            "# Verification",
+            "",
+            "```python",
+            "print({'relative_error': 0.04, 'threshold': 0.01})",
+            "```",
+            "",
+            "**Output:**",
+            "```output",
+            "{'relative_error': 0.04, 'threshold': 0.01}",
+            "```",
+            "",
+            "FAIL: relative error exceeds the benchmark tolerance.",
+            "",
+        ]
+    )
+
+
 def test_verify_plan_structure_accepts_minimal_valid_plan_frontmatter(tmp_path: Path) -> None:
     plan_path = tmp_path / "01-01-PLAN.md"
     plan_path.write_text(_plan_markdown(), encoding="utf-8")
@@ -89,6 +164,26 @@ def test_verify_plan_structure_accepts_minimal_valid_plan_frontmatter(tmp_path: 
     assert result.valid is True
     assert result.errors == []
     assert result.warnings == ["No <task> elements found"]
+
+
+def test_validate_frontmatter_verification_accepts_minimal_gaps_found_fixture(tmp_path: Path) -> None:
+    phase_dir = tmp_path / "GPD" / "phases" / "01-test"
+    phase_dir.mkdir(parents=True)
+    (phase_dir / "01-01-PLAN.md").write_text(_plan_markdown(), encoding="utf-8")
+    verification_path = phase_dir / "01-VERIFICATION.md"
+    content = _gaps_found_verification_markdown()
+    verification_path.write_text(content, encoding="utf-8")
+
+    meta, _body = extract_frontmatter(content)
+    schema_result = validate_frontmatter(content, "verification", source_path=verification_path)
+    oracle_result = validate_verification_oracle_evidence(content, source_path=verification_path)
+
+    assert meta["status"] == "gaps_found"
+    assert schema_result.valid is True
+    assert schema_result.missing == []
+    assert schema_result.errors == []
+    assert oracle_result.valid is True
+    assert oracle_result.evidence_count == 1
 
 
 @pytest.mark.parametrize(
@@ -116,6 +211,42 @@ def test_validate_frontmatter_plan_reports_missing_required_fields(
 
     assert result.valid is False
     assert expected_missing in result.missing
+
+
+def test_validate_frontmatter_plan_rejects_contract_anchors_without_contract_block() -> None:
+    content = (
+        "---\n"
+        "phase: 01\n"
+        "plan_id: 01-01\n"
+        "title: Execute the deterministic fixture baseline\n"
+        "status: planned_ready\n"
+        "command_authority: $gpd-plan-phase 01\n"
+        "execution_authority: $gpd-execute-phase 01\n"
+        "---\n"
+        "\n"
+        "## Contract Anchors\n"
+        "\n"
+        "- Observable: `obs-benchmark`\n"
+        "- Claim under test: `claim-benchmark`\n"
+    )
+
+    meta, _body = extract_frontmatter(content)
+    result = validate_frontmatter(content, "plan")
+
+    assert meta["plan_id"] == "01-01"
+    assert "plan" not in meta
+    assert result.valid is False
+    assert {
+        "plan",
+        "type",
+        "wave",
+        "depends_on",
+        "files_modified",
+        "interactive",
+        "conventions",
+        "contract",
+    }.issubset(set(result.missing))
+    assert "plan" not in result.present
 
 
 def test_validate_frontmatter_plan_rejects_invalid_tool_requirements_shape() -> None:
