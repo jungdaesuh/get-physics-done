@@ -2863,6 +2863,40 @@ def _build_peer_review_runtime_context(
     return result
 
 
+def _normalize_session_goal_context(state: object) -> dict[str, object | None]:
+    """Extract the session goal (RES-932) from state.json for init bundles.
+
+    Returns a flat dict that is safe to splat into init payloads — the
+    ``derived_session_goal`` field is always present (None when unset) so
+    downstream agent prompts can use a single, stable key.
+    """
+    from gpd.core.state import SessionGoal
+
+    raw_goal = state.get("session_goal") if isinstance(state, Mapping) else None
+    if not isinstance(raw_goal, Mapping):
+        return {
+            "derived_session_goal": None,
+            "derived_session_goal_text": None,
+            "derived_session_goal_budget": None,
+            "derived_session_goal_deadline": None,
+        }
+    try:
+        normalized = SessionGoal(**raw_goal).model_dump(mode="json", exclude_none=True)
+    except PydanticValidationError:
+        return {
+            "derived_session_goal": None,
+            "derived_session_goal_text": None,
+            "derived_session_goal_budget": None,
+            "derived_session_goal_deadline": None,
+        }
+    return {
+        "derived_session_goal": normalized,
+        "derived_session_goal_text": normalized.get("text"),
+        "derived_session_goal_budget": normalized.get("budget"),
+        "derived_session_goal_deadline": normalized.get("deadline"),
+    }
+
+
 def _build_state_memory_runtime_context(cwd: Path) -> dict[str, object]:
     """Build shared structured state-memory context for init surfaces."""
     state, _state_issues, _state_source = _peek_state_json(
@@ -2878,6 +2912,10 @@ def _build_state_memory_runtime_context(cwd: Path) -> dict[str, object]:
             "derived_intermediate_result_count": 0,
             "derived_approximations": [],
             "derived_approximation_count": 0,
+            "derived_session_goal": None,
+            "derived_session_goal_text": None,
+            "derived_session_goal_budget": None,
+            "derived_session_goal_deadline": None,
         }
 
     raw_lock = state.get("convention_lock")
@@ -2894,7 +2932,7 @@ def _build_state_memory_runtime_context(cwd: Path) -> dict[str, object]:
     derived_results = [result.model_dump(mode="json") for result in result_list(state)]
     derived_approximations = [approx.model_dump(mode="json") for approx in approximation_list(state)]
 
-    return {
+    result: dict[str, object] = {
         "derived_convention_lock": derived_convention_lock,
         "derived_convention_lock_count": len(derived_convention_lock),
         "derived_intermediate_results": derived_results,
@@ -2902,6 +2940,10 @@ def _build_state_memory_runtime_context(cwd: Path) -> dict[str, object]:
         "derived_approximations": derived_approximations,
         "derived_approximation_count": len(derived_approximations),
     }
+    # RES-932: pin the session goal into every init bundle that already loads
+    # state-memory context so any agent workflow inherits it for free.
+    result.update(_normalize_session_goal_context(state))
+    return result
 
 
 def _build_execution_runtime_context(cwd: Path) -> dict[str, object]:

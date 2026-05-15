@@ -475,6 +475,22 @@ class PerformanceMetrics(BaseModel):
     rows: list[MetricRow] = Field(default_factory=list)
 
 
+class SessionGoal(BaseModel):
+    """User-stated session goal (RES-932).
+
+    The free-form ``text`` is the only required field. ``budget`` and
+    ``deadline`` are kept as strings rather than typed scalars so callers can
+    pass values such as ``"$50"`` or ``"2h"`` / ``"2026-05-20"`` without
+    forcing a parser decision on every consumer.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    text: str
+    budget: str | None = None
+    deadline: str | None = None
+
+
 class ResearchState(BaseModel):
     """Full research state — the schema for state.json.
 
@@ -498,6 +514,9 @@ class ResearchState(BaseModel):
     blockers: list[str | dict] = Field(default_factory=list)
     continuation: ContinuationState = Field(default_factory=ContinuationState)
     contract_alignment: ContractAlignmentGate = Field(default_factory=ContractAlignmentGate)
+    # RES-932: user-stated session goal that gets surfaced into every init
+    # bundle so any AI-agent workflow can pin it as standing context.
+    session_goal: SessionGoal | None = None
 
     model_config = {"extra": "allow"}
 
@@ -4918,6 +4937,68 @@ def state_clear_continuation_bounded_segment(cwd: Path) -> StateUpdateResult:
         ).model_dump(mode="python")
         state_obj["continuation"] = desired_continuation
         state_obj.pop("session", None)
+        save_state_json_locked(cwd, state_obj)
+        return StateUpdateResult(updated=True)
+
+
+@instrument_gpd_function("state.set_session_goal")
+def state_set_session_goal(
+    cwd: Path,
+    text: str,
+    *,
+    budget: str | None = None,
+    deadline: str | None = None,
+) -> StateUpdateResult:
+    """Set the session goal in state.json (RES-932).
+
+    Empty or whitespace-only ``text`` is rejected — use
+    :func:`state_clear_session_goal` to remove an existing goal instead.
+    """
+
+    if not text or not text.strip():
+        return StateUpdateResult(
+            updated=False,
+            reason="Session goal text is required. Use state_clear_session_goal to remove the current goal.",
+        )
+
+    normalized_text = text.strip()
+    normalized_budget = budget.strip() if budget and budget.strip() else None
+    normalized_deadline = deadline.strip() if deadline and deadline.strip() else None
+    # Include None keys so the persisted shape matches what
+    # ResearchState.model_validate() produces on the next load (the schema
+    # normalizer fills optional Nones explicitly). Without this the
+    # idempotency check below would always miss after a single round-trip.
+    payload = SessionGoal(
+        text=normalized_text,
+        budget=normalized_budget,
+        deadline=normalized_deadline,
+    ).model_dump(mode="json")
+
+    with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        state_obj = _load_state_snapshot_for_mutation(cwd, recover_intent=False)
+        current = state_obj.get("session_goal")
+        if isinstance(current, dict) and current == payload:
+            return StateUpdateResult(
+                updated=False,
+                unchanged=True,
+                reason="Session goal already matches requested value",
+            )
+        state_obj["session_goal"] = payload
+        save_state_json_locked(cwd, state_obj)
+        return StateUpdateResult(updated=True)
+
+
+@instrument_gpd_function("state.clear_session_goal")
+def state_clear_session_goal(cwd: Path) -> StateUpdateResult:
+    """Clear the session goal in state.json (RES-932)."""
+
+    with _state_lock(cwd):
+        _recover_intent_locked(cwd)
+        state_obj = _load_state_snapshot_for_mutation(cwd, recover_intent=False)
+        if not state_obj.get("session_goal"):
+            return StateUpdateResult(updated=False, reason="Session goal is already clear")
+        state_obj["session_goal"] = None
         save_state_json_locked(cwd, state_obj)
         return StateUpdateResult(updated=True)
 

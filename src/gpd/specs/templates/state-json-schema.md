@@ -33,6 +33,7 @@ Source of truth: `default_state_dict()` in `gpd.core.state`.
 | `blockers` | `(string \| object)[]` | `[]` | Active blockers/concerns | Synced from STATE.md |
 | `continuation` | `ContinuationObject` | see below | Durable canonical continuation authority for session handoff and recorded machine identity | **Authoritative** (JSON-only) |
 | `contract_alignment` | `ContractAlignmentGate` | see below | Hashes confirming the user-approved project contract and context alignment | **Authoritative** (JSON-only) |
+| `session_goal` | `SessionGoal \| null` | `null` | User-stated session goal (RES-932) pinned into every agent init bundle | **Authoritative** (JSON-only, from `gpd goal set`) |
 
 ### Authoritative vs Derived
 

@@ -3432,6 +3432,89 @@ def progress(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# goal — Session goal management (RES-932)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# `gpd goal` is the CLI counterpart to the `/goal` slash command in gpd-app.
+# The goal text (and optional budget / target finish) is persisted to
+# state.json and surfaced into every init bundle via the
+# `derived_session_goal*` fields, so any AI agent workflow can pin it as
+# standing context for the session.
+
+goal_app = typer.Typer(
+    help="Session goal: pin a stated objective so every agent run keeps it in view.",
+    invoke_without_command=True,
+)
+app.add_typer(goal_app, name="goal")
+
+
+@goal_app.callback()
+def goal_root(ctx: typer.Context) -> None:
+    """Show or set the session goal.
+
+    `gpd goal` with no subcommand prints the current goal (or `null`). Use
+    `gpd goal set <text> [--budget ...] [--time ...]` to set, and
+    `gpd goal clear` to remove. The shape mirrors the `/goal` slash command
+    in gpd-app.
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from gpd.core.state import load_state_json_readonly
+
+    snapshot = load_state_json_readonly(_read_only_project_scoped_cwd())
+    goal = snapshot.get("session_goal") if isinstance(snapshot, Mapping) else None
+    _output({"session_goal": goal if isinstance(goal, Mapping) else None})
+
+
+@goal_app.command("set")
+def goal_set(
+    text: str = typer.Argument(..., help="Goal text — the objective the agent should keep in view."),
+    budget: str | None = typer.Option(
+        None,
+        "--budget",
+        help="Optional target budget (free-form string, e.g. '$50').",
+    ),
+    time_target: str | None = typer.Option(
+        None,
+        "--time",
+        help="Optional target finish (free-form string, e.g. '2h' or '2026-05-20').",
+    ),
+) -> None:
+    """Set the session goal, optionally with a target budget and finish time."""
+    from gpd.core.state import state_set_session_goal
+
+    result = state_set_session_goal(
+        _state_command_cwd(),
+        text,
+        budget=budget,
+        deadline=time_target,
+    )
+    _output(result)
+    if not result.updated and not result.unchanged:
+        raise typer.Exit(code=1)
+
+
+@goal_app.command("show")
+def goal_show() -> None:
+    """Print the current session goal (or `null` when no goal is set)."""
+    from gpd.core.state import load_state_json_readonly
+
+    snapshot = load_state_json_readonly(_read_only_project_scoped_cwd())
+    goal = snapshot.get("session_goal") if isinstance(snapshot, Mapping) else None
+    _output({"session_goal": goal if isinstance(goal, Mapping) else None})
+
+
+@goal_app.command("clear")
+def goal_clear() -> None:
+    """Clear the session goal."""
+    from gpd.core.state import state_clear_session_goal
+
+    result = state_clear_session_goal(_state_command_cwd())
+    _output(result)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # convention — Convention lock management
 # ═══════════════════════════════════════════════════════════════════════════
 
