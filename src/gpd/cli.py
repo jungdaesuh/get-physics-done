@@ -3512,6 +3512,8 @@ def goal_clear() -> None:
 
     result = state_clear_session_goal(_state_command_cwd())
     _output(result)
+    if not result.updated and not result.unchanged:
+        raise typer.Exit(code=1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

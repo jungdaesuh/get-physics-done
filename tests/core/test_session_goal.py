@@ -108,6 +108,8 @@ class TestSessionGoalContext:
         # SessionGoal.model_config has extra="forbid", so this normalizes to None.
         assert ctx["derived_session_goal"] is None
         assert ctx["derived_session_goal_text"] is None
+        assert ctx["derived_session_goal_budget"] is None
+        assert ctx["derived_session_goal_deadline"] is None
 
     def test_valid_goal_is_surfaced_flat_and_nested(self) -> None:
         ctx = _normalize_session_goal_context(

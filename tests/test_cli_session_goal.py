@@ -10,7 +10,6 @@ from typer.testing import CliRunner
 from gpd.cli import app
 from gpd.core.state import default_state_dict, generate_state_markdown
 
-
 runner = CliRunner()
 
 
