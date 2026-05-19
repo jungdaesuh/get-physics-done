@@ -72,7 +72,10 @@ def test_goal_set_persists_text_budget_and_time(tmp_path: Path) -> None:
 
 def test_goal_set_idempotent_on_repeated_invocation(tmp_path: Path) -> None:
     cwd = _bootstrap_project(tmp_path)
-    runner.invoke(app, ["--cwd", str(cwd), "--raw", "goal", "set", "Find quantum gravity"])
+    first = runner.invoke(
+        app, ["--cwd", str(cwd), "--raw", "goal", "set", "Find quantum gravity"]
+    )
+    assert first.exit_code == 0, first.output
 
     second = runner.invoke(
         app, ["--cwd", str(cwd), "--raw", "goal", "set", "Find quantum gravity"]
@@ -88,12 +91,16 @@ def test_goal_set_idempotent_on_repeated_invocation(tmp_path: Path) -> None:
 
 def test_goal_clear_removes_persisted_goal(tmp_path: Path) -> None:
     cwd = _bootstrap_project(tmp_path)
-    runner.invoke(app, ["--cwd", str(cwd), "--raw", "goal", "set", "Ship the paper"])
+    set_result = runner.invoke(
+        app, ["--cwd", str(cwd), "--raw", "goal", "set", "Ship the paper"]
+    )
+    assert set_result.exit_code == 0, set_result.output
 
     clear_result = runner.invoke(app, ["--cwd", str(cwd), "--raw", "goal", "clear"])
     assert clear_result.exit_code == 0, clear_result.output
 
     show_result = runner.invoke(app, ["--cwd", str(cwd), "--raw", "goal", "show"])
+    assert show_result.exit_code == 0, show_result.output
     payload = json.loads(show_result.output)
     assert payload == {"session_goal": None}
 
@@ -107,7 +114,7 @@ def test_goal_init_execute_phase_surfaces_derived_goal(tmp_path: Path) -> None:
     phase_dir.mkdir(parents=True, exist_ok=True)
     (phase_dir / "PLAN.md").write_text("# Plan\n", encoding="utf-8")
 
-    runner.invoke(
+    set_result = runner.invoke(
         app,
         [
             "--cwd",
@@ -122,6 +129,7 @@ def test_goal_init_execute_phase_surfaces_derived_goal(tmp_path: Path) -> None:
             "2h",
         ],
     )
+    assert set_result.exit_code == 0, set_result.output
 
     init_result = runner.invoke(
         app,
