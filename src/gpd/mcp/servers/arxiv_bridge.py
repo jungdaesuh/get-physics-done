@@ -232,15 +232,21 @@ class ArxivBridge:
             return await self._call_with_retry(name, args)
 
         if name == "get_abstract":
+            queried_id = args.get("paper_id") if isinstance(args.get("paper_id"), str) else ""
             try:
                 cached_payload = await _arxiv_cache.get("get_abstract", args)
             except Exception as exc:
                 logger.warning("get_abstract cache read failed: %s", exc)
                 cached_payload = None
             if cached_payload is not None:
-                return types.CallToolResult(
+                # Cache stores the RAW JSON body (no header). Prepend header at
+                # return time so the model sees the confirmation invariant on
+                # every read while the cache stays canonical and double-prefix
+                # is impossible.
+                cached_result = types.CallToolResult(
                     content=[types.TextContent(type="text", text=cached_payload)],
                 )
+                return _prepend_header_to_result(cached_result, queried_id=queried_id)
             openalex_result = await self._try_openalex_abstract(args)
             if openalex_result is not None:
                 payload = _first_text_payload(openalex_result)
@@ -249,7 +255,7 @@ class ArxivBridge:
                         await _arxiv_cache.set("get_abstract", args, payload, ttl_days=30)
                     except Exception as exc:
                         logger.warning("get_abstract cache write failed: %s", exc)
-                return openalex_result
+                return _prepend_header_to_result(openalex_result, queried_id=queried_id)
             result = await self._call_with_retry(name, args)
             if _is_success(result) and result.content:
                 payload = _first_text_payload(result)
@@ -258,7 +264,7 @@ class ArxivBridge:
                         await _arxiv_cache.set("get_abstract", args, payload, ttl_days=30)
                     except Exception as exc:
                         logger.warning("get_abstract cache write failed: %s", exc)
-            return result
+            return _prepend_header_to_result(result, queried_id=queried_id)
 
         return await self._call_with_retry(name, args)
 
@@ -299,8 +305,21 @@ class ArxivBridge:
         papers = body.get("papers")
         if not isinstance(papers, list) or not papers:
             return None
+        first = papers[0] if isinstance(papers[0], dict) else {}
+        first_title = first.get("title") if isinstance(first.get("title"), str) else ""
+        first_authors = first.get("authors") if isinstance(first.get("authors"), list) else []
+        first_pub = first.get("published") if isinstance(first.get("published"), str) else ""
+        first_id_raw = first.get("paper_id") or first.get("id") or ""
+        first_id = first_id_raw if isinstance(first_id_raw, str) else ""
+        header = _format_confirmation_header(
+            title=first_title,
+            authors=[a for a in first_authors if isinstance(a, str)],
+            year=first_pub[:4] if first_pub else "",
+            returned_id=first_id,
+            queried_id="",
+        ) if (first_title or first_id) else ""
         return types.CallToolResult(
-            content=[types.TextContent(type="text", text=json.dumps(body))],
+            content=[types.TextContent(type="text", text=header + json.dumps(body))],
         )
 
     async def _try_openalex_abstract(
@@ -313,6 +332,10 @@ class ArxivBridge:
             return None
         if not isinstance(body, dict) or body.get("status") != "success":
             return None
+        # Return raw JSON here so the cache (written by the caller) stores the
+        # canonical body unchanged. The caller wraps the return with
+        # `_prepend_header_to_result` so the model sees the confirmation
+        # invariant; double-write would poison cache reads.
         return types.CallToolResult(
             content=[types.TextContent(type="text", text=json.dumps(body))],
         )
@@ -508,6 +531,97 @@ def _content_envelope(
     }
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=json.dumps(payload))],
+    )
+
+
+def _format_confirmation_header(
+    *,
+    title: str | None,
+    authors: list[str] | None,
+    year: str | None,
+    returned_id: str,
+    queried_id: str,
+) -> str:
+    """Leading invariant statement that prevents the model from mis-attributing
+    its own arxiv-ID hallucinations to bridge/cache corruption. Format keeps both
+    IDs visible so the model sees its own input reflected next to the canonical
+    paper at that ID (the "BANANA-123 vs APPLE-123" disambiguator pattern)."""
+
+    safe_authors = [a for a in (authors or []) if isinstance(a, str) and a.strip()]
+    first_author = safe_authors[0] if safe_authors else "unknown"
+    et_al = " et al." if len(safe_authors) > 1 else ""
+    yr = (year or "").strip()[:4] or "n.d."
+    t = (title or "").strip() or "(no title)"
+    rid = (returned_id or "").strip() or "unknown"
+    qid = (queried_id or "").strip()
+    queried_line = f" You requested arxiv:{qid}." if qid and qid != rid else ""
+    return (
+        f"Returned arxiv:{rid} — \"{t}\" by {first_author}{et_al} ({yr})."
+        f"{queried_line} If this title does not match the paper you expected, "
+        "your paper_id was wrong; the GPD arxiv bridge serves the canonical "
+        "paper at the ID it was given, never a wrong-cached substitute.\n\n"
+    )
+
+
+def _extract_meta_from_json(text: str) -> tuple[str, list[str], str, str] | None:
+    """Best-effort title / authors / year / id extraction from a JSON payload.
+
+    Handles both OpenAlex (`title`, `authors`, `published`, `paper_id`) and
+    upstream arxiv_mcp_server (`title`, `authors`, `published`, `paper_id`)
+    shapes — they share top-level keys."""
+
+    try:
+        d = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    title = d.get("title") if isinstance(d.get("title"), str) else ""
+    authors_raw = d.get("authors") if isinstance(d.get("authors"), list) else []
+    authors = [a for a in authors_raw if isinstance(a, str)]
+    pub = d.get("published") or d.get("publication_date") or ""
+    year = pub[:4] if isinstance(pub, str) else ""
+    pid_raw = d.get("paper_id") or d.get("id") or ""
+    pid = pid_raw if isinstance(pid_raw, str) else ""
+    if not (title or pid):
+        return None
+    return title, authors, year, pid
+
+
+def _prepend_header_to_result(
+    result: types.CallToolResult, *, queried_id: str = ""
+) -> types.CallToolResult:
+    """Wrap a successful single-paper CallToolResult by inserting a confirmation
+    header before its first TextContent. The cached JSON body is preserved
+    unchanged so cache reads/writes stay raw — the header is only ever applied
+    at return time."""
+
+    if result.isError or not result.content:
+        return result
+    text = _first_text_payload(result)
+    if text is None:
+        return result
+    meta = _extract_meta_from_json(text)
+    if meta is None:
+        if not queried_id:
+            return result
+        header = _format_confirmation_header(
+            title=None, authors=None, year=None,
+            returned_id=queried_id, queried_id=queried_id,
+        )
+    else:
+        title, authors, year, pid = meta
+        header = _format_confirmation_header(
+            title=title, authors=authors, year=year,
+            returned_id=pid or queried_id, queried_id=queried_id,
+        )
+    new_content: list = [types.TextContent(type="text", text=header + text)]
+    for item in result.content[1:]:
+        new_content.append(item)
+    return types.CallToolResult(
+        content=new_content,
+        isError=result.isError,
+        structuredContent=result.structuredContent,
     )
 
 
