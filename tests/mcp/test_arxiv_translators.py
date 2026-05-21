@@ -11,7 +11,7 @@ has one, arxiv IDs always extractable when expected.
 
 Run:
     pytest tests/mcp/test_arxiv_translators.py -q
-    pytest tests/mcp/test_arxiv_translators.py -q --no-network   # skip live calls
+    GPD_ARXIV_NO_NETWORK=1 pytest tests/mcp/test_arxiv_translators.py -q   # skip live calls
 
 The translators are imported lazily; if they do not yet exist this module
 xfails cleanly so the suite stays green during the bring-up window.

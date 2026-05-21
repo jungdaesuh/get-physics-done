@@ -160,19 +160,50 @@ async def call_upstream(tool: str, args: dict[str, object], timeout: float) -> t
         return None, f"{type(e).__name__}:{e}"
 
 
+class _TextContentShim:
+    """Adapt a translator dict-return into the upstream `List[TextContent]`
+    shape that `_extract_papers_from_textcontent` consumes. The translator
+    public API (``openalex_search`` / ``openalex_abstract``) returns plain
+    Python dicts; the upstream `arxiv_mcp_server` handlers return a list
+    of `mcp.types.TextContent` whose `.text` is a JSON string. We wrap so
+    both sides feed the same extractor unchanged."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
 async def call_forked(tool: str, args: dict[str, object], timeout: float) -> tuple[object, str | None]:
-    """Call the GPD-forked handler in-process."""
+    """Call the GPD-forked handler in-process.
+
+    Drives ``arxiv_translators.openalex_search`` / ``openalex_abstract``
+    (the actual public surface in ``src/gpd/mcp/servers/arxiv_translators.py``;
+    the legacy ``handle_search`` / ``handle_get_abstract`` symbols never
+    existed and a previous draft of this script silently produced an
+    AttributeError-for-every-row 0% parity rate). Translator return is a
+    dict; wrap it in a one-element TextContent-like list so the shared
+    extractor sees the same shape as the upstream side."""
     try:
         from gpd.mcp.servers import arxiv_translators  # type: ignore
     except Exception as e:
         return None, f"forked_not_importable:{e}"
     try:
         if tool == "search_papers":
-            parts = await asyncio.wait_for(arxiv_translators.handle_search(args), timeout=timeout)
+            body = await asyncio.wait_for(
+                asyncio.to_thread(arxiv_translators.openalex_search, args),
+                timeout=timeout,
+            )
         elif tool == "get_abstract":
-            parts = await asyncio.wait_for(arxiv_translators.handle_get_abstract(args), timeout=timeout)
+            body = await asyncio.wait_for(
+                asyncio.to_thread(arxiv_translators.openalex_abstract, args),
+                timeout=timeout,
+            )
         else:
             return None, f"unsupported_tool:{tool}"
+        # Treat translator-side `status: error` as a recoverable miss
+        # (e.g. OpenAlex has no record for this paper id) rather than a
+        # parity-breaking exception. Upstream would have surfaced this
+        # the same way via `status: error` in its TextContent body.
+        parts = [_TextContentShim(json.dumps(body))]
         return parts, None
     except TimeoutError:
         return None, "timeout"

@@ -169,7 +169,16 @@ def extract_arxiv_ids(text: str, limit: int = 50) -> list[str]:
 
 
 def probe_openalex_search(client: httpx.Client, query: str) -> ProbeResult:
-    url = f"{OPENALEX_WORKS}?search={quote_plus(query)}&per-page=10&filter=primary_location.source.host_organization_lineage:I4210168979"
+    # Match the live translator's filter exactly — see
+    # OPENALEX_ARXIV_SOURCE_ID in arxiv_translators.py for the canonical
+    # source id and the live verification trail. Anything else and the
+    # probe measures a different cohort than production hits.
+    from gpd.mcp.servers.arxiv_translators import OPENALEX_ARXIV_SOURCE_ID
+
+    url = (
+        f"{OPENALEX_WORKS}?search={quote_plus(query)}&per-page=10"
+        f"&filter=primary_location.source.id:{OPENALEX_ARXIV_SOURCE_ID}"
+    )
     t0 = time.perf_counter()
     try:
         r = client.get(url, timeout=15.0)

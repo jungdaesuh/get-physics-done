@@ -222,14 +222,14 @@ class ArxivBridge:
             intercepted = await self._intercept_download(args)
             if intercepted is not None:
                 return intercepted
-            return await self._call_with_retry(name, args)
+            return await self._call_throttled(name, args)
 
         if name == "search_papers":
             args = self._coerce_search_args(args)
             openalex_result = await self._try_openalex_search(args)
             if openalex_result is not None:
                 return openalex_result
-            return await self._call_with_retry(name, args)
+            return await self._call_throttled(name, args)
 
         if name == "get_abstract":
             queried_id = args.get("paper_id") if isinstance(args.get("paper_id"), str) else ""
@@ -256,7 +256,7 @@ class ArxivBridge:
                     except Exception as exc:
                         logger.warning("get_abstract cache write failed: %s", exc)
                 return _prepend_header_to_result(openalex_result, queried_id=queried_id)
-            result = await self._call_with_retry(name, args)
+            result = await self._call_throttled(name, args)
             if _is_success(result) and result.content:
                 payload = _first_text_payload(result)
                 if payload is not None:
@@ -266,9 +266,9 @@ class ArxivBridge:
                         logger.warning("get_abstract cache write failed: %s", exc)
             return _prepend_header_to_result(result, queried_id=queried_id)
 
-        return await self._call_with_retry(name, args)
+        return await self._call_throttled(name, args)
 
-    async def _call_with_retry(
+    async def _call_throttled(
         self, name: str, args: dict[str, object]
     ) -> types.CallToolResult:
         # Token-bucket-gated upstream call with fail-fast rate-limit handling.
@@ -295,6 +295,20 @@ class ArxivBridge:
         # only sees the long tail. Returns ``None`` (fall-through to upstream)
         # on any failure — missing query, OpenAlex error, empty result set,
         # or unexpected exception.
+        #
+        # Fail-shut for filter-bearing calls: the OpenAlex translator only
+        # honors `query` and `max_results`. If the caller asked for
+        # `categories`, `date_from`, `date_to`, or a non-default `sort_by`,
+        # silently routing through OpenAlex would drop the filter and serve
+        # arbitrary-date / wrong-category results that still match the bare
+        # query. Fall through to upstream instead — `arxiv-mcp-server` does
+        # honor those filters via the arxiv.org Atom API.
+        non_translatable = {"categories", "date_from", "date_to"}
+        if any(args.get(k) for k in non_translatable):
+            return None
+        sort_by = args.get("sort_by")
+        if isinstance(sort_by, str) and sort_by.strip() and sort_by.strip().lower() != "relevance":
+            return None
         try:
             body = await asyncio.to_thread(arxiv_translators.openalex_search, args)
         except Exception:

@@ -33,6 +33,15 @@ logger = logging.getLogger("gpd.arxiv_bridge.translators")
 
 _OPENALEX_BASE = "https://api.openalex.org"
 
+# arXiv's canonical OpenAlex *source* id (i.e. the venue, not an institution).
+# Verified live against api.openalex.org/sources?search=arxiv on 2026-05-20:
+# S4306400194 = "arXiv (Cornell University)", count = 28,975 results when used
+# as `primary_location.source.id:S4306400194` on a sample query. The earlier
+# `I4210109252` / `I4210168979` institution-style IDs returned 0 results for
+# every query, which silently turned `openalex_search` into a no-op. Always
+# filter via this source id, not an institution lineage.
+OPENALEX_ARXIV_SOURCE_ID = "S4306400194"
+
 # Prefix tag the downstream model sees on any abstract / search-result body.
 # Kept short and stable so a fine-tuned prompt-injection guard can pattern-match.
 EXTERNAL_CONTENT_PREFIX = "[EXTERNAL CONTENT] "
@@ -252,9 +261,11 @@ def openalex_search(args: dict[str, object]) -> dict[str, object]:
     params: dict[str, object] = {
         "search": query.strip(),
         "per-page": per_page,
-        # Restrict to records with an arxiv presence so the translator does
-        # not waste a slot on works it will drop in _to_paper_record.
-        "filter": "primary_location.source.host_organization_lineage:openalex.org/I4210109252,locations.source.id:openalex.org/I4210109252,ids.openalex:!null",
+        # Restrict to works whose primary venue is arXiv (Cornell). Using the
+        # canonical source id verified live against the OpenAlex sources
+        # endpoint — see `OPENALEX_ARXIV_SOURCE_ID` above for the rationale
+        # and the production-incident history that motivated this constant.
+        "filter": f"primary_location.source.id:{OPENALEX_ARXIV_SOURCE_ID}",
     }
 
     status, body, _ = _http_get("/works", params)

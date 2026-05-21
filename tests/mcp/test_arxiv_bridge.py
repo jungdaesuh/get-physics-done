@@ -553,6 +553,64 @@ async def test_search_papers_short_circuits_to_openalex(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extra_arg",
+    [
+        {"categories": ["hep-ph"]},
+        {"date_from": "2025-01-01"},
+        {"date_to": "2025-12-31"},
+        {"sort_by": "submittedDate"},
+        {"categories": ["hep-ph"], "date_from": "2025-01-01"},
+    ],
+    ids=["categories", "date_from", "date_to", "sort_by_non_relevance", "combined"],
+)
+async def test_search_papers_falls_through_to_upstream_when_filters_present(
+    extra_arg: dict[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenAlex translator only honors query + max_results. Any filter-bearing
+    call must skip the OpenAlex short-circuit and fall through to upstream so
+    `categories` / `date_from` / `date_to` / non-default `sort_by` are not
+    silently dropped on the wire."""
+    from gpd.mcp.servers import _arxiv_token_bucket, arxiv_translators
+    from gpd.mcp.servers.arxiv_bridge import ArxivBridge, ArxivBridgeConfig
+
+    _arxiv_token_bucket._reset_for_tests()
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(_arxiv_token_bucket.asyncio, "sleep", no_sleep)
+
+    translator_called: list[dict] = []
+
+    def fake_search(args: dict) -> dict:
+        translator_called.append(args)
+        return {
+            "papers": [{"id": "2401.12345", "title": "T", "authors": ["A"]}],
+            "total_results": 1,
+        }
+
+    monkeypatch.setattr(arxiv_translators, "openalex_search", fake_search)
+
+    fake, log = _make_fake_session()
+    bridge = ArxivBridge(ArxivBridgeConfig(backend="hybrid"))
+    bridge._session = fake  # type: ignore[assignment]
+    try:
+        args = {"query": "q", **extra_arg}
+        await bridge.call_tool("search_papers", args)
+    finally:
+        bridge._session = None
+
+    assert translator_called == [], (
+        f"OpenAlex translator must NOT be invoked when caller passes "
+        f"non-translatable filters; got args={translator_called}"
+    )
+    assert log, "upstream session must be called when filters are present"
+    assert log[0][0] == "search_papers"
+
+
+@pytest.mark.asyncio
 async def test_get_abstract_short_circuits_to_openalex(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
