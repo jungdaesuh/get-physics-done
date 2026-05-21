@@ -50,14 +50,30 @@ def _make_fake_client(responses: list[object]) -> object:
             self._idx += 1
             return resp
 
+        def stream(self, _method: str, _url: str, follow_redirects: bool = True) -> object:
+            resp = responses[self._idx]
+            self._idx += 1
+            return resp
+
     return FakeClient()
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int, content: bytes = b"", text: str = "") -> None:
+    def __init__(self, status_code: int, content: bytes = b"", text: str = "", headers: dict | None = None) -> None:
         self.status_code = status_code
         self.content = content
         self.text = text
+        self.headers = headers or {}
+
+    def __enter__(self) -> _FakeResponse:
+        return self
+
+    def __exit__(self, *exc) -> None:
+        return None
+
+    def iter_bytes(self):
+        if self.content:
+            yield self.content
 
 
 def test_fetch_hits_ar5iv_first(monkeypatch: pytest.MonkeyPatch) -> None:

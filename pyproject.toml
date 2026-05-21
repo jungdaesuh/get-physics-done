@@ -49,8 +49,11 @@ paper = [
 ]
 arxiv = [
     "arxiv-mcp-server[pdf]>=0.4.11",
-    # Direct arxiv API client (used by the bridge's GCS fallback to look
-    # up paper metadata without round-tripping through arxiv-mcp-server).
+    # arxiv-mcp-server already depends on `arxiv` transitively (its
+    # tools/search.py, tools/download.py, etc. import it directly). The
+    # GPD bridge itself does not import `arxiv` — we pin a tighter floor
+    # explicitly so a transitive bump never silently drops to a known-
+    # broken older version.
     "arxiv>=2.4.1",
     # Used directly by the OpenAlex translator and GCS PDF fetcher. While
     # arxiv-mcp-server already depends on httpx, we declare it explicitly

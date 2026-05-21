@@ -24,6 +24,58 @@ _USER_AGENT = (
 )
 _HEADERS = {"User-Agent": _USER_AGENT}
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+# Cap downloaded PDF size so a runaway response cannot OOM the bridge.
+# 100 MB is well past the largest arXiv PDF we have ever seen (typical
+# papers are 0.5–5 MB; the 99th-percentile thesis-style preprint hits
+# 40 MB). HEAD content-length is preferred when present; the streaming
+# read below acts as a safety net for missing/lying headers.
+_MAX_PDF_BYTES = 100 * 1024 * 1024
+
+
+def _stream_capped(client: httpx.Client, url: str, *, follow_redirects: bool = False) -> bytes | None:
+    """GET ``url`` and return the body when it fits under ``_MAX_PDF_BYTES``.
+
+    Returns ``None`` on transport error, non-200, or when the body would
+    exceed the cap. Caller falls through to the next attempt."""
+
+    try:
+        with client.stream("GET", url, follow_redirects=follow_redirects) as resp:
+            if resp.status_code != 200:
+                return None
+            declared = resp.headers.get("content-length")
+            if declared is not None:
+                try:
+                    if int(declared) > _MAX_PDF_BYTES:
+                        logger.warning(
+                            "gcs/arxiv body content-length %s exceeds %d-byte cap for %s",
+                            declared,
+                            _MAX_PDF_BYTES,
+                            url,
+                        )
+                        return None
+                except ValueError:
+                    pass
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > _MAX_PDF_BYTES:
+                    logger.warning(
+                        "gcs/arxiv body exceeded %d-byte cap mid-stream for %s",
+                        _MAX_PDF_BYTES,
+                        url,
+                    )
+                    return None
+                chunks.append(chunk)
+            ct = resp.headers.get("content-type", "")
+            if ct and url.endswith(".pdf") and not ct.startswith("application/pdf"):
+                # arxiv.org/pdf can answer with HTML when the paper is
+                # withdrawn; the caller treats None as miss.
+                return None
+            return b"".join(chunks)
+    except httpx.RequestError as exc:
+        logger.info("gcs/arxiv GET error for %s: %s", url, exc)
+        return None
 
 _NEW_RE = re.compile(r"^(?P<yymm>\d{4})\.(?P<num>\d{4,5})(?:v\d+)?$")
 _OLD_RE = re.compile(
@@ -82,15 +134,9 @@ def fetch_pdf_from_gcs(paper_id: str) -> bytes | None:
                 if head.status_code != 200:
                     continue
 
-                try:
-                    resp = client.get(url)
-                except httpx.RequestError as exc:
-                    logger.info("gcs GET error %s v%d: %s", paper_id, v, exc)
-                    continue
-
-                if resp.status_code == 200 and resp.content:
-                    return resp.content
-
+                body = _stream_capped(client, url)
+                if body:
+                    return body
                 continue
     except Exception:
         logger.exception("unexpected error probing GCS for %s", paper_id)
@@ -99,21 +145,8 @@ def fetch_pdf_from_gcs(paper_id: str) -> bytes | None:
 
 def fetch_pdf_from_arxiv(paper_id: str) -> bytes | None:
     url = f"{_ARXIV_PDF_BASE}/{paper_id}.pdf"
-    try:
-        with httpx.Client(timeout=_TIMEOUT, headers=_HEADERS) as client:
-            resp = client.get(url, follow_redirects=True)
-    except httpx.RequestError as exc:
-        logger.info("arxiv.org/pdf request error for %s: %s", paper_id, exc)
-        return None
-
-    if resp.status_code != 200:
-        return None
-
-    ct = resp.headers.get("content-type", "")
-    if not ct.startswith("application/pdf"):
-        return None
-
-    return resp.content
+    with httpx.Client(timeout=_TIMEOUT, headers=_HEADERS) as client:
+        return _stream_capped(client, url, follow_redirects=True)
 
 
 def pdf_bytes_to_markdown(

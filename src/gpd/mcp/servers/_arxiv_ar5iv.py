@@ -20,6 +20,27 @@ _USER_AGENT = (
 )
 _HEADERS = {"User-Agent": _USER_AGENT}
 _TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+# Cap body size so a runaway / pathological response cannot OOM the bridge
+# process. 25 MB is well over the largest ar5iv HTML payload we have ever
+# observed in production (typical paper renders to 0.3–2 MB).
+_MAX_BODY_BYTES = 25 * 1024 * 1024
+
+
+def _read_capped(resp: httpx.Response) -> bytes | None:
+    """Stream the response body up to ``_MAX_BODY_BYTES`` then abort.
+
+    Returns ``None`` when the response would exceed the cap so the caller
+    can fall through to the next attempt instead of treating a truncated
+    body as a valid HTML payload."""
+
+    chunks: list[bytes] = []
+    total = 0
+    for chunk in resp.iter_bytes():
+        total += len(chunk)
+        if total > _MAX_BODY_BYTES:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class _ArticleTextExtractor(HTMLParser):
@@ -66,24 +87,33 @@ def fetch_html_content(paper_id: str) -> str | None:
             for base, follow, label in attempts:
                 url = f"{base}/{paper_id}"
                 try:
-                    resp = client.get(url, follow_redirects=follow)
+                    with client.stream("GET", url, follow_redirects=follow) as resp:
+                        if resp.status_code != 200:
+                            logger.info(
+                                "html-%s miss for %s: status=%d",
+                                label,
+                                paper_id,
+                                resp.status_code,
+                            )
+                            continue
+                        body = _read_capped(resp)
                 except httpx.RequestError as exc:
                     logger.info("html-%s request error for %s: %s", label, paper_id, exc)
                     continue
 
-                if resp.status_code != 200:
-                    logger.info(
-                        "html-%s miss for %s: status=%d",
+                if body is None:
+                    logger.warning(
+                        "html-%s body exceeded %d-byte cap for %s; treating as miss",
                         label,
+                        _MAX_BODY_BYTES,
                         paper_id,
-                        resp.status_code,
                     )
                     continue
 
-                if not resp.content:
+                if not body:
                     continue
 
-                text = _html_to_text(resp.text)
+                text = _html_to_text(body.decode("utf-8", errors="replace"))
                 if text.strip():
                     return text
     except Exception:

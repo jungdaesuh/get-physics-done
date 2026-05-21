@@ -32,7 +32,7 @@ async def test_first_acquire_does_not_sleep(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @pytest.mark.asyncio
-async def test_back_to_back_calls_sleep_for_min_interval(
+async def test_burst_within_capacity_does_not_sleep(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     slept: list[float] = []
@@ -41,40 +41,40 @@ async def test_back_to_back_calls_sleep_for_min_interval(
         slept.append(seconds)
 
     monkeypatch.setattr(_arxiv_token_bucket.asyncio, "sleep", fake_sleep)
-    async with _arxiv_token_bucket.acquire():
-        pass
-    async with _arxiv_token_bucket.acquire():
-        pass
 
-    # Exactly one sleep call, with a value close to 3.0 seconds.
-    assert len(slept) == 1
-    assert 2.0 <= slept[0] <= 3.5
+    # `_CAPACITY` back-to-back acquires must drain the bucket without ever
+    # sleeping — this is the whole point of bursting: a short flurry of
+    # parallel downloads serves immediately and only spaces out once the
+    # bucket empties.
+    for _ in range(int(_arxiv_token_bucket._CAPACITY)):
+        async with _arxiv_token_bucket.acquire():
+            pass
+
+    assert slept == [], (
+        f"first {int(_arxiv_token_bucket._CAPACITY)} acquires must not sleep "
+        f"(burst capacity); got slept={slept}"
+    )
 
 
 @pytest.mark.asyncio
-async def test_acquire_is_serialized(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Capture the real sleep before monkeypatching so the worker still has a
-    # genuine yield point. Without this, every ``await asyncio.sleep(0)``
-    # inside ``worker`` hits ``fake_sleep`` (a coroutine that never yields),
-    # and the event loop may run the workers serially by accident — making
-    # ``max_seen == 1`` pass without actually exercising the bucket's lock.
-    real_sleep = asyncio.sleep
+async def test_acquire_after_burst_sleeps_for_min_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slept: list[float] = []
 
-    async def fake_sleep(_seconds: float) -> None:
-        return None
+    async def fake_sleep(seconds: float) -> None:
+        slept.append(seconds)
 
     monkeypatch.setattr(_arxiv_token_bucket.asyncio, "sleep", fake_sleep)
 
-    in_flight = 0
-    max_seen = 0
-
-    async def worker() -> None:
-        nonlocal in_flight, max_seen
+    # Drain the bucket.
+    for _ in range(int(_arxiv_token_bucket._CAPACITY)):
         async with _arxiv_token_bucket.acquire():
-            in_flight += 1
-            max_seen = max(max_seen, in_flight)
-            await real_sleep(0)
-            in_flight -= 1
+            pass
 
-    await asyncio.gather(worker(), worker(), worker())
-    assert max_seen == 1, "token bucket failed to serialize concurrent acquirers"
+    # The (CAPACITY+1)th call has to wait for one refill cycle.
+    async with _arxiv_token_bucket.acquire():
+        pass
+
+    assert len(slept) == 1, f"expected exactly one sleep after draining; got {slept}"
+    assert 2.0 <= slept[0] <= 3.5
