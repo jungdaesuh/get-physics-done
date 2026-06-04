@@ -67,6 +67,7 @@ from gpd.core.verification_checks import (
 )
 from gpd.mcp.servers import (
     ABSOLUTE_PROJECT_DIR_SCHEMA,
+    _cas,
     configure_mcp_logging,
     read_only_tool_annotations,
     resolve_absolute_project_dir,
@@ -4975,12 +4976,18 @@ def _dimensional_check_inner(expressions: list[str]) -> dict:
 def limiting_case_check(expression: str, limits: dict[str, str]) -> dict:
     """Verify that an expression reduces to known results in specified limits.
 
-    This is a structural check -- it validates that the limit analysis
-    has been documented. The actual mathematical verification should be
-    performed by a CAS (SymPy) via the code execution MCP server.
+    When a limit is written as ``var -> point`` (e.g. ``"hbar -> 0"``) and both
+    the expression and the expected result are machine-parseable, this tool
+    actually computes ``sympy.limit(expression, var, point)`` and returns a
+    real ``pass``/``fail``/``computed`` verdict in each result's ``cas`` block
+    (with the aggregate in ``overall_cas_verdict``). Parse failures, timeouts,
+    or prose limits (e.g. ``"non-relativistic limit"``) downgrade to
+    ``inconclusive`` and fall back to the structural ``status`` marker — the
+    oracle never reports ``pass`` for something it could not compute.
 
     Args:
-        expression: The general expression being checked
+        expression: The general expression being checked (``LHS = RHS`` allowed;
+                    the RHS formula is used).
         limits: Dict mapping limit descriptions to expected results.
                 E.g., {"hbar -> 0": "classical Hamilton-Jacobi",
                        "c -> infinity": "non-relativistic Schrodinger"}
@@ -5016,12 +5023,17 @@ def _limiting_case_inner(expression: str, limits: dict[str, str]) -> dict:
                 limit_type = stype
                 break
 
+        cas = _cas.check_limit(expression, limit_desc, expected_result)
         results.append(
             {
                 "limit": limit_desc,
                 "expected": expected_result,
                 "limit_type": limit_type,
+                # Structural marker (kept for backward compatibility): records that
+                # the limit analysis was supplied. The authoritative result is in
+                # the `cas` block below when the limit is machine-evaluable.
                 "status": "documented",
+                "cas": cas,
                 "guidance": (
                     f"Verify: apply limit '{limit_desc}' to the expression. "
                     f"Result should reduce to: {expected_result}. "
@@ -5043,21 +5055,40 @@ def _limiting_case_inner(expression: str, limits: dict[str, str]) -> dict:
         if not any("weak" in key.lower() or "g ->" in key.lower() for key in limits):
             suggestions.append("Consider checking weak-coupling limit (g -> 0)")
 
+    cas_verdicts = [r["cas"]["verdict"] for r in results if isinstance(r.get("cas"), dict)]
     return {
         "schema_version": VERIFICATION_SCHEMA_VERSION,
         "expression_length": len(expression),
         "limits_checked": len(results),
+        "cas_executed": sum(1 for r in results if r.get("cas", {}).get("attempted")),
+        "overall_cas_verdict": _aggregate_cas_verdict(cas_verdicts),
         "results": results,
         "suggestions": suggestions,
     }
+
+
+def _aggregate_cas_verdict(verdicts: list[str]) -> str:
+    """Collapse per-item CAS verdicts into one. A single FAIL dominates."""
+    if _cas.VERDICT_FAIL in verdicts:
+        return _cas.VERDICT_FAIL
+    if _cas.VERDICT_PASS in verdicts:
+        return _cas.VERDICT_PASS
+    if _cas.VERDICT_COMPUTED in verdicts:
+        return _cas.VERDICT_COMPUTED
+    return _cas.VERDICT_INCONCLUSIVE
 
 
 @mcp.tool(annotations=read_only_tool_annotations())
 def symmetry_check(expression: str, symmetries: list[str]) -> dict:
     """Verify that an expression respects specified symmetries.
 
-    Structural check that symmetry analysis has been documented.
-    Actual verification should use CAS or explicit transformation.
+    For coordinate-reflection symmetries (``parity`` → ``x -> -x``,
+    ``time-reversal`` → ``t -> -t``) over a machine-parseable expression, this
+    tool actually performs the substitution with SymPy and classifies the
+    result as invariant (even) / odd / neither in each result's ``cas`` block.
+    Symmetries with no single-substitution test (gauge, Lorentz, ...) return
+    ``inconclusive`` and rely on the structural ``status`` + ``strategy``
+    guidance, so the executed verdict is never fabricated.
 
     Args:
         expression: The expression to check
@@ -5111,19 +5142,28 @@ def _symmetry_check_inner(expression: str, symmetries: list[str]) -> dict:
                 matched_type = key
                 break
 
+        cas = _cas.check_symmetry(expression, sym)
         results.append(
             {
                 "symmetry": sym,
                 "matched_type": matched_type,
                 "strategy": strategy or f"Apply {sym} transformation to expression and verify expected behavior",
+                # Structural marker (kept for backward compatibility). When the
+                # symmetry reduces to a coordinate reflection (parity / time
+                # reversal) over a parseable expression, the executed result is
+                # in the `cas` block.
                 "status": "requires_verification",
+                "cas": cas,
             }
         )
 
+    cas_verdicts = [r["cas"]["verdict"] for r in results if isinstance(r.get("cas"), dict)]
     return {
         "schema_version": VERIFICATION_SCHEMA_VERSION,
         "expression_length": len(expression),
         "symmetries_checked": len(results),
+        "cas_executed": sum(1 for r in results if r.get("cas", {}).get("attempted")),
+        "overall_cas_verdict": _aggregate_cas_verdict(cas_verdicts),
         "results": results,
     }
 

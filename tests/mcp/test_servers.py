@@ -3028,6 +3028,61 @@ class TestVerificationServer:
         )
         assert result["results"][0]["limit_type"] == "classical"
 
+    # --- limiting_case_check CAS-backed executable verdicts ---
+
+    def test_limiting_case_cas_pass_on_correct_limit(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        result = limiting_case_check("f = sin(x)/x", {"x -> 0": "1"})
+        assert result["overall_cas_verdict"] == "pass"
+        assert result["cas_executed"] == 1
+        cas = result["results"][0]["cas"]
+        assert cas["attempted"] is True
+        assert cas["verdict"] == "pass"
+        assert cas["computed_limit"] == "1"
+
+    def test_limiting_case_cas_fail_catches_wrong_limit(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        # sin(x)/x -> 1, not 0: the oracle must catch the false claim.
+        result = limiting_case_check("f = sin(x)/x", {"x -> 0": "0"})
+        assert result["overall_cas_verdict"] == "fail"
+        assert result["results"][0]["cas"]["verdict"] == "fail"
+
+    def test_limiting_case_cas_infinity_limit(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        result = limiting_case_check("E = 1/(1 + x)", {"x -> infinity": "0"})
+        assert result["overall_cas_verdict"] == "pass"
+
+    def test_limiting_case_cas_inconclusive_on_prose_limit(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        # A prose limit (no "var -> point") cannot be computed; the verdict must
+        # be inconclusive and the structural status preserved (backward compat).
+        result = limiting_case_check(
+            "E = gamma * m * c^2",
+            {"non-relativistic limit": "E = m*c^2 + 1/2*m*v^2"},
+        )
+        row = result["results"][0]
+        assert row["status"] == "documented"
+        assert row["cas"]["verdict"] == "inconclusive"
+        assert row["cas"]["attempted"] is False
+
+    def test_limiting_case_cas_never_passes_unparseable_expression(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        result = limiting_case_check("totally unparseable prose here", {"x -> 0": "0"})
+        assert result["results"][0]["cas"]["verdict"] == "inconclusive"
+        assert result["overall_cas_verdict"] != "pass"
+
+    def test_limiting_case_cas_rejects_unsafe_input(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        result = limiting_case_check('__import__("os").system("echo hi")', {"x -> 0": "0"})
+        assert result["results"][0]["cas"]["verdict"] == "inconclusive"
+        assert result["overall_cas_verdict"] != "pass"
+
     def test_limiting_case_check_invalid_limit_key_returns_error_envelope(self):
         from gpd.mcp.servers.verification_server import limiting_case_check
 
@@ -3072,6 +3127,35 @@ class TestVerificationServer:
 
         assert result["schema_version"] == 1
         assert result["error"] == "symmetries[1] must be a string"
+
+    # --- symmetry_check CAS-backed executable verdicts ---
+
+    def test_symmetry_cas_parity_even(self):
+        from gpd.mcp.servers.verification_server import symmetry_check
+
+        result = symmetry_check("V = x**2", ["parity"])
+        cas = result["results"][0]["cas"]
+        assert cas["attempted"] is True
+        assert cas["invariant"] is True
+        assert "even" in cas["classification"]
+        assert cas["transformation"] == "x -> -x"
+
+    def test_symmetry_cas_parity_odd(self):
+        from gpd.mcp.servers.verification_server import symmetry_check
+
+        result = symmetry_check("V = x**3", ["parity"])
+        assert result["results"][0]["cas"]["classification"] == "odd"
+
+    def test_symmetry_cas_inconclusive_for_gauge(self):
+        from gpd.mcp.servers.verification_server import symmetry_check
+
+        # No single-substitution test for gauge: stays inconclusive and keeps
+        # the structural status + strategy guidance.
+        result = symmetry_check("A_mu field", ["gauge invariance"])
+        row = result["results"][0]
+        assert row["status"] == "requires_verification"
+        assert row["strategy"] is not None
+        assert row["cas"]["verdict"] == "inconclusive"
 
     def test_dimensional_check_rejects_whitespace_only_expression(self):
         from gpd.mcp.servers.verification_server import dimensional_check
