@@ -33,11 +33,31 @@ _DEFAULT_TIMEOUT_S = 4.0
 # is not silently reinterpreted as a SymPy special function or constant.
 _FUNCTION_WHITELIST = frozenset(
     {
-        "sin", "cos", "tan", "cot", "sec", "csc",
-        "asin", "acos", "atan", "atan2",
-        "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
-        "exp", "log", "ln", "sqrt", "Abs", "re", "im",
-        "oo", "pi",
+        "sin",
+        "cos",
+        "tan",
+        "cot",
+        "sec",
+        "csc",
+        "asin",
+        "acos",
+        "atan",
+        "atan2",
+        "sinh",
+        "cosh",
+        "tanh",
+        "asinh",
+        "acosh",
+        "atanh",
+        "exp",
+        "log",
+        "ln",
+        "sqrt",
+        "Abs",
+        "re",
+        "im",
+        "oo",
+        "pi",
     }
 )
 
@@ -367,9 +387,7 @@ def _parse_plain(text: str, implicit: bool = False):
         if implicit:
             transformations = transformations + (implicit_multiplication_application,)
         local = {
-            name: sympy.Symbol(name)
-            for name in set(_IDENT.findall(normalized))
-            if name not in _FUNCTION_WHITELIST
+            name: sympy.Symbol(name) for name in set(_IDENT.findall(normalized)) if name not in _FUNCTION_WHITELIST
         }
         ok, value = run_with_timeout(
             lambda: parse_expr(
@@ -710,8 +728,6 @@ def check_dimensions(expression: str, symbol_dims: dict) -> dict:
         "lhs_dimensions": {k: int(v) if v == int(v) else str(v) for k, v in lhs_dims.items()},
         "rhs_dimensions": {k: int(v) if v == int(v) else str(v) for k, v in rhs_dims.items()},
         "detail": (
-            "both sides share the same dimensions"
-            if consistent
-            else "left and right sides have different dimensions"
+            "both sides share the same dimensions" if consistent else "left and right sides have different dimensions"
         ),
     }

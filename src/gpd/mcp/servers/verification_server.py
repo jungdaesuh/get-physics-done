@@ -2140,19 +2140,31 @@ def _dims_equal(a: dict[str, int], b: dict[str, int]) -> bool:
 # Named physical quantities → base-dimension exponents over {M, L, T, Q, Theta}.
 # Used to give real symbols dimensions for symbolic dimensional analysis.
 _NAMED_DIMENSIONS: dict[str, dict[str, int]] = {
-    "dimensionless": {}, "scalar": {}, "1": {},
-    "mass": {"M": 1}, "length": {"L": 1}, "distance": {"L": 1}, "position": {"L": 1},
-    "time": {"T": 1}, "charge": {"Q": 1}, "temperature": {"Theta": 1},
+    "dimensionless": {},
+    "scalar": {},
+    "1": {},
+    "mass": {"M": 1},
+    "length": {"L": 1},
+    "distance": {"L": 1},
+    "position": {"L": 1},
+    "time": {"T": 1},
+    "charge": {"Q": 1},
+    "temperature": {"Theta": 1},
     "current": {"Q": 1, "T": -1},
-    "velocity": {"L": 1, "T": -1}, "speed": {"L": 1, "T": -1},
+    "velocity": {"L": 1, "T": -1},
+    "speed": {"L": 1, "T": -1},
     "acceleration": {"L": 1, "T": -2},
     "momentum": {"M": 1, "L": 1, "T": -1},
     "force": {"M": 1, "L": 1, "T": -2},
-    "energy": {"M": 1, "L": 2, "T": -2}, "work": {"M": 1, "L": 2, "T": -2},
+    "energy": {"M": 1, "L": 2, "T": -2},
+    "work": {"M": 1, "L": 2, "T": -2},
     "power": {"M": 1, "L": 2, "T": -3},
     "pressure": {"M": 1, "L": -1, "T": -2},
-    "frequency": {"T": -1}, "angular_frequency": {"T": -1},
-    "area": {"L": 2}, "volume": {"L": 3}, "density": {"M": 1, "L": -3},
+    "frequency": {"T": -1},
+    "angular_frequency": {"T": -1},
+    "area": {"L": 2},
+    "volume": {"L": 3},
+    "density": {"M": 1, "L": -3},
     "action": {"M": 1, "L": 2, "T": -1},  # e.g. hbar
     "voltage": {"M": 1, "L": 2, "T": -2, "Q": -1},
 }
@@ -4976,9 +4988,7 @@ def dimensional_check(expressions: list[str], dimensions: dict[str, str] | None 
         return stable_mcp_response(_dimensional_check_inner(validated_expressions, symbol_dims))
 
 
-def _dimensional_check_inner(
-    expressions: list[str], symbol_dims: dict[str, dict[str, int]] | None = None
-) -> dict:
+def _dimensional_check_inner(expressions: list[str], symbol_dims: dict[str, dict[str, int]] | None = None) -> dict:
     results: list[dict[str, object]] = []
 
     for expr in expressions:

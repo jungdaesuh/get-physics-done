@@ -2999,9 +2999,7 @@ class TestVerificationServer:
     def test_dimensional_check_symbolic_latex(self):
         from gpd.mcp.servers.verification_server import dimensional_check
 
-        result = dimensional_check(
-            [r"E = \frac{1}{2} m v^2"], {"E": "energy", "m": "mass", "v": "velocity"}
-        )
+        result = dimensional_check([r"E = \frac{1}{2} m v^2"], {"E": "energy", "m": "mass", "v": "velocity"})
         assert result["results"][0]["cas"]["verdict"] == "pass"
 
     def test_dimensional_check_symbolic_mixed_sum_fails(self):
@@ -3022,9 +3020,7 @@ class TestVerificationServer:
         from gpd.mcp.servers.verification_server import dimensional_check
 
         # A dimension may be given as a bracket spec instead of a name.
-        result = dimensional_check(
-            ["p = m*v"], {"p": "[M][L][T]^-1", "m": "mass", "v": "velocity"}
-        )
+        result = dimensional_check(["p = m*v"], {"p": "[M][L][T]^-1", "m": "mass", "v": "velocity"})
         assert result["results"][0]["cas"]["verdict"] == "pass"
 
     # --- limiting_case_check (pure function) ---
@@ -3136,9 +3132,7 @@ class TestVerificationServer:
         from gpd.mcp.servers.verification_server import limiting_case_check
 
         # (1 - cos(hbar*x)) / hbar -> 0 as hbar -> 0, given in LaTeX.
-        result = limiting_case_check(
-            r"\frac{1 - \cos(\hbar x)}{\hbar}", {r"\hbar \to 0": "0"}
-        )
+        result = limiting_case_check(r"\frac{1 - \cos(\hbar x)}{\hbar}", {r"\hbar \to 0": "0"})
         assert result["overall_cas_verdict"] == "pass"
         assert result["results"][0]["cas"]["variable"] == "hbar"
 
