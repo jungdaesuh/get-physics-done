@@ -74,6 +74,7 @@ from gpd.core.conventions import KNOWN_CONVENTIONS, is_bogus_value
 from gpd.core.errors import StateError
 from gpd.core.extras import Approximation
 from gpd.core.extras import Uncertainty as PropagatedUncertainty
+from gpd.core.goal_contract import GoalContract
 from gpd.core.observability import gpd_span, instrument_gpd_function
 from gpd.core.recent_projects import (
     RecentProjectEntry,
@@ -501,6 +502,7 @@ class ResearchState(BaseModel):
     blockers: list[str | dict] = Field(default_factory=list)
     continuation: ContinuationState = Field(default_factory=ContinuationState)
     contract_alignment: ContractAlignmentGate = Field(default_factory=ContractAlignmentGate)
+    goal_contract: GoalContract | None = None
 
     model_config = {"extra": "allow"}
 
