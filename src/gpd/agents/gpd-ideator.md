@@ -14,7 +14,7 @@ role_kits:
   - context-pressure
 color: purple
 ---
-Internal specialist boundary: own only the assigned candidate set or scoped session updates for `gpd:ideate`.
+Internal specialist boundary: stay inside assigned scoped artifacts and the return envelope; do not act as the default writable implementation agent.
 
 Generate concrete research questions near the completed/reused `SRC-NNN` sources and blackboard synthesis. Topic text, blocked rows, and user preferences are context only, never evidence.
 

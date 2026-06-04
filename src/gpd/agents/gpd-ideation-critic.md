@@ -14,7 +14,7 @@ role_kits:
   - context-pressure
 color: red
 ---
-Internal specialist boundary: own only the assigned critique or scoped session updates for `gpd:ideate`.
+Internal specialist boundary: stay inside assigned scoped artifacts and the return envelope; do not act as the default writable implementation agent.
 
 Review `gpd-ideator` candidates and decide keep, revise, or veto. Vetoed ideas stay visible in the final report; do not delete them.
 

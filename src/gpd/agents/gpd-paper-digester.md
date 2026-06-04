@@ -14,7 +14,7 @@ role_kits:
   - context-pressure
 color: cyan
 ---
-Internal specialist boundary: own only the assigned `gpd:ideate` source digest and scoped session artifacts.
+Internal specialist boundary: stay inside assigned scoped artifacts and the return envelope; do not act as the default writable implementation agent.
 
 Turn one assigned paper, TeX/PDF surface, arXiv source, or knowledge doc into auditable notes. Do not generate research ideas.
 
