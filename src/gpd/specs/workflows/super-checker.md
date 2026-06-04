@@ -46,6 +46,16 @@ CRITIC_MODEL=$(gpd resolve-model gpd-result-critic)
 META_MODEL=$(gpd resolve-model gpd-meta-critic)
 ```
 
+Establish a scoped run workspace for this invocation. Each spawned agent writes
+its return into a dedicated artifact under this directory, and the orchestrator
+reads it back. This keeps every loop's intermediate result, critiques, and
+meta-review durable and auditable instead of living only in transient memory.
+
+```bash
+RUN_DIR="GPD/super-checker/run-$(date +%Y%m%d-%H%M%S)"
+mkdir -p "$RUN_DIR"
+```
+
 Announce:
 
 ```
@@ -79,14 +89,18 @@ state assumptions, and flag any caveats or open questions.
 
 <spawn_contract>
 write_scope:
-  mode: read_only
-  allowed_paths: []
-expected_artifacts: []
+  mode: scoped_write
+  allowed_paths:
+    - \"{RUN_DIR}/loop-0/result.md\"
+expected_artifacts:
+  - \"{RUN_DIR}/loop-0/result.md\"
 shared_state_policy: return_only
-</spawn_contract>",
+</spawn_contract>
+
+Write your complete result to {RUN_DIR}/loop-0/result.md and also return it in <result>...</result> tags.",
   subagent_type="gpd-result-solver",
   model="{SOLVER_MODEL}",
-  readonly=true,
+  readonly=false,
   description="Agent A: initial result for super-checker"
 )
 )
@@ -144,14 +158,18 @@ Be specific and cite the exact claim or line you are critiquing.
 
 <spawn_contract>
 write_scope:
-  mode: read_only
-  allowed_paths: []
-expected_artifacts: []
+  mode: scoped_write
+  allowed_paths:
+    - \"{RUN_DIR}/loop-{LOOP}/critic-{i}.md\"
+expected_artifacts:
+  - \"{RUN_DIR}/loop-{LOOP}/critic-{i}.md\"
 shared_state_policy: return_only
-</spawn_contract>",
+</spawn_contract>
+
+Write your critique to {RUN_DIR}/loop-{LOOP}/critic-{i}.md and also return it as your response text.",
   subagent_type="gpd-result-critic",
   model="{CRITIC_MODEL}",
-  readonly=true,
+  readonly=false,
   description="Critic {i}/{N_CRITICS}: loop {LOOP}"
 )
 )
@@ -205,14 +223,18 @@ revision, or is it acceptable?
 
 <spawn_contract>
 write_scope:
-  mode: read_only
-  allowed_paths: []
-expected_artifacts: []
+  mode: scoped_write
+  allowed_paths:
+    - \"{RUN_DIR}/loop-{LOOP}/meta-review.md\"
+expected_artifacts:
+  - \"{RUN_DIR}/loop-{LOOP}/meta-review.md\"
 shared_state_policy: return_only
-</spawn_contract>",
+</spawn_contract>
+
+Write your complete review to {RUN_DIR}/loop-{LOOP}/meta-review.md and also return it as your response text.",
   subagent_type="gpd-meta-critic",
   model="{META_MODEL}",
-  readonly=true,
+  readonly=false,
   description="Meta-critic: loop {LOOP}"
 )
 )
@@ -274,14 +296,18 @@ Show your revised work clearly.
 
 <spawn_contract>
 write_scope:
-  mode: read_only
-  allowed_paths: []
-expected_artifacts: []
+  mode: scoped_write
+  allowed_paths:
+    - \"{RUN_DIR}/loop-{LOOP}/result.md\"
+expected_artifacts:
+  - \"{RUN_DIR}/loop-{LOOP}/result.md\"
 shared_state_policy: return_only
-</spawn_contract>",
+</spawn_contract>
+
+Write your revised result to {RUN_DIR}/loop-{LOOP}/result.md and also return it in <result>...</result> tags.",
   subagent_type="gpd-result-solver",
   model="{SOLVER_MODEL}",
-  readonly=true,
+  readonly=false,
   description="Agent A: revision {LOOP}"
 )
 )
