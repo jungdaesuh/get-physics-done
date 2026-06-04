@@ -3083,6 +3083,39 @@ class TestVerificationServer:
         assert result["results"][0]["cas"]["verdict"] == "inconclusive"
         assert result["overall_cas_verdict"] != "pass"
 
+    # --- limiting_case_check LaTeX expressions ---
+
+    def test_limiting_case_cas_latex_classical_limit_pass(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        # (1 - cos(hbar*x)) / hbar -> 0 as hbar -> 0, given in LaTeX.
+        result = limiting_case_check(
+            r"\frac{1 - \cos(\hbar x)}{\hbar}", {r"\hbar \to 0": "0"}
+        )
+        assert result["overall_cas_verdict"] == "pass"
+        assert result["results"][0]["cas"]["variable"] == "hbar"
+
+    def test_limiting_case_cas_latex_infinity_limit(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        result = limiting_case_check(r"\frac{1}{1 + x}", {r"x \to \infty": "0"})
+        assert result["overall_cas_verdict"] == "pass"
+
+    def test_limiting_case_cas_latex_juxtaposed_superscripts_degrade_safely(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        # lark cannot parse juxtaposed superscript products (a^2 b^2); the
+        # oracle must degrade to inconclusive, never a false pass.
+        result = limiting_case_check(r"\frac{\hbar^2 k^2}{2m}", {r"\hbar \to 0": "0"})
+        assert result["results"][0]["cas"]["verdict"] == "inconclusive"
+        assert result["overall_cas_verdict"] != "pass"
+
+    def test_cas_latex_rejects_dangerous_tex(self):
+        from gpd.mcp.servers import _cas
+
+        assert _cas.safe_parse(r"\input{/etc/passwd}") is None
+        assert _cas.safe_parse(r"\frac{\hbar^2}{2m}") is not None
+
     def test_limiting_case_check_invalid_limit_key_returns_error_envelope(self):
         from gpd.mcp.servers.verification_server import limiting_case_check
 
@@ -3156,6 +3189,14 @@ class TestVerificationServer:
         assert row["status"] == "requires_verification"
         assert row["strategy"] is not None
         assert row["cas"]["verdict"] == "inconclusive"
+
+    def test_symmetry_cas_latex_parity_even(self):
+        from gpd.mcp.servers.verification_server import symmetry_check
+
+        result = symmetry_check(r"V = \frac{1}{2} k x^2", ["parity"])
+        cas = result["results"][0]["cas"]
+        assert cas["classification"] == "invariant (even)"
+        assert cas["invariant"] is True
 
     def test_dimensional_check_rejects_whitespace_only_expression(self):
         from gpd.mcp.servers.verification_server import dimensional_check

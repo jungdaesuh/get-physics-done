@@ -49,11 +49,91 @@ _UNSAFE = re.compile(
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _INF = re.compile(r"\b(?:infinity|infty|inf)\b", re.IGNORECASE)
 
+# ─── LaTeX support ─────────────────────────────────────────────────────────────
+#
+# Physics derivations are written in LaTeX, so the oracle also accepts LaTeX
+# expressions. They are parsed with SymPy's grammar-based lark backend (which
+# cannot execute code, unlike sympify). The lark grammar covers fractions,
+# powers, roots, subscripts, most Greek letters, and standard functions, but
+# rejects a handful of common macros (\hbar, \Omega, ...) and juxtaposed
+# superscripted products (``a^2 b^2``). Unsupported macros are rewritten to a
+# collision-free placeholder and substituted back; anything still unparseable
+# returns None (→ inconclusive), never a false PASS.
+
+# Macros lark rejects but that are common in physics → intended Symbol name.
+_LATEX_SYMBOL_FIXUPS = {r"\hbar": "hbar", r"\Omega": "Omega", r"\sigma": "sigma", r"\ell": "ell"}
+# Macros mapped to genuine SymPy constants rather than free symbols.
+_LATEX_CONST_FIXUPS = (r"\pi",)  # → sympy.pi
+# Supported single-token macros used as collision-free placeholders.
+_LATEX_PLACEHOLDERS = (r"\eta", r"\zeta", r"\xi", r"\chi", r"\kappa", r"\iota", r"\upsilon", r"\digamma")
+# Spacing / delimiter macros stripped before parsing.
+_LATEX_STRIP = (r"\left", r"\right", r"\quad", r"\qquad", r"\,", r"\;", r"\:", r"\!", r"\(", r"\)", r"\[", r"\]")
+# TeX constructs refused outright (environments / macro definitions / file IO).
+_LATEX_DANGEROUS = re.compile(
+    r"\\(?:input|include|def|csname|write|read|openin|catcode|immediate|loop|"
+    r"expandafter|newcommand|renewcommand|usepackage|begin|end)\b"
+)
+_LATEX_COMMAND = re.compile(r"\\[A-Za-z]+")
+# Arrow macros normalized to '->' when parsing a limit description.
+_LATEX_ARROW = re.compile(r"\\(?:to|rightarrow|longrightarrow|mapsto)\b")
+
 
 def _sympy():  # pragma: no cover - thin lazy import
     import sympy
 
     return sympy
+
+
+def _looks_like_latex(text: str) -> bool:
+    """Heuristic: does the string contain LaTeX math markup?"""
+    return bool(_LATEX_COMMAND.search(text)) or "^{" in text or "_{" in text
+
+
+def _parse_latex(text: str):
+    """Parse a LaTeX physics expression into a SymPy object, or ``None``.
+
+    Uses the grammar-based lark backend (no code execution), rewriting the
+    common lark-unsupported macros to placeholders and substituting them back.
+    """
+    cleaned = text.strip().strip("$").replace("&", " ")
+    if _LATEX_DANGEROUS.search(cleaned):
+        return None
+    for token in _LATEX_STRIP:
+        cleaned = cleaned.replace(token, " ")
+    if "=" in cleaned:
+        cleaned = cleaned.split("=")[-1].strip()
+    if not cleaned:
+        return None
+    try:
+        sympy = _sympy()
+        from sympy.parsing.latex import parse_latex
+    except Exception:  # noqa: BLE001 - sympy/lark unavailable → unparseable
+        return None
+
+    substitutions = {}
+    pool = [p for p in _LATEX_PLACEHOLDERS if p not in cleaned]
+    fixups = [(m, _LATEX_SYMBOL_FIXUPS[m]) for m in _LATEX_SYMBOL_FIXUPS]
+    fixups += [(m, None) for m in _LATEX_CONST_FIXUPS]
+    try:
+        for macro, name in fixups:
+            pattern = re.escape(macro) + r"(?![A-Za-z])"
+            if re.search(pattern, cleaned):
+                if not pool:
+                    return None
+                placeholder = pool.pop(0)
+                cleaned = re.sub(pattern, lambda _m, ph=placeholder: ph, cleaned)
+                target = sympy.pi if name is None else sympy.Symbol(name)
+                substitutions[sympy.Symbol(placeholder.lstrip("\\"))] = target
+    except Exception:  # noqa: BLE001
+        return None
+
+    ok, parsed = run_with_timeout(lambda: parse_latex(cleaned, backend="lark"))
+    if not ok or parsed is None:
+        return None
+    if not substitutions:
+        return parsed
+    ok2, substituted = run_with_timeout(lambda: parsed.subs(substitutions))
+    return substituted if ok2 else None
 
 
 def run_with_timeout(fn: Callable[[], object], timeout_s: float = _DEFAULT_TIMEOUT_S) -> tuple[bool, object]:
@@ -96,6 +176,8 @@ def safe_parse(text: str):
     raw = text.strip()
     if not raw or len(raw) > _MAX_EXPR_LEN:
         return None
+    if _looks_like_latex(raw):
+        return _parse_latex(raw)
     if _UNSAFE.search(raw):
         return None
     if "=" in raw:
@@ -158,18 +240,23 @@ def symbolic_equal(a, b, timeout_s: float = _DEFAULT_TIMEOUT_S):
 def parse_limit_target(description: str) -> tuple[str, str] | None:
     """Parse a limit description into ``(variable, point_text)`` or ``None``.
 
-    Accepts ``"hbar -> 0"``, ``"c -> infinity"``, and descriptive prefixes such
+    Accepts ``"hbar -> 0"``, ``"c -> infinity"``, LaTeX arrows/macros such as
+    ``r"\\hbar \\to 0"`` and ``r"c \\to \\infty"``, and descriptive prefixes such
     as ``"classical limit: hbar -> 0"`` (uses the last ``X -> Y`` occurrence).
     A composite ratio such as ``"v/c -> 0"`` is intentionally rejected because
     it is not a single limit variable.
     """
-    if not isinstance(description, str) or "->" not in description:
+    if not isinstance(description, str):
         return None
-    matches = re.findall(r"([A-Za-z_][A-Za-z0-9_/]*)\s*->\s*([^,;]+)", description)
+    normalized = _LATEX_ARROW.sub("->", description.replace("$", ""))
+    if "->" not in normalized:
+        return None
+    # An optional leading backslash lets LaTeX symbols (\hbar) match.
+    matches = re.findall(r"(\\?[A-Za-z_][A-Za-z0-9_/]*)\s*->\s*([^,;]+)", normalized)
     if not matches:
         return None
     var_raw, point_raw = matches[-1]
-    var = var_raw.strip()
+    var = var_raw.lstrip("\\").strip()
     if "/" in var or not var:
         return None
     return var, point_raw.strip()

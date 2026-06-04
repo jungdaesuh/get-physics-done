@@ -43,6 +43,9 @@ dependencies = [
     # Computer-algebra backend for executable verification (limiting cases,
     # symmetry transformations, symbolic identities) in the verification server.
     "sympy>=1.13",
+    # Pure-Python LaTeX-math grammar backend used by SymPy's parse_latex so the
+    # verification server can accept LaTeX expressions (no antlr version pin).
+    "lark>=1.1",
 ]
 
 [project.optional-dependencies]
