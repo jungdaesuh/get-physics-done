@@ -77,6 +77,20 @@ _LATEX_COMMAND = re.compile(r"\\[A-Za-z]+")
 # Arrow macros normalized to '->' when parsing a limit description.
 _LATEX_ARROW = re.compile(r"\\(?:to|rightarrow|longrightarrow|mapsto)\b")
 
+# ── delatexify fallback (for LaTeX the lark grammar rejects, e.g. a^2 b^2) ──
+# Differential-operator notation cannot be faithfully turned into algebra, so we
+# refuse it outright rather than risk a wrong verdict.
+_DELATEX_DERIVATIVE = re.compile(r"\\partial|\\nabla|\\frac\s*\{\s*d\b")
+# Literal macro → plain-token rewrites applied before structural conversion.
+_DELATEX_REPLACERS = (
+    (r"\cdot", "*"),
+    (r"\times", "*"),
+    (r"\div", "/"),
+    (r"\ln", "log"),
+    (r"\lg", "log"),
+    (r"\infty", "oo"),
+)
+
 
 def _sympy():  # pragma: no cover - thin lazy import
     import sympy
@@ -92,8 +106,11 @@ def _looks_like_latex(text: str) -> bool:
 def _parse_latex(text: str):
     """Parse a LaTeX physics expression into a SymPy object, or ``None``.
 
-    Uses the grammar-based lark backend (no code execution), rewriting the
-    common lark-unsupported macros to placeholders and substituting them back.
+    Primary path is SymPy's grammar-based lark backend. When lark rejects the
+    input (e.g. juxtaposed superscript products ``a^2 b^2``), a conservative
+    delatexify fallback converts the LaTeX to a plain infix string and parses it
+    with implicit multiplication. Differential-operator notation is refused so
+    the fallback can never fabricate algebra from a derivative.
     """
     cleaned = text.strip().strip("$").replace("&", " ")
     if _LATEX_DANGEROUS.search(cleaned):
@@ -104,6 +121,14 @@ def _parse_latex(text: str):
         cleaned = cleaned.split("=")[-1].strip()
     if not cleaned:
         return None
+    result = _latex_via_lark(cleaned)
+    if result is not None:
+        return result
+    return _latex_via_delatexify(cleaned)
+
+
+def _latex_via_lark(cleaned: str):
+    """Parse cleaned LaTeX with the lark backend (+ macro fixups), or ``None``."""
     try:
         sympy = _sympy()
         from sympy.parsing.latex import parse_latex
@@ -134,6 +159,141 @@ def _parse_latex(text: str):
         return parsed
     ok2, substituted = run_with_timeout(lambda: parsed.subs(substitutions))
     return substituted if ok2 else None
+
+
+def _latex_via_delatexify(cleaned: str):
+    """Fallback: convert LaTeX to a plain infix string and parse it."""
+    plain = _delatexify(cleaned)
+    if plain is None:
+        return None
+    return _parse_plain(plain, implicit=True)
+
+
+def _match_brace(s: str, start: int) -> int:
+    """Return the index of the ``}`` matching the ``{`` at ``start``, or -1."""
+    depth = 0
+    for idx in range(start, len(s)):
+        ch = s[idx]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return idx
+    return -1
+
+
+def _latex_frac(s: str) -> str | None:
+    """Rewrite ``\\frac{A}{B}`` → ``((A)/(B))`` (brace-matched, nesting-safe)."""
+    for _ in range(200):
+        i = s.find(r"\frac")
+        if i == -1:
+            return s
+        j = i + len(r"\frac")
+        while j < len(s) and s[j] == " ":
+            j += 1
+        if j >= len(s) or s[j] != "{":
+            return None
+        a_end = _match_brace(s, j)
+        if a_end == -1:
+            return None
+        k = a_end + 1
+        while k < len(s) and s[k] == " ":
+            k += 1
+        if k >= len(s) or s[k] != "{":
+            return None
+        b_end = _match_brace(s, k)
+        if b_end == -1:
+            return None
+        s = s[:i] + "((" + s[j + 1 : a_end] + ")/(" + s[k + 1 : b_end] + "))" + s[b_end + 1 :]
+    return None
+
+
+def _latex_sqrt(s: str) -> str | None:
+    """Rewrite ``\\sqrt{A}`` → ``sqrt((A))`` and ``\\sqrt[n]{A}`` → ``((A)**(1/(n)))``."""
+    for _ in range(200):
+        i = s.find(r"\sqrt")
+        if i == -1:
+            return s
+        j = i + len(r"\sqrt")
+        while j < len(s) and s[j] == " ":
+            j += 1
+        root = None
+        if j < len(s) and s[j] == "[":
+            close = s.find("]", j)
+            if close == -1:
+                return None
+            root = s[j + 1 : close]
+            j = close + 1
+            while j < len(s) and s[j] == " ":
+                j += 1
+        if j >= len(s) or s[j] != "{":
+            return None
+        end = _match_brace(s, j)
+        if end == -1:
+            return None
+        inner = s[j + 1 : end]
+        rep = f"(({inner})**(1/({root})))" if root else f"sqrt(({inner}))"
+        s = s[:i] + rep + s[end + 1 :]
+    return None
+
+
+def _latex_braced(s: str, op: str, prefix: str, suffix: str) -> str | None:
+    """Rewrite ``op{...}`` (e.g. ``^{...}``) → ``prefix...suffix`` (brace-matched)."""
+    pattern = re.compile(re.escape(op) + r"\{")
+    for _ in range(200):
+        match = pattern.search(s)
+        if not match:
+            return s
+        brace = match.end() - 1
+        end = _match_brace(s, brace)
+        if end == -1:
+            return None
+        s = s[: match.start()] + prefix + s[brace + 1 : end] + suffix + s[end + 1 :]
+    return None
+
+
+def _latex_subscript(s: str) -> str | None:
+    """Rewrite ``a_{bc}`` → ``a_bc`` (subscripts folded into the symbol name)."""
+    pattern = re.compile(r"_\{")
+    for _ in range(200):
+        match = pattern.search(s)
+        if not match:
+            return s
+        brace = match.end() - 1
+        end = _match_brace(s, brace)
+        if end == -1:
+            return None
+        inner = re.sub(r"[^A-Za-z0-9]", "", s[brace + 1 : end])
+        s = s[: match.start()] + (f"_{inner}" if inner else "") + s[end + 1 :]
+    return None
+
+
+def _delatexify(s: str) -> str | None:
+    """Convert a LaTeX math string to a plain infix expression, or ``None``.
+
+    Conservative: refuses differential operators and returns None on any
+    unhandled construct (leftover braces/backslashes), so the caller stays
+    inconclusive rather than guessing.
+    """
+    if _DELATEX_DERIVATIVE.search(s):
+        return None
+    for src, dst in _DELATEX_REPLACERS:
+        s = s.replace(src, dst)
+    for step in (
+        _latex_frac,
+        _latex_sqrt,
+        lambda t: _latex_braced(t, "^", "**(", ")"),
+        _latex_subscript,
+    ):
+        s = step(s)
+        if s is None:
+            return None
+    s = s.replace("{", "(").replace("}", ")").replace("^", "**")
+    s = re.sub(r"\\([A-Za-z]+)", r"\1", s)  # strip remaining macro backslashes
+    if "\\" in s or "{" in s or "}" in s:
+        return None
+    return s
 
 
 def run_with_timeout(fn: Callable[[], object], timeout_s: float = _DEFAULT_TIMEOUT_S) -> tuple[bool, object]:
@@ -178,17 +338,34 @@ def safe_parse(text: str):
         return None
     if _looks_like_latex(raw):
         return _parse_latex(raw)
-    if _UNSAFE.search(raw):
+    return _parse_plain(raw)
+
+
+def _parse_plain(text: str, implicit: bool = False):
+    """Parse a plain (non-LaTeX) expression string into a SymPy object, or None.
+
+    ``implicit`` enables implicit multiplication/application (``2m`` → ``2*m``,
+    ``sin x`` → ``sin(x)``); used by the delatexify fallback.
+    """
+    if _UNSAFE.search(text):
         return None
-    if "=" in raw:
-        raw = raw.split("=")[-1].strip()
-        if not raw:
+    expr_text = text
+    if "=" in expr_text:
+        expr_text = expr_text.split("=")[-1].strip()
+        if not expr_text:
             return None
-    normalized = _INF.sub("oo", raw).replace("^", "**")
+    normalized = _INF.sub("oo", expr_text).replace("^", "**")
     try:
         sympy = _sympy()
-        from sympy.parsing.sympy_parser import parse_expr, standard_transformations
+        from sympy.parsing.sympy_parser import (
+            implicit_multiplication_application,
+            parse_expr,
+            standard_transformations,
+        )
 
+        transformations = standard_transformations
+        if implicit:
+            transformations = transformations + (implicit_multiplication_application,)
         local = {
             name: sympy.Symbol(name)
             for name in set(_IDENT.findall(normalized))
@@ -198,7 +375,7 @@ def safe_parse(text: str):
             lambda: parse_expr(
                 normalized,
                 local_dict=local,
-                transformations=standard_transformations,
+                transformations=transformations,
                 evaluate=True,
             )
         )

@@ -3101,12 +3101,20 @@ class TestVerificationServer:
         result = limiting_case_check(r"\frac{1}{1 + x}", {r"x \to \infty": "0"})
         assert result["overall_cas_verdict"] == "pass"
 
-    def test_limiting_case_cas_latex_juxtaposed_superscripts_degrade_safely(self):
+    def test_limiting_case_cas_latex_juxtaposed_superscripts_rescued(self):
         from gpd.mcp.servers.verification_server import limiting_case_check
 
-        # lark cannot parse juxtaposed superscript products (a^2 b^2); the
-        # oracle must degrade to inconclusive, never a false pass.
+        # lark rejects juxtaposed superscript products (a^2 b^2); the delatexify
+        # fallback rescues them. Kinetic energy hbar^2 k^2 / 2m -> 0 as hbar -> 0.
         result = limiting_case_check(r"\frac{\hbar^2 k^2}{2m}", {r"\hbar \to 0": "0"})
+        assert result["overall_cas_verdict"] == "pass"
+        assert result["results"][0]["cas"]["computed_limit"] == "0"
+
+    def test_limiting_case_cas_latex_derivative_degrades_safely(self):
+        from gpd.mcp.servers.verification_server import limiting_case_check
+
+        # Differential operators must never be faked into algebra: inconclusive.
+        result = limiting_case_check(r"\frac{d^2 \psi}{dx^2}", {r"x \to 0": "0"})
         assert result["results"][0]["cas"]["verdict"] == "inconclusive"
         assert result["overall_cas_verdict"] != "pass"
 
@@ -3115,6 +3123,15 @@ class TestVerificationServer:
 
         assert _cas.safe_parse(r"\input{/etc/passwd}") is None
         assert _cas.safe_parse(r"\frac{\hbar^2}{2m}") is not None
+
+    def test_cas_delatexify_hamiltonian_and_refuses_derivatives(self):
+        from gpd.mcp.servers import _cas
+
+        # Full harmonic-oscillator Hamiltonian parses via the delatexify fallback.
+        assert _cas.safe_parse(r"\frac{p^2}{2m} + \frac{1}{2} m \omega^2 x^2") is not None
+        # Derivative / Laplacian operators are refused (stay None → inconclusive).
+        assert _cas.safe_parse(r"\frac{d^2 \psi}{dx^2}") is None
+        assert _cas.safe_parse(r"\nabla^2 \phi") is None
 
     def test_limiting_case_check_invalid_limit_key_returns_error_envelope(self):
         from gpd.mcp.servers.verification_server import limiting_case_check
