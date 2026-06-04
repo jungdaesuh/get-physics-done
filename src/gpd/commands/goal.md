@@ -28,6 +28,10 @@ checkpoint with receipt), or blocked.
 </objective>
 
 <execution_context>
+Canonical workflow index: `{GPD_INSTALL_DIR}/workflows/goal.md` (compatibility
+index only; never load it as a stage authority). The sole executable authority
+is the bootstrap included below.
+
 @{GPD_INSTALL_DIR}/workflows/goal/goal-bootstrap.md
 </execution_context>
 
