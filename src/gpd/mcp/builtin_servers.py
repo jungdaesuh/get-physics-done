@@ -68,6 +68,11 @@ _BUILTIN_SERVERS: dict[str, _ServerDef] = {
         "args": ["-m", "gpd.mcp.servers.verification_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
+    "gpd-mayfly": {
+        "command": _PYTHON_COMMAND_SENTINEL,
+        "args": ["-m", "gpd.mcp.servers.mayfly_server"],
+        "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
+    },
     "gpd-arxiv": {
         "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.arxiv_bridge"],
@@ -232,6 +237,43 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
             "tool": "get_checklist",
             "input": {"domain": "qft"},
             "expect": "contains Ward identities",
+        },
+    },
+    "gpd-mayfly": {
+        "description": (
+            "GPD Mayfly research-campaign notebook. Manages the depth-tiered knowledge graph "
+            "under GPD/mayfly/ (FRONTIER, MAP, topics, epochs, sessions, journal). "
+            "Provides read tools for PI navigation (read_frontier, read_map, read_knowledge, "
+            "search_notebook) and write tools for researcher maintenance "
+            "(update_frontier, upsert_knowledge, append_journal_row, write_session_notes). "
+            "Also exposes read_session_log for reviewing automatically-captured session records."
+        ),
+        "capabilities": [
+            "bootstrap_mayfly",
+            "read_frontier",
+            "read_map",
+            "list_knowledge",
+            "read_knowledge",
+            "read_journal",
+            "list_sessions",
+            "read_session_notes",
+            "list_epochs",
+            "read_epoch",
+            "read_session_log",
+            "search_notebook",
+            "update_frontier",
+            "update_map",
+            "upsert_knowledge",
+            "write_session_notes",
+            "append_journal_row",
+            "write_epoch_summary",
+        ],
+        "registry_prefix": "gpd_mayfly",
+        "health_check": {
+            "probe_kind": "schema_valid",
+            "tool": "list_knowledge",
+            "input": {"project_dir": "/tmp"},
+            "expect": "returns topics list",
         },
     },
     "gpd-arxiv": {

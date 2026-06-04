@@ -45,3 +45,17 @@ Follow the included research-phase bootstrap authority. Research handoff loading
 Do not duplicate init, spawn, or return routing here.
 Research depth follows the workflow-owned `research_mode`.
 </process>
+
+<mayfly_maintenance>
+**After completing phase research** — update the Mayfly notebook (project_dir=$CWD):
+
+1. `gpd_mayfly:read_session_log` — check for unprocessed sessions.
+2. For each significant finding: `gpd_mayfly:upsert_knowledge(topic, content)`.
+   Preserve prior evidence bullets; add `→ session NNN` links to new findings.
+3. `gpd_mayfly:update_frontier` — current best approach, directions, dead ends.
+4. `gpd_mayfly:append_journal_row` — outcome + summary + knowledge_updated slugs.
+5. `gpd_mayfly:write_session_notes` — approach, what you found, what to try next.
+6. If new topics or status changes: `gpd_mayfly:update_map`.
+
+Skip silently if gpd-mayfly tools are unavailable.
+</mayfly_maintenance>
