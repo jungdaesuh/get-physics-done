@@ -2137,6 +2137,42 @@ def _dims_equal(a: dict[str, int], b: dict[str, int]) -> bool:
     return all(a.get(k, 0) == b.get(k, 0) for k in all_keys)
 
 
+# Named physical quantities → base-dimension exponents over {M, L, T, Q, Theta}.
+# Used to give real symbols dimensions for symbolic dimensional analysis.
+_NAMED_DIMENSIONS: dict[str, dict[str, int]] = {
+    "dimensionless": {}, "scalar": {}, "1": {},
+    "mass": {"M": 1}, "length": {"L": 1}, "distance": {"L": 1}, "position": {"L": 1},
+    "time": {"T": 1}, "charge": {"Q": 1}, "temperature": {"Theta": 1},
+    "current": {"Q": 1, "T": -1},
+    "velocity": {"L": 1, "T": -1}, "speed": {"L": 1, "T": -1},
+    "acceleration": {"L": 1, "T": -2},
+    "momentum": {"M": 1, "L": 1, "T": -1},
+    "force": {"M": 1, "L": 1, "T": -2},
+    "energy": {"M": 1, "L": 2, "T": -2}, "work": {"M": 1, "L": 2, "T": -2},
+    "power": {"M": 1, "L": 2, "T": -3},
+    "pressure": {"M": 1, "L": -1, "T": -2},
+    "frequency": {"T": -1}, "angular_frequency": {"T": -1},
+    "area": {"L": 2}, "volume": {"L": 3}, "density": {"M": 1, "L": -3},
+    "action": {"M": 1, "L": 2, "T": -1},  # e.g. hbar
+    "voltage": {"M": 1, "L": 2, "T": -2, "Q": -1},
+}
+
+
+def _spec_to_dimvec(spec: str) -> dict[str, int] | None:
+    """Resolve a dimension spec to base-exponents, or None if unrecognized.
+
+    Accepts a named quantity ("energy", "velocity", ...) or a bracket form
+    ("[M][L]^2[T]^-2"). Returns {} for an explicitly dimensionless spec.
+    """
+    text = spec.strip()
+    named = _NAMED_DIMENSIONS.get(text.lower())
+    if named is not None:
+        return dict(named)
+    if "[" in text:
+        return {k: v for k, v in _parse_dimensions(text).items() if v != 0}
+    return None
+
+
 # ─── MCP Tools ────────────────────────────────────────────────────────────────
 
 
@@ -4906,22 +4942,43 @@ def get_bundle_checklist(bundle_ids: BundleIdListInput) -> dict:
 
 
 @mcp.tool(annotations=read_only_tool_annotations())
-def dimensional_check(expressions: list[str]) -> dict:
+def dimensional_check(expressions: list[str], dimensions: dict[str, str] | None = None) -> dict:
     """Verify dimensional consistency of physics expressions.
 
-    Each expression should be in the format "LHS = RHS" where dimensions
-    are annotated with [M], [L], [T], [Q], [Theta] notation.
+    Two modes:
 
-    Example: "[M][L]^2[T]^-2 = [M][L]^2[T]^-2" (energy = energy)
+    1. **Annotated** — each expression is "LHS = RHS" with dimensions written in
+       [M], [L], [T], [Q], [Theta] notation, e.g. "[M][L]^2[T]^-2 = [M][L]^2[T]^-2".
+    2. **Symbolic** — pass real expressions (e.g. "E = m c^2", LaTeX allowed) plus
+       a ``dimensions`` map of symbol → dimension. Each dimension is a named
+       quantity ("energy", "velocity", "mass", "force", ...) or a bracket form
+       ("[M][L]^2[T]^-2"). The tool then computes the dimensions of each side
+       with SymPy and returns a real pass/fail in the result's ``cas`` block,
+       also flagging sums whose terms have incompatible dimensions.
+
+    Symbols absent from ``dimensions`` or otherwise unresolvable yield an
+    ``inconclusive`` verdict — never a false pass.
     """
     with gpd_span("mcp.verification.dimensional_check"):
         validated_expressions, error = _validate_string_list(expressions, field_name="expressions")
         if error is not None:
             return error
-        return stable_mcp_response(_dimensional_check_inner(validated_expressions))
+        symbol_dims: dict[str, dict[str, int]] | None = None
+        if dimensions is not None:
+            validated_dims, error = _validate_string_mapping(dimensions, field_name="dimensions")
+            if error is not None:
+                return error
+            symbol_dims = {}
+            for symbol, spec in validated_dims.items():
+                dimvec = _spec_to_dimvec(spec)
+                if dimvec is not None:
+                    symbol_dims[symbol] = dimvec
+        return stable_mcp_response(_dimensional_check_inner(validated_expressions, symbol_dims))
 
 
-def _dimensional_check_inner(expressions: list[str]) -> dict:
+def _dimensional_check_inner(
+    expressions: list[str], symbol_dims: dict[str, dict[str, int]] | None = None
+) -> dict:
     results: list[dict[str, object]] = []
 
     for expr in expressions:
@@ -4951,7 +5008,17 @@ def _dimensional_check_inner(expressions: list[str]) -> dict:
             "lhs_dimensions": {k: v for k, v in lhs_dims.items() if v != 0},
             "rhs_dimensions": {k: v for k, v in rhs_dims.items() if v != 0},
         }
-        if no_annotations:
+        if no_annotations and symbol_dims is not None:
+            # Symbolic path: compute dimensions of real symbols via the CAS.
+            cas = _cas.check_dimensions(expr, symbol_dims)
+            result["cas"] = cas
+            if cas["verdict"] == _cas.VERDICT_PASS:
+                result["valid"] = True
+            if "lhs_dimensions" in cas:
+                result["lhs_dimensions"] = cas["lhs_dimensions"]
+                result["rhs_dimensions"] = cas["rhs_dimensions"]
+            result["note"] = cas["detail"]
+        elif no_annotations:
             result["note"] = "No dimension annotations found — cannot verify"
         elif not match:
             mismatches = {}
@@ -4964,10 +5031,13 @@ def _dimensional_check_inner(expressions: list[str]) -> dict:
         results.append(result)
 
     all_valid = bool(results) and all(r.get("valid", False) for r in results)
+    cas_verdicts = [r["cas"]["verdict"] for r in results if isinstance(r.get("cas"), dict)]
     return {
         "schema_version": VERIFICATION_SCHEMA_VERSION,
         "all_consistent": all_valid,
         "checked_count": len(results),
+        "cas_executed": sum(1 for r in results if r.get("cas", {}).get("attempted")),
+        "overall_cas_verdict": _aggregate_cas_verdict(cas_verdicts),
         "results": results,
     }
 

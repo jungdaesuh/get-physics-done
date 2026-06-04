@@ -2980,6 +2980,53 @@ class TestVerificationServer:
         assert result["schema_version"] == 1
         assert result["error"] == "expressions[1] must be a string"
 
+    # --- dimensional_check symbolic mode (real expressions + dimension map) ---
+
+    def test_dimensional_check_symbolic_energy_mass_velocity(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        result = dimensional_check(["E = m*c^2"], {"E": "energy", "m": "mass", "c": "velocity"})
+        assert result["all_consistent"] is True
+        assert result["results"][0]["cas"]["verdict"] == "pass"
+
+    def test_dimensional_check_symbolic_catches_inconsistency(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        result = dimensional_check(["E = m*c"], {"E": "energy", "m": "mass", "c": "velocity"})
+        assert result["all_consistent"] is False
+        assert result["results"][0]["cas"]["verdict"] == "fail"
+
+    def test_dimensional_check_symbolic_latex(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        result = dimensional_check(
+            [r"E = \frac{1}{2} m v^2"], {"E": "energy", "m": "mass", "v": "velocity"}
+        )
+        assert result["results"][0]["cas"]["verdict"] == "pass"
+
+    def test_dimensional_check_symbolic_mixed_sum_fails(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        # Adding a length and a time is dimensionally inconsistent.
+        result = dimensional_check(["x = a + t"], {"x": "length", "a": "length", "t": "time"})
+        assert result["results"][0]["cas"]["verdict"] == "fail"
+
+    def test_dimensional_check_symbolic_missing_symbol_inconclusive(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        result = dimensional_check(["E = m*c^2"], {"E": "energy", "m": "mass"})
+        assert result["results"][0]["cas"]["verdict"] == "inconclusive"
+        assert result["all_consistent"] is False
+
+    def test_dimensional_check_symbolic_bracket_spec(self):
+        from gpd.mcp.servers.verification_server import dimensional_check
+
+        # A dimension may be given as a bracket spec instead of a name.
+        result = dimensional_check(
+            ["p = m*v"], {"p": "[M][L][T]^-1", "m": "mass", "v": "velocity"}
+        )
+        assert result["results"][0]["cas"]["verdict"] == "pass"
+
     # --- limiting_case_check (pure function) ---
 
     def test_limiting_case_check_basic(self):

@@ -599,3 +599,119 @@ def check_symmetry(expression: str, symmetry: str, timeout_s: float = _DEFAULT_T
         "invariant": invariant,
         "detail": f"expression is {classification} under {var_name} -> -{var_name}",
     }
+
+
+# ─── Dimensional analysis of real expressions ──────────────────────────────────
+
+
+class _DimError(Exception):
+    """Internal: a dimensional-analysis failure with a classified ``kind``."""
+
+    def __init__(self, message: str, kind: str) -> None:
+        super().__init__(message)
+        self.kind = kind  # "inconsistent" | "unknown" | "unsupported"
+
+
+def _nonzero(dims: dict) -> dict:
+    return {k: v for k, v in dims.items() if v != 0}
+
+
+def _parse_dimension_side(text: str):
+    """Parse one side of a dimensional equation (LaTeX or plain, implicit mult)."""
+    parsed = safe_parse(text)
+    if parsed is not None:
+        return parsed
+    if not _looks_like_latex(text):
+        return _parse_plain(text, implicit=True)
+    return None
+
+
+def dimension_vector(expr, symbol_dims: dict) -> dict:
+    """Return the base-dimension exponent map of ``expr``.
+
+    ``symbol_dims`` maps each free-symbol name to a base-exponent dict (e.g.
+    ``{"M": 1, "L": 2, "T": -2}``). Raises ``_DimError`` on an unknown symbol,
+    an inconsistent sum, or an unsupported node — the caller maps those to a
+    FAIL (inconsistent sum) or INCONCLUSIVE verdict.
+    """
+    sympy = _sympy()
+    if expr.is_Number or getattr(expr, "is_NumberSymbol", False):
+        return {}
+    if expr is sympy.I or expr is sympy.zoo or expr is sympy.nan or expr is sympy.oo:
+        return {}
+    if expr.is_Symbol:
+        name = str(expr)
+        if name in symbol_dims:
+            return dict(symbol_dims[name])
+        raise _DimError(f"no dimension provided for symbol '{name}'", "unknown")
+    if expr.is_Add:
+        vectors = [dimension_vector(arg, symbol_dims) for arg in expr.args]
+        base = _nonzero(vectors[0])
+        for vector in vectors[1:]:
+            if _nonzero(vector) != base:
+                raise _DimError("terms in a sum have inconsistent dimensions", "inconsistent")
+        return vectors[0]
+    if expr.is_Mul:
+        total: dict = {}
+        for factor in expr.args:
+            for key, value in dimension_vector(factor, symbol_dims).items():
+                total[key] = total.get(key, 0) + value
+        return total
+    if expr.is_Pow:
+        base, exponent = expr.args
+        if not (exponent.is_Number and exponent.is_rational):
+            raise _DimError("non-rational exponent in dimensional analysis", "unsupported")
+        return {key: value * exponent for key, value in dimension_vector(base, symbol_dims).items()}
+    if expr.is_Function:
+        for arg in expr.args:
+            if _nonzero(dimension_vector(arg, symbol_dims)):
+                raise _DimError(f"argument of {expr.func} must be dimensionless", "inconsistent")
+        return {}
+    if expr.is_constant():
+        return {}
+    raise _DimError(f"unsupported expression node {expr.func}", "unsupported")
+
+
+def check_dimensions(expression: str, symbol_dims: dict) -> dict:
+    """Verify dimensional homogeneity of ``LHS = RHS`` given symbol dimensions.
+
+    Returns an additive ``cas`` payload (pass/fail/inconclusive). A sum mixing
+    incompatible dimensions, or LHS dimensions differing from RHS, is a FAIL;
+    unknown symbols / unparseable sides are INCONCLUSIVE (never a false pass).
+    """
+    if "=" not in expression:
+        return {
+            "attempted": False,
+            "verdict": VERDICT_INCONCLUSIVE,
+            "detail": "expression must contain '=' to compare dimensions",
+        }
+    lhs_text, rhs_text = expression.split("=", 1)
+    lhs = _parse_dimension_side(lhs_text)
+    rhs = _parse_dimension_side(rhs_text)
+    if lhs is None or rhs is None:
+        return {
+            "attempted": False,
+            "verdict": VERDICT_INCONCLUSIVE,
+            "detail": "one or both sides are not machine-parseable",
+        }
+    try:
+        lhs_dims = _nonzero(dimension_vector(lhs, symbol_dims))
+        rhs_dims = _nonzero(dimension_vector(rhs, symbol_dims))
+    except _DimError as exc:
+        verdict = VERDICT_FAIL if exc.kind == "inconsistent" else VERDICT_INCONCLUSIVE
+        return {"attempted": exc.kind == "inconsistent", "verdict": verdict, "detail": str(exc)}
+    except Exception:  # noqa: BLE001 - any other failure → inconclusive, never pass
+        return {"attempted": False, "verdict": VERDICT_INCONCLUSIVE, "detail": "could not compute dimensions"}
+
+    consistent = lhs_dims == rhs_dims
+    return {
+        "attempted": True,
+        "verdict": VERDICT_PASS if consistent else VERDICT_FAIL,
+        "lhs_dimensions": {k: int(v) if v == int(v) else str(v) for k, v in lhs_dims.items()},
+        "rhs_dimensions": {k: int(v) if v == int(v) else str(v) for k, v in rhs_dims.items()},
+        "detail": (
+            "both sides share the same dimensions"
+            if consistent
+            else "left and right sides have different dimensions"
+        ),
+    }
