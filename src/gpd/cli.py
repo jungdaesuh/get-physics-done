@@ -4484,10 +4484,12 @@ def _goal_gate_payload() -> dict:
     from gpd.core.goal_contract import GoalContract, validate_goal_contract_payload
     from gpd.core.goal_evidence import collect_claim_outcomes, collect_phase_statuses
     from gpd.core.goal_gate import GoalGateError, goal_gate_summary
-    from gpd.core.state import state_load
+    from gpd.core.state import state_load_readonly
 
     cwd = _get_cwd()
-    loaded = state_load(cwd)
+    # goal gate/status are read-only inspectors; mirror `gpd state load` and use
+    # the read-only loader so we never acquire a lock or write recovery state.
+    loaded = state_load_readonly(cwd)
     payload = (loaded.state or {}).get("goal_contract")
     if payload is None:
         _error(
