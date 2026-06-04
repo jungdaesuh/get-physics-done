@@ -3,11 +3,12 @@ template_version: 1
 ---
 
 > **Context:** This template is for the `new-project` literature survey — researching a topic BEFORE
-> starting a new project. For analyzing existing project artifacts, see `templates/analysis/`.
+> starting a new project. For analyzing existing project artifacts, use `map-research`, which writes
+> split outputs under `GPD/research-map/` from `references/templates/research-mapper/`.
 
 # Research Summary Template
 
-Template for `GPD/research/SUMMARY.md` - executive summary of research analysis with roadmap implications.
+Template for `GPD/literature/SUMMARY.md` - executive summary of research analysis with roadmap implications.
 
 <template>
 

@@ -10,10 +10,14 @@ allowed-tools:
   - shell
   - search_files
   - find_files
+help:
+  group: Planning and execution
+  order: 160
+  compact_description: Inspect one phase's artifacts and status
+  display_signature: gpd:show-phase <number>
+  root_detail_order: 90
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Inspect a single research phase in detail: its artifacts, completion status, key results, convention changes, and verification state. Produces a structured report for quick situational awareness.
@@ -34,13 +38,13 @@ Phase: $ARGUMENTS (required)
 </context>
 
 <process>
-Execute the show-phase workflow from @{GPD_INSTALL_DIR}/workflows/show-phase.md end-to-end.
+Execute the included show-phase workflow end-to-end.
 Preserve all report sections and formatting.
 
 ## Step 1: Init Context
 
 ```bash
-INIT=$(gpd init phase-op "$ARGUMENTS")
+INIT=$(gpd --raw init phase-op "$ARGUMENTS")
 ```
 
 Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`, `phase_slug`, `padded_phase`.
@@ -49,7 +53,7 @@ Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`
 
 ## Step 2: Load Phase Directory
 
-List all files in the phase directory and categorize them (PLANs, SUMMARYs, CONTEXT, RESEARCH, DISCOVERY, VERIFICATION, VALIDATION, scripts, data).
+List all files in the phase directory and categorize them (PLANs, SUMMARYs, CONTEXT, RESEARCH, VERIFICATION, VALIDATION, scripts, data).
 
 ## Step 3: Parse Roadmap
 
@@ -64,7 +68,7 @@ For standalone `PLAN.md` and numbered `*-PLAN.md`, check whether the matching `S
 Extract key results from standalone `SUMMARY.md` and numbered `*-SUMMARY.md` files using `summary-extract`:
 
 ```bash
-gpd summary-extract <path> --field one_liner --field key_results --field equations
+gpd --raw summary-extract <path> --field one_liner --field key_results --field equations
 ```
 
 ## Step 6: Verification Status

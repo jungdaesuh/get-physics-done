@@ -4,11 +4,11 @@ template_version: 1
 
 # Learned Pattern Template
 
-Template for `~/GPD/learned-patterns/patterns-by-domain/{domain}/{category}-{slug}.md` -- a reusable error pattern captured from debugging or verification across GPD projects.
+Template for `{patterns_root}/patterns-by-domain/{domain}/{category}-{slug}.md`, where `patterns_root` resolves as `GPD_PATTERNS_ROOT` -> `GPD_DATA_DIR/learned-patterns` -> `~/.gpd/learned-patterns`. The default data-dir fallback is `~/.gpd/learned-patterns/patterns-by-domain/...`. This records a reusable error pattern captured from debugging or verification across GPD projects.
 
 **Purpose:** Record a physics error pattern, convention pitfall, or recurring computational issue so that future projects can detect and prevent it before it causes problems.
 
-For how patterns are managed, read, and written, see `@{GPD_INSTALL_DIR}/references/shared/cross-project-patterns.md`.
+For how patterns are managed, read, and written, see `{GPD_INSTALL_DIR}/references/shared/cross-project-patterns.md`.
 
 ---
 
@@ -97,7 +97,7 @@ Explain the root cause clearly enough that someone unfamiliar with the specific 
 
 ### How to detect
 
-Concrete, actionable checks that the verifier can perform. Reference specific verification patterns from `@get-physics-done/references/verification/core/verification-core.md` (or the relevant domain file) where applicable.
+Concrete, actionable checks that the verifier can perform. Reference specific verification patterns from `{GPD_INSTALL_DIR}/references/verification/core/verification-core.md` (or the relevant domain file) where applicable.
 
 - Good: "Check the sign of Im[G^R(omega)] for omega > 0. It must be negative (for the convention where G^R has a pole at omega - epsilon_k + i\*eta). If positive, the metric signature is likely flipped."
 - Bad: "Check the propagator carefully." (Not actionable.)

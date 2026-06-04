@@ -44,8 +44,11 @@ assets:
   protocols_optional:
     - path: references/protocols/de-sitter-space.md
     - path: references/protocols/effective-field-theory.md
+  planning_guides:
+    - path: references/planning/gr-cosmology.md
+      note: Use the gauge, background, perturbation, and observable-extraction skeleton for CMB planning.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/cosmological-perturbation-cmb.md
 anchor_prompts:
   - State the gauge choice, time variable, and power-spectrum normalization before solving perturbations or comparing codes.
   - Surface the decisive benchmark, whether Planck best-fit, CLASS or CAMB parity, or an analytic super-Hubble or Sachs-Wolfe limit.

@@ -8,11 +8,14 @@ Supports cross-platform LaTeX detection including Windows (MiKTeX, TeX Live).
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 import platform
+import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,14 +23,25 @@ from pybtex.database import BibliographyData
 
 from gpd.mcp.paper.artifact_manifest import build_artifact_manifest, write_artifact_manifest
 from gpd.mcp.paper.bibliography import (
+    BibliographyAudit,
     CitationSource,
+    audit_bibliography,
     build_bibliography_with_audit,
     write_bib_file,
     write_bibliography_audit,
 )
 from gpd.mcp.paper.figures import _prepare_figures_with_sources
 from gpd.mcp.paper.journal_map import get_journal_spec
-from gpd.mcp.paper.models import FigureRef, JournalSpec, PaperConfig, PaperOutput
+from gpd.mcp.paper.models import (
+    ArtifactManifest,
+    ArtifactRecord,
+    FigureRef,
+    JournalSpec,
+    PaperConfig,
+    PaperOutput,
+    PaperToolchainCapability,
+    derive_output_filename,
+)
 from gpd.mcp.paper.template_registry import render_paper
 
 logger = logging.getLogger(__name__)
@@ -44,6 +58,11 @@ _WINDOWS_LATEX_SEARCH_DIRS: list[str] = [
     os.path.join(os.environ.get("PROGRAMFILES", ""), "texlive"),
     os.path.join("C:\\", "texlive"),
 ]
+
+
+def _which(binary: str) -> str | None:
+    """Module-local wrapper around :func:`shutil.which` for test isolation."""
+    return shutil.which(binary)
 
 
 def _find_in_windows_paths(binary: str) -> str | None:
@@ -78,7 +97,7 @@ def find_latex_compiler(compiler: str = "pdflatex") -> str | None:
 
     Returns the full path to the compiler, or ``None`` if not found.
     """
-    found = shutil.which(compiler)
+    found = _which(compiler)
     if found:
         return found
     if platform.system() == "Windows":
@@ -86,57 +105,187 @@ def find_latex_compiler(compiler: str = "pdflatex") -> str | None:
     return None
 
 
-@dataclass(frozen=True)
-class LatexToolchainStatus:
-    """Result of a LaTeX toolchain availability check."""
+def find_tectonic() -> str | None:
+    """Locate the Tectonic TeX engine on the current system.
 
-    available: bool
-    compiler_path: str | None = None
-    distribution: str | None = None
-    message: str = ""
+    First tries the standard PATH via :func:`shutil.which`.  On Windows, also
+    checks ``%LOCALAPPDATA%\\Programs\\Tectonic\\tectonic.exe`` and
+    ``~/.cargo/bin/tectonic.exe`` — the two most common non-PATH install
+    locations for Tectonic on Windows.
 
-
-def detect_latex_toolchain(compiler: str = "pdflatex") -> LatexToolchainStatus:
-    """Detect whether a usable LaTeX toolchain is present.
-
-    Returns a :class:`LatexToolchainStatus` summarising availability, the
-    resolved compiler path, the likely distribution name, and a
-    human-readable message.
+    Returns the full path to the tectonic binary, or ``None`` if not found.
     """
+    found = _which("tectonic")
+    if found:
+        return found
+    if platform.system() == "Windows":
+        candidates = [
+            os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "Tectonic", "tectonic.exe"),
+            os.path.join(os.path.expanduser("~"), ".cargo", "bin", "tectonic.exe"),
+        ]
+        for candidate in candidates:
+            if candidate and os.path.isfile(candidate):
+                return candidate
+    return None
+
+
+LatexToolchainStatus = PaperToolchainCapability
+
+
+def detect_latex_toolchain(compiler: str = "pdflatex", *, prefer_tectonic: bool = True) -> LatexToolchainStatus:
+    """Detect whether a usable paper toolchain is present.
+
+    Returns a :class:`LatexToolchainStatus` summarising compiler availability,
+    the resolved compiler path, helper-tool availability, the likely
+    distribution name, and a human-readable readiness summary.
+
+    Args:
+        compiler: The pdflatex-family compiler to probe (default ``"pdflatex"``).
+        prefer_tectonic: When ``True`` (the default), probe for Tectonic first.
+            If Tectonic is found, it is reported as the active engine and the
+            toolchain is considered ``"ready"`` without requiring separate
+            bibtex / latexmk binaries — Tectonic handles them internally.
+    """
+    tectonic_path = find_tectonic() if prefer_tectonic else None
+    tectonic_available = tectonic_path is not None
+
     path = find_latex_compiler(compiler)
-    if path is None:
-        return LatexToolchainStatus(
-            available=False,
-            message=get_latex_install_guidance(),
+    bibtex_path = find_latex_compiler("bibtex")
+    latexmk_path = find_latex_compiler("latexmk")
+    kpsewhich_path = find_latex_compiler("kpsewhich")
+
+    compiler_available = path is not None
+    bibtex_available = bibtex_path is not None
+    latexmk_available = latexmk_path is not None
+    kpsewhich_available = kpsewhich_path is not None
+    # PDF extraction now uses pypdf (BSD-3-Clause) — no pdftotext binary required.
+    try:
+        import pypdf  # noqa: F401
+
+        pdf_lib_available = True
+    except ImportError:
+        pdf_lib_available = False
+    warnings: list[str] = []
+
+    if not pdf_lib_available:
+        warnings.append(
+            "pypdf not found; PDF peer-review intake will require a nearby `.txt` companion file, "
+            "but TeX/Markdown/TXT/CSV/TSV and built-in DOCX/XLSX intake remain available. "
+            "Install with: pip install 'get-physics-done[paper]'"
         )
 
+    # When Tectonic is available and preferred, it replaces pdflatex + bibtex +
+    # latexmk entirely — no separate install guidance needed for those.
+    if tectonic_available and prefer_tectonic:
+        summary = f"Tectonic found: {tectonic_path}; handles bibliography and multi-pass internally"
+        summary += "; readiness=ready"
+        return LatexToolchainStatus(
+            compiler="tectonic",
+            compiler_available=True,
+            compiler_path=tectonic_path,
+            distribution="Tectonic",
+            bibtex_available=bibtex_available,
+            latexmk_available=latexmk_available,
+            kpsewhich_available=kpsewhich_available,
+            tectonic_available=True,
+            tectonic_path=tectonic_path,
+            pdf_review_ready=pdf_lib_available,
+            readiness_state="ready",
+            message=summary,
+            warnings=warnings,
+        )
+
+    if compiler_available:
+        if not bibtex_available:
+            warnings.append(
+                "bibtex not found; bibliography-free builds may still work, but citation-bearing builds and "
+                "submission prep can fail without bibtex."
+            )
+        if not latexmk_available:
+            warnings.append("latexmk not found; multi-pass compilation will fall back to manual passes.")
+        if not kpsewhich_available:
+            warnings.append("kpsewhich not found; TeX resource checks will assume installed resources.")
+    if not compiler_available:
+        warnings.append("Install a LaTeX distribution to enable paper compilation.")
+
     # Heuristic distribution name
-    lower = path.lower().replace("\\", "/")
-    if "miktex" in lower:
-        dist = "MiKTeX"
-    elif "texlive" in lower:
-        dist = "TeX Live"
-    elif "mactex" in lower or "/Library/TeX/" in path:
-        dist = "MacTeX"
+    dist: str | None
+    if compiler_available:
+        lower = path.lower().replace("\\", "/")
+        if "miktex" in lower:
+            dist = "MiKTeX"
+        elif "texlive" in lower:
+            dist = "TeX Live"
+        elif "mactex" in lower or "/Library/TeX/" in path:
+            dist = "MacTeX"
+        else:
+            dist = "TeX distribution"
     else:
-        dist = "TeX distribution"
+        dist = None
+
+    if not compiler_available:
+        return LatexToolchainStatus(
+            compiler=compiler,
+            compiler_available=False,
+            compiler_path=None,
+            distribution=None,
+            bibtex_available=bibtex_available,
+            latexmk_available=latexmk_available,
+            kpsewhich_available=kpsewhich_available,
+            tectonic_available=False,
+            tectonic_path=None,
+            pdf_review_ready=pdf_lib_available,
+            readiness_state="blocked",
+            message=get_latex_install_guidance(),
+            warnings=warnings,
+        )
+
+    if bibtex_available:
+        readiness_state = "ready"
+        summary = f"{compiler} found ({dist}): {path}; BibTeX available"
+    else:
+        readiness_state = "degraded"
+        summary = f"{compiler} found ({dist}): {path}; BibTeX missing"
+
+    if latexmk_available:
+        summary += "; latexmk available"
+    else:
+        summary += "; latexmk unavailable"
+    if kpsewhich_available:
+        summary += "; kpsewhich available"
+    else:
+        summary += "; kpsewhich unavailable"
+    summary += f"; readiness={readiness_state}"
 
     return LatexToolchainStatus(
-        available=True,
+        compiler=compiler,
+        compiler_available=True,
         compiler_path=path,
         distribution=dist,
-        message=f"{compiler} found ({dist}): {path}",
+        bibtex_available=bibtex_available,
+        latexmk_available=latexmk_available,
+        kpsewhich_available=kpsewhich_available,
+        tectonic_available=False,
+        tectonic_path=None,
+        pdf_review_ready=pdf_lib_available,
+        readiness_state=readiness_state,
+        message=summary,
+        warnings=warnings,
     )
 
 
 def get_latex_install_guidance() -> str:
     """Return platform-specific guidance for installing a LaTeX distribution."""
     system = platform.system()
+    tectonic_guidance = (
+        "  - Tectonic (recommended, lightweight ~80MB, single binary):\n"
+        "      https://tectonic-typesetting.github.io/en-US/install.html\n"
+        "    Handles pdflatex + bibtex + multi-pass in one self-contained binary.\n"
+    )
     if system == "Windows":
         return (
             "No LaTeX compiler found.\n"
-            "Install one of the following LaTeX distributions:\n"
-            "  - MiKTeX (recommended): https://miktex.org/download\n"
+            "Install one of the following:\n" + tectonic_guidance + "  - MiKTeX: https://miktex.org/download\n"
             "    After install, open the MiKTeX Console and enable automatic\n"
             "    package installation so missing .sty/.cls files are fetched\n"
             "    on demand.\n"
@@ -147,19 +296,21 @@ def get_latex_install_guidance() -> str:
     if system == "Darwin":
         return (
             "No LaTeX compiler found.\n"
-            "Install a LaTeX distribution:\n"
-            "  - MacTeX (recommended): brew install --cask mactex\n"
-            "  - BasicTeX (smaller):    brew install --cask basictex\n"
-            "  - TeX Live:              https://tug.org/texlive/"
+            "Install one of the following:\n"
+            + tectonic_guidance
+            + "  - MacTeX (full, ~4.5GB): brew install --cask mactex\n"
+            "  - BasicTeX (smaller, ~100MB): brew install --cask basictex\n"
+            "  - TeX Live:                   https://tug.org/texlive/"
         )
     # Linux / other
     return (
         "No LaTeX compiler found.\n"
-        "Install TeX Live via your package manager:\n"
-        "  - Debian/Ubuntu: sudo apt install texlive-latex-base\n"
+        "Install one of the following:\n"
+        + tectonic_guidance
+        + "  - Debian/Ubuntu: sudo apt install texlive-latex-base\n"
         "  - Fedora:        sudo dnf install texlive-scheme-basic\n"
         "  - Arch:          sudo pacman -S texlive-basic\n"
-        "  - Or full suite:  https://tug.org/texlive/"
+        "  - Or full suite: https://tug.org/texlive/"
     )
 
 
@@ -201,34 +352,323 @@ def _merge_bibliography_data(*bibliographies: BibliographyData) -> BibliographyD
     return merged
 
 
-def check_tex_file(resource_name: str, install_hint: str | None = None) -> tuple[bool, str]:
+def _reference_bibtex_keys_from_audit(audit: BibliographyAudit | None) -> dict[str, str]:
+    """Return the final emitted BibTeX key for each referenced project anchor."""
+    if audit is None:
+        return {}
+
+    reference_bibtex_keys: dict[str, str] = {}
+    for entry in audit.entries:
+        reference_id = entry.reference_id.strip() if isinstance(entry.reference_id, str) else ""
+        if reference_id:
+            if reference_id in reference_bibtex_keys:
+                raise ValueError(f"duplicate bibliography reference_id {reference_id!r} in audit")
+            reference_bibtex_keys[reference_id] = entry.key
+    return reference_bibtex_keys
+
+
+class CitationCoherenceResult:
+    """Result of comparing .tex citations against .bib entries."""
+
+    __slots__ = (
+        "tex_cite_keys",
+        "bib_entry_keys",
+        "unreferenced_bib_keys",
+        "unresolved_cite_keys",
+        "warnings",
+    )
+
+    def __init__(
+        self,
+        tex_cite_keys: set[str],
+        bib_entry_keys: set[str],
+        unreferenced_bib_keys: set[str],
+        unresolved_cite_keys: set[str],
+        warnings: list[str],
+    ) -> None:
+        self.tex_cite_keys = tex_cite_keys
+        self.bib_entry_keys = bib_entry_keys
+        self.unreferenced_bib_keys = unreferenced_bib_keys
+        self.unresolved_cite_keys = unresolved_cite_keys
+        self.warnings = warnings
+
+
+_NOCITE_STAR_RE = re.compile(r"\\nocite\{\s*\*\s*\}")
+_BIB_KEY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
+
+
+def _path_is_under(path: Path, root: Path) -> bool:
+    resolved_path = path.resolve(strict=False)
+    resolved_root = root.resolve(strict=False)
+    return resolved_path == resolved_root or resolved_path.is_relative_to(resolved_root)
+
+
+def _validate_manifest_sidecar_location(path: Path, output_dir: Path, *, label: str, is_directory: bool) -> None:
+    if not _path_is_under(path, output_dir):
+        raise ValueError(
+            f"{label} must stay inside output_dir when emitting ARTIFACT-MANIFEST.json; "
+            "external sidecars would make the portable manifest reference paths outside the paper package"
+        )
+
+    resolved_path = path.resolve(strict=False)
+    resolved_output_dir = output_dir.resolve(strict=False)
+    relative_path = resolved_path.relative_to(resolved_output_dir)
+    metadata_parts = relative_path.parts if is_directory else relative_path.parent.parts
+    if not metadata_parts or metadata_parts[0].startswith("."):
+        return
+    if is_directory:
+        expected_location = "output_dir or under a hidden metadata directory inside output_dir"
+    else:
+        expected_location = "a direct child of output_dir or under a hidden metadata directory inside output_dir"
+    raise ValueError(f"{label} must be {expected_location}; non-hidden nested sidecars are not discoverable")
+
+
+def _callable_accepts_keyword(callback: object, keyword: str) -> bool:
+    side_effect = getattr(callback, "side_effect", None)
+    if callable(side_effect):
+        callback = side_effect
+    try:
+        signature = inspect.signature(callback)
+    except (TypeError, ValueError):
+        return True
+    return any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in signature.parameters.values()) or (
+        keyword in signature.parameters
+    )
+
+
+def _remove_failed_build_output(path: Path | None, output_dir: Path) -> None:
+    if path is None or not _path_is_under(path, output_dir):
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _mark_artifact_manifest_failed(
+    manifest: ArtifactManifest | None,
+    *,
+    stage: str,
+    errors: list[str],
+) -> ArtifactManifest | None:
+    if manifest is None or not manifest.artifacts:
+        return manifest
+
+    anchor = manifest.artifacts[0]
+    displayed_errors = errors[:5]
+    error_summary = "; ".join(displayed_errors)
+    if len(errors) > len(displayed_errors):
+        error_summary = f"{error_summary}; ... {len(errors) - len(displayed_errors)} more"
+
+    failure_record = ArtifactRecord(
+        artifact_id=f"build-failure-{stage}",
+        category="audit",
+        path=anchor.path,
+        sha256=anchor.sha256,
+        produced_by=f"build_paper:{stage}",
+        metadata={
+            "build_success": False,
+            "failure_stage": stage,
+            "error_count": len(errors),
+            "errors": error_summary,
+        },
+    )
+    return manifest.model_copy(update={"artifacts": [*manifest.artifacts, failure_record]})
+
+
+@dataclass(frozen=True)
+class _PublicationGate:
+    """Result of the strict final publication gate for compiled artifacts."""
+
+    success: bool
+    pdf_path: Path | None
+    failure_stage: str | None
+
+
+def _publication_gate(
+    result: CompilationResult,
+    *,
+    figures_prepared_successfully: bool,
+    errors: list[str],
+) -> _PublicationGate:
+    """Gate the externally visible PDF on every build precondition."""
+
+    success = result.success and figures_prepared_successfully and not errors
+    if success:
+        return _PublicationGate(success=True, pdf_path=result.pdf_path, failure_stage=None)
+    return _PublicationGate(
+        success=False,
+        pdf_path=None,
+        failure_stage="compile" if not result.success else "build",
+    )
+
+
+async def _build_and_emit_artifact_manifest(
+    config: PaperConfig,
+    output_dir: Path,
+    *,
+    tex_path: Path,
+    bib_path: Path | None,
+    bib_entry_source: str | None,
+    bibliography_audit_path: Path | None,
+    bibliography_audit: BibliographyAudit | None,
+    figure_source_pairs: list[tuple[FigureRef, FigureRef]],
+    manifest_path: Path | None,
+    pdf_path: Path | None = None,
+    failure_stage: str | None = None,
+    errors: list[str] | None = None,
+) -> ArtifactManifest:
+    """Build, failure-mark, and persist a paper artifact manifest."""
+
+    manifest = build_artifact_manifest(
+        config,
+        output_dir,
+        tex_path=tex_path,
+        bib_path=bib_path,
+        bib_entry_source=bib_entry_source,
+        bibliography_audit_path=bibliography_audit_path,
+        bibliography_audit=bibliography_audit,
+        figure_source_pairs=figure_source_pairs,
+        pdf_path=pdf_path,
+    )
+    if failure_stage is not None:
+        manifest = _mark_artifact_manifest_failed(manifest, stage=failure_stage, errors=errors or [])
+    if manifest_path is not None:
+        await asyncio.to_thread(write_artifact_manifest, manifest, manifest_path)
+    return manifest
+
+
+def check_citation_bib_coherence(
+    tex_content: str,
+    bib_content: str,
+) -> CitationCoherenceResult:
+    """Compare citation commands in rendered .tex against entries in .bib.
+
+    Operates on in-memory strings only -- no disk I/O.  Designed to run
+    inside ``build_paper()`` between the TeX render step and the artifact
+    manifest step.
+
+    Handles ``\\nocite{*}`` (standard LaTeX: all bib entries are considered
+    referenced).  Splits multi-key citations (``\\cite{a,b,c}``).
+    """
+    from gpd.core.paper_quality import _CITE_CMD_PREFIX_WITH_NOCITE, _visible_tex_content
+
+    all_cite_re = re.compile(
+        _CITE_CMD_PREFIX_WITH_NOCITE
+        + r"(?:\[[^\]]*\])*"  # optional [] arguments (natbib)
+        + r"\{([^}]*)\}"  # capture the key list
+    )
+    visible_tex_content = _visible_tex_content(tex_content)
+
+    # Detect \nocite{*} -- all bib entries are considered referenced
+    nocite_star = bool(_NOCITE_STAR_RE.search(visible_tex_content))
+
+    # Parse all \cite-family commands from .tex
+    tex_cite_keys: set[str] = set()
+    for match in all_cite_re.finditer(visible_tex_content):
+        for key in match.group(1).split(","):
+            stripped = key.strip()
+            if stripped:
+                tex_cite_keys.add(stripped)
+
+    # Parse all @type{key, entries from .bib
+    bib_entry_keys: set[str] = set()
+    for match in _BIB_KEY_RE.finditer(bib_content):
+        key = match.group(1).strip()
+        if key:
+            bib_entry_keys.add(key)
+
+    # If \nocite{*} is present, all bib entries count as referenced
+    if nocite_star:
+        unreferenced: set[str] = set()
+    else:
+        unreferenced = bib_entry_keys - tex_cite_keys
+
+    unresolved = tex_cite_keys - bib_entry_keys
+    # Remove the special "*" key from unresolved (it's a \nocite{*} artifact)
+    unresolved.discard("*")
+
+    warnings: list[str] = []
+
+    if bib_entry_keys and not tex_cite_keys and not nocite_star:
+        warnings.append(
+            f"Bibliography contains {len(bib_entry_keys)} entries but the "
+            f"manuscript body has zero \\cite{{}} commands. The bibliography "
+            f"will not appear in the compiled paper."
+        )
+    elif unreferenced:
+        sorted_keys = sorted(unreferenced)
+        preview = ", ".join(sorted_keys[:5])
+        suffix = f" (+{len(sorted_keys) - 5} more)" if len(sorted_keys) > 5 else ""
+        warnings.append(f"{len(unreferenced)} bibliography entries are never cited: {preview}{suffix}")
+
+    if unresolved:
+        sorted_keys = sorted(unresolved)
+        preview = ", ".join(sorted_keys[:5])
+        suffix = f" (+{len(sorted_keys) - 5} more)" if len(sorted_keys) > 5 else ""
+        warnings.append(f"{len(unresolved)} \\cite{{}} keys have no matching bibliography entry: {preview}{suffix}")
+
+    return CitationCoherenceResult(
+        tex_cite_keys=tex_cite_keys,
+        bib_entry_keys=bib_entry_keys,
+        unreferenced_bib_keys=unreferenced,
+        unresolved_cite_keys=unresolved,
+        warnings=warnings,
+    )
+
+
+def check_tex_file(
+    resource_name: str,
+    install_hint: str | None = None,
+    *,
+    assume_present_when_unavailable: bool = True,
+) -> tuple[bool, str]:
     """Check if a TeX resource file is available via kpsewhich.
 
     Returns:
         (available, message) tuple. If kpsewhich is not installed,
         assumes the resource is present.
     """
+    kpsewhich = find_latex_compiler("kpsewhich")
+    hint = install_hint or _default_install_hint(Path(resource_name).stem)
+    if not kpsewhich:
+        if assume_present_when_unavailable:
+            return True, "kpsewhich not available, assuming TeX resource present"
+        return False, f"kpsewhich not available; cannot verify {resource_name}. {hint}"
+
     try:
         result = subprocess.run(
-            ["kpsewhich", resource_name],
+            [kpsewhich, resource_name],
             capture_output=True,
             text=True,
             timeout=10,
         )
         if result.returncode == 0 and result.stdout.strip():
             return True, result.stdout.strip()
-        hint = install_hint or _default_install_hint(Path(resource_name).stem)
         return False, f"{resource_name} not found. {hint}"
     except FileNotFoundError:
-        return True, "kpsewhich not available, assuming TeX resource present"
+        if assume_present_when_unavailable:
+            return True, "kpsewhich not available, assuming TeX resource present"
+        return False, f"kpsewhich not available; cannot verify {resource_name}. {hint}"
     except subprocess.TimeoutExpired:
-        return True, "kpsewhich timed out, assuming TeX resource present"
+        if assume_present_when_unavailable:
+            return True, "kpsewhich timed out, assuming TeX resource present"
+        return False, f"kpsewhich timed out while checking {resource_name}. {hint}"
 
 
-def check_class_file(document_class: str, install_hint: str | None = None) -> tuple[bool, str]:
+def check_class_file(
+    document_class: str,
+    install_hint: str | None = None,
+    *,
+    assume_present_when_unavailable: bool = True,
+) -> tuple[bool, str]:
     """Check if a LaTeX class file is available via kpsewhich."""
     hint = install_hint or _default_install_hint(_get_tlmgr_package(document_class))
-    return check_tex_file(f"{document_class}.cls", install_hint=hint)
+    return check_tex_file(
+        f"{document_class}.cls",
+        install_hint=hint,
+        assume_present_when_unavailable=assume_present_when_unavailable,
+    )
 
 
 def check_journal_dependencies(spec: JournalSpec) -> tuple[bool, list[str]]:
@@ -236,12 +676,18 @@ def check_journal_dependencies(spec: JournalSpec) -> tuple[bool, list[str]]:
     errors: list[str] = []
     install_hint = spec.install_hint or _default_install_hint(spec.texlive_package)
 
-    available, message = check_class_file(spec.document_class, install_hint=install_hint)
+    available, message = check_class_file(
+        spec.document_class,
+        install_hint=install_hint,
+    )
     if not available:
         errors.append(message)
 
     for resource_name in spec.required_tex_files:
-        available, message = check_tex_file(resource_name, install_hint=install_hint)
+        available, message = check_tex_file(
+            resource_name,
+            install_hint=install_hint,
+        )
         if not available:
             errors.append(message)
 
@@ -259,23 +705,77 @@ class CompilationResult:
     pdf_path: Path | None = None
     error: str | None = None
     log: str | None = None
+    warning: str | None = None
 
 
-async def compile_paper(tex_path: Path, output_dir: Path, compiler: str = "pdflatex") -> CompilationResult:
-    """Compile a .tex file to PDF using latexmk or manual multi-pass.
+class _CompilationLaunchFailure(Exception):
+    """Internal signal that a subprocess could not be started."""
+
+    def __init__(self, command_label: str, original: OSError) -> None:
+        super().__init__(str(original))
+        self.command_label = command_label
+        self.original = original
+
+
+def _command_label(command: str) -> str:
+    label = Path(command).name
+    return label or command
+
+
+def _launch_failure_error(command_label: str, exc: OSError) -> str:
+    return f"failed to launch {command_label}: {exc}"
+
+
+def _file_signature(path: Path) -> tuple[int, int] | None:
+    if not path.exists():
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_size, stat.st_mtime_ns
+
+
+async def compile_paper(
+    tex_path: Path,
+    output_dir: Path,
+    compiler: str = "pdflatex",
+    *,
+    prefer_tectonic: bool = True,
+    apply_latex_autofix: bool = False,
+) -> CompilationResult:
+    """Compile a .tex file to PDF.
+
+    Routes through Tectonic when available and *prefer_tectonic* is ``True``
+    (the default).  Falls back to latexmk or manual multi-pass when only a
+    pdflatex-family compiler is present.
 
     Args:
         tex_path: Path to the .tex file.
         output_dir: Directory for output files.
-        compiler: TeX compiler to use (pdflatex or xelatex).
+        compiler: pdflatex-family compiler to use when Tectonic is not
+            available (``"pdflatex"`` or ``"xelatex"``).
+        prefer_tectonic: When ``True``, route through Tectonic if it is found
+            on the system PATH (or in well-known install locations on Windows).
+        apply_latex_autofix: When ``True``, validated manual-multipass autofix
+            content may be written back to ``tex_path``. Defaults to ``False``
+            so direct compiler calls never mutate manuscript source.
 
     Uses :func:`find_latex_compiler` for cross-platform compiler detection,
     including Windows MiKTeX and TeX Live installations that may not be on
     the system PATH.
     """
+    tex_path = Path(tex_path).resolve(strict=False)
+    output_dir = Path(output_dir).resolve(strict=False)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Pre-check: is the compiler available at all?
+    # Prefer Tectonic when available — it handles bibtex + multi-pass itself.
+    if prefer_tectonic:
+        tectonic_path = find_tectonic()
+        if tectonic_path:
+            return await _compile_with_tectonic(tex_path, output_dir, tectonic_path=tectonic_path)
+
+    # Pre-check: is the pdflatex-family compiler available at all?
     if find_latex_compiler(compiler) is None:
         guidance = get_latex_install_guidance()
         return CompilationResult(
@@ -283,19 +783,103 @@ async def compile_paper(tex_path: Path, output_dir: Path, compiler: str = "pdfla
             error=f"Compiler '{compiler}' not found. {guidance}",
         )
 
-    if shutil.which("latexmk"):
-        return await _compile_with_latexmk(tex_path, output_dir, compiler)
+    latexmk_path = find_latex_compiler("latexmk")
+    if latexmk_path:
+        return await _compile_with_latexmk(tex_path, output_dir, compiler, latexmk_path=latexmk_path)
+    if apply_latex_autofix:
+        return await _compile_manual_multipass(
+            tex_path,
+            output_dir,
+            compiler,
+            apply_latex_autofix=True,
+        )
     return await _compile_manual_multipass(tex_path, output_dir, compiler)
 
 
-async def _compile_with_latexmk(tex_path: Path, output_dir: Path, compiler: str) -> CompilationResult:
+async def _compile_with_tectonic(
+    tex_path: Path,
+    output_dir: Path,
+    *,
+    tectonic_path: str,
+) -> CompilationResult:
+    """Compile a .tex file using Tectonic.
+
+    Tectonic resolves bibliography and performs all necessary passes in a
+    single invocation — no separate bibtex / latexmk steps required.
+
+    Command: ``tectonic --outdir <output_dir> --keep-logs <tex_path>``
+    """
+    cmd = [
+        tectonic_path,
+        "--outdir",
+        str(output_dir),
+        "--keep-logs",
+        str(tex_path),
+    ]
+    logger.info("Compiling with Tectonic: %s", " ".join(cmd))
+
+    pdf_path = output_dir / f"{tex_path.stem}.pdf"
+    initial_signature = _file_signature(pdf_path)
+
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=str(tex_path.parent),
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            return CompilationResult(success=False, error="Tectonic compilation timed out after 120 seconds")
+
+        log_content = stdout.decode(errors="replace") + stderr.decode(errors="replace")
+
+        current_signature = _file_signature(pdf_path)
+        pdf_is_fresh = current_signature is not None and (
+            initial_signature is None or current_signature != initial_signature
+        )
+
+        if pdf_is_fresh:
+            if process.returncode == 0:
+                return CompilationResult(success=True, pdf_path=pdf_path)
+            return CompilationResult(
+                success=False,
+                pdf_path=pdf_path,
+                error=f"tectonic exited with code {process.returncode}",
+                log=log_content[-5000:],
+            )
+
+        if process.returncode != 0:
+            error = f"tectonic exited with code {process.returncode}"
+        else:
+            error = "tectonic finished without producing a PDF"
+        return CompilationResult(success=False, error=error, log=log_content[-5000:])
+    except FileNotFoundError:
+        return CompilationResult(success=False, error="tectonic not found")
+    except OSError as exc:
+        return CompilationResult(success=False, error=_launch_failure_error("tectonic", exc))
+
+
+async def _compile_with_latexmk(
+    tex_path: Path,
+    output_dir: Path,
+    compiler: str,
+    *,
+    latexmk_path: str,
+) -> CompilationResult:
     """Compile using latexmk (handles bibtex + multiple passes automatically)."""
     if compiler == "xelatex":
-        cmd = ["latexmk", "-xelatex", "-interaction=nonstopmode", f"-output-directory={output_dir}", str(tex_path)]
+        cmd = [latexmk_path, "-xelatex", "-interaction=nonstopmode", f"-output-directory={output_dir}", str(tex_path)]
     else:
-        cmd = ["latexmk", "-pdf", "-interaction=nonstopmode", f"-output-directory={output_dir}", str(tex_path)]
+        cmd = [latexmk_path, "-pdf", "-interaction=nonstopmode", f"-output-directory={output_dir}", str(tex_path)]
 
     logger.info("Compiling with latexmk: %s", " ".join(cmd))
+
+    pdf_path = output_dir / f"{tex_path.stem}.pdf"
+    initial_signature = _file_signature(pdf_path)
 
     try:
         process = await asyncio.create_subprocess_exec(
@@ -311,16 +895,38 @@ async def _compile_with_latexmk(tex_path: Path, output_dir: Path, compiler: str)
             await process.wait()
             return CompilationResult(success=False, error="Compilation timed out after 120 seconds")
 
-        pdf_path = output_dir / f"{tex_path.stem}.pdf"
         log_content = stdout.decode(errors="replace") + stderr.decode(errors="replace")
 
-        if pdf_path.exists():
+        # Freshness check: PDF must exist and differ from the pre-run snapshot.
+        current_signature = _file_signature(pdf_path)
+        pdf_is_fresh = current_signature is not None and (
+            initial_signature is None or current_signature != initial_signature
+        )
+
+        if pdf_is_fresh:
+            # Fresh PDF produced. latexmk exit code 12 means "failure in
+            # some part of making files" but pdflatex may still produce a
+            # valid PDF (e.g., unresolved references in nonstop mode).
+            # The freshness check confirms the PDF is real, not stale.
             if process.returncode == 0:
                 return CompilationResult(success=True, pdf_path=pdf_path)
             return CompilationResult(
+                success=True,
+                pdf_path=pdf_path,
+                warning=f"latexmk exited with code {process.returncode} — PDF was produced but check the log for issues",
+                log=log_content[-5000:],
+            )
+
+        # No fresh PDF. A stale file may sit on disk from an earlier build.
+        if pdf_path.exists():
+            if process.returncode != 0:
+                error = f"latexmk exited with code {process.returncode}"
+            else:
+                error = "latexmk finished without producing a fresh PDF"
+            return CompilationResult(
                 success=False,
                 pdf_path=pdf_path,
-                error=f"latexmk exited with code {process.returncode}",
+                error=error,
                 log=log_content[-5000:],
             )
 
@@ -331,21 +937,32 @@ async def _compile_with_latexmk(tex_path: Path, output_dir: Path, compiler: str)
         return CompilationResult(success=False, error=error, log=log_content[-5000:])
     except FileNotFoundError:
         return CompilationResult(success=False, error="latexmk not found")
+    except OSError as exc:
+        return CompilationResult(success=False, error=_launch_failure_error("latexmk", exc))
 
 
-async def _compile_manual_multipass(tex_path: Path, output_dir: Path, compiler: str) -> CompilationResult:
+async def _compile_manual_multipass(
+    tex_path: Path,
+    output_dir: Path,
+    compiler: str,
+    *,
+    apply_latex_autofix: bool = False,
+) -> CompilationResult:
     """Manual multi-pass: pdflatex -> bibtex -> pdflatex -> pdflatex."""
     compiler_path = find_latex_compiler(compiler)
     if not compiler_path:
         return CompilationResult(success=False, error=f"Compiler '{compiler}' not found")
 
     async def run_cmd(cmd: list[str], cwd: str) -> tuple[int, str]:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=cwd,
-        )
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+            )
+        except OSError as exc:
+            raise _CompilationLaunchFailure(_command_label(cmd[0]), exc) from exc
         try:
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60)
         except TimeoutError:
@@ -360,17 +977,10 @@ async def _compile_manual_multipass(tex_path: Path, output_dir: Path, compiler: 
     compile_errors: list[str] = []
     fatal_errors: list[str] = []
     pdf_path = output_dir / f"{tex_path.stem}.pdf"
+    autofix_scratch_tex_path: Path | None = None
+    autofix_scratch_pdf_path: Path | None = None
 
-    def pdf_build_signature() -> tuple[int, int] | None:
-        if not pdf_path.exists():
-            return None
-        try:
-            stat = pdf_path.stat()
-        except OSError:
-            return None
-        return stat.st_size, stat.st_mtime_ns
-
-    initial_pdf_signature = pdf_build_signature()
+    initial_pdf_signature = _file_signature(pdf_path)
 
     def record_result(step: str, returncode: int, log: str, *, fatal: bool = False) -> None:
         combined_log_parts.append(log)
@@ -380,11 +990,68 @@ async def _compile_manual_multipass(tex_path: Path, output_dir: Path, compiler: 
             if fatal:
                 fatal_errors.append(error)
 
-    def fresh_pdf_was_generated(initial_signature: tuple[int, int] | None) -> bool:
-        current_signature = pdf_build_signature()
+    def fresh_pdf_was_generated(
+        initial_signature: tuple[int, int] | None,
+        path: Path = pdf_path,
+    ) -> bool:
+        current_signature = _file_signature(path)
         if current_signature is None:
             return False
         return initial_signature is None or current_signature != initial_signature
+
+    def write_autofix_scratch(content: str) -> Path:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            suffix=".tex",
+            prefix=f".{tex_path.stem}-gpd-autofix-",
+            dir=tex_path.parent,
+            delete=False,
+        ) as handle:
+            handle.write(content)
+            return Path(handle.name)
+
+    def cleanup_autofix_scratch(scratch_tex_path: Path, scratch_pdf_path: Path | None = None) -> None:
+        scratch_output_dir = output_dir
+        scratch_stem = scratch_tex_path.stem
+        scratch_paths = [
+            scratch_tex_path,
+            scratch_output_dir / f"{scratch_stem}.aux",
+            scratch_output_dir / f"{scratch_stem}.bbl",
+            scratch_output_dir / f"{scratch_stem}.blg",
+            scratch_output_dir / f"{scratch_stem}.fdb_latexmk",
+            scratch_output_dir / f"{scratch_stem}.fls",
+            scratch_output_dir / f"{scratch_stem}.log",
+            scratch_output_dir / f"{scratch_stem}.out",
+            scratch_output_dir / f"{scratch_stem}.synctex.gz",
+        ]
+        if scratch_pdf_path is not None:
+            scratch_paths.append(scratch_pdf_path)
+        for path in scratch_paths:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Could not remove autofix scratch artifact %s", path, exc_info=True)
+
+    def aux_requires_bibliography(aux_path: Path) -> bool:
+        try:
+            content = aux_path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            return False
+        return "\\citation" in content or "\\bibdata" in content
+
+    def record_missing_bibtex_requirement() -> None:
+        if bibtex or not aux_path.exists() or not aux_requires_bibliography(aux_path):
+            return
+        warning = "bibtex not found -- bibliography will not be processed; citations will show as [?]"
+        logger.warning(warning)
+        if warning + "\n" not in combined_log_parts:
+            combined_log_parts.append(warning + "\n")
+        error = "bibtex not found but citations require bibliography processing"
+        if error not in compile_errors:
+            compile_errors.append(error)
+        if error not in fatal_errors:
+            fatal_errors.append(error)
 
     try:
         # Pass 1: pdflatex
@@ -393,9 +1060,9 @@ async def _compile_manual_multipass(tex_path: Path, output_dir: Path, compiler: 
 
         # bibtex
         aux_path = output_dir / f"{tex_path.stem}.aux"
-        bibtex = shutil.which("bibtex")
+        bibtex = find_latex_compiler("bibtex")
         if not bibtex:
-            logger.warning("bibtex not found -- bibliography will not be processed; citations will show as [?]")
+            record_missing_bibtex_requirement()
         if bibtex and aux_path.exists():
             returncode, log = await run_cmd([bibtex, str(aux_path)], cwd)
             record_result("bibtex", returncode, log, fatal=True)
@@ -413,6 +1080,10 @@ async def _compile_manual_multipass(tex_path: Path, output_dir: Path, compiler: 
         if fresh_pdf_was_generated(initial_pdf_signature) and returncode == 0 and not fatal_errors:
             return CompilationResult(success=True, pdf_path=pdf_path)
 
+        if not apply_latex_autofix:
+            error = fatal_errors[0] if fatal_errors else compile_errors[0] if compile_errors else "Compilation failed"
+            return CompilationResult(success=False, error=error, log="".join(combined_log_parts)[-5000:])
+
         # Try autofix
         from gpd.utils.latex import try_autofix
 
@@ -420,33 +1091,70 @@ async def _compile_manual_multipass(tex_path: Path, output_dir: Path, compiler: 
         tex_content = await asyncio.to_thread(tex_path.read_text, encoding="utf-8")
         fix_result = try_autofix(tex_content, combined_log)
         if fix_result.was_modified and fix_result.fixed_content:
-            await asyncio.to_thread(tex_path.write_text, fix_result.fixed_content, encoding="utf-8")
-            logger.info("Applied autofix: %s", fix_result.fixes_applied)
-            autofix_initial_pdf_signature = pdf_build_signature()
+            autofix_scratch_tex_path = await asyncio.to_thread(write_autofix_scratch, fix_result.fixed_content)
+            scratch_tex_path = autofix_scratch_tex_path
+            autofix_scratch_pdf_path = output_dir / f"{scratch_tex_path.stem}.pdf"
+            scratch_pdf_path = autofix_scratch_pdf_path
+            logger.info("Testing autofix on scratch TeX: %s", fix_result.fixes_applied)
+            autofix_initial_pdf_signature = _file_signature(scratch_pdf_path)
+            autofix_base_cmd = [
+                compiler_path,
+                "-interaction=nonstopmode",
+                f"-output-directory={output_dir}",
+                str(scratch_tex_path),
+            ]
+            autofix_aux_path = output_dir / f"{scratch_tex_path.stem}.aux"
 
             combined_log_parts = []
             compile_errors = []
             fatal_errors = []
 
-            returncode, log = await run_cmd(base_cmd, cwd)
+            returncode, log = await run_cmd(autofix_base_cmd, cwd)
             record_result("pdflatex autofix pass 1", returncode, log)
-            if bibtex and aux_path.exists():
-                returncode, log = await run_cmd([bibtex, str(aux_path)], cwd)
+            if bibtex and autofix_aux_path.exists():
+                returncode, log = await run_cmd([bibtex, str(autofix_aux_path)], cwd)
                 record_result("bibtex autofix", returncode, log, fatal=True)
-            returncode, log = await run_cmd(base_cmd, cwd)
+            if not bibtex:
+                aux_path = autofix_aux_path
+                record_missing_bibtex_requirement()
+            returncode, log = await run_cmd(autofix_base_cmd, cwd)
             record_result("pdflatex autofix pass 2", returncode, log)
-            returncode, log = await run_cmd(base_cmd, cwd)
+            returncode, log = await run_cmd(autofix_base_cmd, cwd)
             record_result("pdflatex autofix pass 3", returncode, log)
-            if fresh_pdf_was_generated(autofix_initial_pdf_signature) and (
+            if fresh_pdf_was_generated(autofix_initial_pdf_signature, scratch_pdf_path) and (
                 not compile_errors or (returncode == 0 and not fatal_errors)
             ):
+                await asyncio.to_thread(shutil.copy2, scratch_pdf_path, pdf_path)
+                await asyncio.to_thread(tex_path.write_text, fix_result.fixed_content, encoding="utf-8")
+                await asyncio.to_thread(cleanup_autofix_scratch, scratch_tex_path, scratch_pdf_path)
+                logger.info("Applied autofix: %s", fix_result.fixes_applied)
                 return CompilationResult(success=True, pdf_path=pdf_path)
+            await asyncio.to_thread(cleanup_autofix_scratch, scratch_tex_path, scratch_pdf_path)
 
         error = fatal_errors[0] if fatal_errors else compile_errors[0] if compile_errors else "Compilation failed"
         return CompilationResult(success=False, error=error, log="".join(combined_log_parts)[-5000:])
 
     except TimeoutError:
+        if autofix_scratch_tex_path is not None:
+            await asyncio.to_thread(
+                cleanup_autofix_scratch,
+                autofix_scratch_tex_path,
+                autofix_scratch_pdf_path,
+            )
         return CompilationResult(success=False, error="Compilation timed out")
+    except _CompilationLaunchFailure as exc:
+        if autofix_scratch_tex_path is not None:
+            await asyncio.to_thread(
+                cleanup_autofix_scratch,
+                autofix_scratch_tex_path,
+                autofix_scratch_pdf_path,
+            )
+        if isinstance(exc.original, FileNotFoundError):
+            error = f"{exc.command_label} not found"
+        else:
+            error = _launch_failure_error(exc.command_label, exc.original)
+        log = "".join(combined_log_parts)[-5000:] or None
+        return CompilationResult(success=False, error=error, log=log)
 
 
 # ---- Full pipeline ----
@@ -458,6 +1166,14 @@ async def build_paper(
     bib_data: BibliographyData | None = None,
     citation_sources: list[CitationSource] | None = None,
     enrich_bibliography: bool = True,
+    *,
+    sidecar_root: Path | None = None,
+    artifact_manifest_output_path: Path | None = None,
+    bibliography_audit_output_path: Path | None = None,
+    emit_artifact_manifest: bool = True,
+    emit_bibliography_audit: bool = True,
+    prefer_tectonic: bool = True,
+    apply_latex_autofix: bool = True,
 ) -> PaperOutput:
     """Orchestrate the full paper build pipeline.
 
@@ -466,11 +1182,44 @@ async def build_paper(
     3. Render .tex from template
     4. Check required TeX resources
     5. Compile to PDF
+
+    Sidecar files (ARTIFACT-MANIFEST.json, BIBLIOGRAPHY-AUDIT.json) are written
+    to ``sidecar_root`` when provided, otherwise to ``output_dir`` alongside
+    the manuscript. Nested sidecars must live under a hidden metadata directory
+    so manuscript discovery can find them. ``emit_artifact_manifest`` and
+    ``emit_bibliography_audit`` can be set to ``False`` to suppress those files
+    entirely (minimal mode). File-specific output paths override the shared
+    sidecar root so callers can promote one sidecar without moving the other.
+    Generated TeX builds opt into validated LaTeX autofix by default; preserved
+    manual TeX is not autofixed.
     """
+    if sidecar_root is not None and (emit_artifact_manifest or emit_bibliography_audit):
+        _validate_manifest_sidecar_location(sidecar_root, output_dir, label="sidecar_root", is_directory=True)
+    if emit_artifact_manifest:
+        if artifact_manifest_output_path is not None:
+            _validate_manifest_sidecar_location(
+                artifact_manifest_output_path,
+                output_dir,
+                label="artifact_manifest_output_path",
+                is_directory=False,
+            )
+    if emit_bibliography_audit and bibliography_audit_output_path is not None:
+        _validate_manifest_sidecar_location(
+            bibliography_audit_output_path,
+            output_dir,
+            label="bibliography_audit_output_path",
+            is_directory=False,
+        )
+
     output_dir.mkdir(parents=True, exist_ok=True)
+    if sidecar_root is not None:
+        sidecar_root.mkdir(parents=True, exist_ok=True)
+    resolved_sidecar_root = sidecar_root if sidecar_root is not None else output_dir
     figures_dir: Path | None = None
     manifest = None
-    manifest_path = output_dir / "ARTIFACT-MANIFEST.json"
+    manifest_path = None
+    if emit_artifact_manifest:
+        manifest_path = artifact_manifest_output_path or resolved_sidecar_root / "ARTIFACT-MANIFEST.json"
     bibliography_audit = None
     bibliography_audit_path: Path | None = None
     errors: list[str] = []
@@ -478,6 +1227,7 @@ async def build_paper(
     figures_prepared_successfully = True
     bib_path: Path | None = None
     bib_entry_source: str | None = "bib_data" if bib_data is not None else None
+    citation_audit_entries = None
 
     # 1. Prepare figures
     if config.figures:
@@ -526,14 +1276,22 @@ async def build_paper(
             enrich_bibliography,
             reserved_bib_keys,
         )
+        citation_audit_entries = list(bibliography_audit.entries)
         if bib_data is None:
             bib_data = built_bib
             bib_entry_source = "citation_sources"
         else:
             bib_data = _merge_bibliography_data(bib_data, built_bib)
             bib_entry_source = "bib_data+citation_sources"
-        bibliography_audit_path = output_dir / "BIBLIOGRAPHY-AUDIT.json"
-        await asyncio.to_thread(write_bibliography_audit, bibliography_audit, bibliography_audit_path)
+
+    if bib_data is not None:
+        bibliography_audit = audit_bibliography(bib_data, source_audit_entries=citation_audit_entries)
+        if emit_bibliography_audit:
+            bibliography_audit_path = (
+                bibliography_audit_output_path or resolved_sidecar_root / "BIBLIOGRAPHY-AUDIT.json"
+            )
+            await asyncio.to_thread(write_bibliography_audit, bibliography_audit, bibliography_audit_path)
+    reference_bibtex_keys = _reference_bibtex_keys_from_audit(bibliography_audit)
 
     # 2. Write .bib file
     bib_content = ""
@@ -547,70 +1305,124 @@ async def build_paper(
     bib_stem = config.bib_file.removesuffix(".bib")
     if bib_stem != config.bib_file:
         config = config.model_copy(update={"bib_file": bib_stem})
-    tex_content = render_paper(config)
-    tex_path = output_dir / "main.tex"
-    await asyncio.to_thread(tex_path.write_text, tex_content, encoding="utf-8")
+    rendered_tex_content = render_paper(config)
+    tex_content = rendered_tex_content
+    output_stem = derive_output_filename(config)
+    tex_path = output_dir / f"{output_stem}.tex"
+    preserved_tex_differs_from_config = False
+    if tex_path.exists():
+        logger.warning("Skipping .tex write — %s already exists. Delete it to regenerate.", tex_path)
+        # Read on-disk content so the coherence check audits the file that
+        # will actually be compiled, not the freshly rendered string which
+        # may differ after manual edits or scaffold-once reruns.
+        tex_content = await asyncio.to_thread(tex_path.read_text, encoding="utf-8")
+        preserved_tex_differs_from_config = tex_content != rendered_tex_content
+        if preserved_tex_differs_from_config and emit_artifact_manifest:
+            errors.append(
+                f"Existing TeX file {tex_path} differs from the current PaperConfig render; "
+                "ARTIFACT-MANIFEST.json was not refreshed because it would claim metadata for stale preserved TeX. "
+                "Delete the TeX file to regenerate it, or run with sidecar emission disabled when intentionally "
+                "compiling manual edits."
+            )
+            manifest_path = None
+    else:
+        await asyncio.to_thread(tex_path.write_text, tex_content, encoding="utf-8")
 
-    manifest = build_artifact_manifest(
-        config,
-        output_dir,
-        tex_path=tex_path,
-        bib_path=bib_path,
-        bib_entry_source=bib_entry_source,
-        bibliography_audit_path=bibliography_audit_path,
-        bibliography_audit=bibliography_audit,
-        figure_source_pairs=figure_source_pairs,
-    )
-    await asyncio.to_thread(write_artifact_manifest, manifest, manifest_path)
+    # --- Citation-bibliography coherence check ---
+    citation_warnings: list[str] = []
+    if bib_content:
+        coherence = check_citation_bib_coherence(tex_content, bib_content)
+        for w in coherence.warnings:
+            logger.warning("Citation coherence: %s", w)
+        citation_warnings = coherence.warnings
 
     # 4. Check required TeX resources (blocking subprocess; run in thread to avoid stalling the loop)
     spec = get_journal_spec(config.journal)
-    dependencies_available, dependency_errors = await asyncio.to_thread(check_journal_dependencies, spec)
+    tectonic_will_handle_resources = prefer_tectonic and find_tectonic() is not None
+    if tectonic_will_handle_resources:
+        dependencies_available, dependency_errors = True, []
+    else:
+        dependencies_available, dependency_errors = await asyncio.to_thread(check_journal_dependencies, spec)
     if not dependencies_available:
         errors.extend(dependency_errors)
+        await asyncio.to_thread(_remove_failed_build_output, output_dir / f"{output_stem}.pdf", output_dir)
+        if emit_artifact_manifest and not preserved_tex_differs_from_config:
+            manifest = await _build_and_emit_artifact_manifest(
+                config,
+                output_dir,
+                tex_path=tex_path,
+                bib_path=bib_path,
+                bib_entry_source=bib_entry_source,
+                bibliography_audit_path=bibliography_audit_path,
+                bibliography_audit=bibliography_audit,
+                figure_source_pairs=figure_source_pairs,
+                manifest_path=manifest_path,
+                failure_stage="dependency",
+                errors=errors,
+            )
         return PaperOutput(
             tex_content=tex_content,
             bib_content=bib_content,
+            tex_path=tex_path,
             figures_dir=figures_dir,
             pdf_path=None,
             bibliography_audit_path=bibliography_audit_path,
             bibliography_audit=bibliography_audit,
-            manifest_path=manifest_path,
+            reference_bibtex_keys=reference_bibtex_keys,
+            manifest_path=manifest_path if manifest is not None else None,
             manifest=manifest,
             success=False,
             errors=errors,
+            citation_warnings=citation_warnings,
         )
 
     # 5. Compile
-    result = await compile_paper(tex_path, output_dir, compiler=spec.compiler)
+    compile_kwargs = {} if prefer_tectonic else {"prefer_tectonic": False}
+    effective_apply_latex_autofix = apply_latex_autofix and not preserved_tex_differs_from_config
+    if effective_apply_latex_autofix and _callable_accepts_keyword(compile_paper, "apply_latex_autofix"):
+        compile_kwargs["apply_latex_autofix"] = True
+    result = await compile_paper(tex_path, output_dir, compiler=spec.compiler, **compile_kwargs)
 
     if not result.success and result.error:
         errors.append(result.error)
 
-    manifest = build_artifact_manifest(
-        config,
-        output_dir,
-        tex_path=tex_path,
-        bib_path=bib_path,
-        bib_entry_source=bib_entry_source,
-        bibliography_audit_path=bibliography_audit_path,
-        bibliography_audit=bibliography_audit,
-        figure_source_pairs=figure_source_pairs,
-        pdf_path=result.pdf_path,
+    publication_gate = _publication_gate(
+        result,
+        figures_prepared_successfully=figures_prepared_successfully,
+        errors=errors,
     )
-    await asyncio.to_thread(write_artifact_manifest, manifest, manifest_path)
+    if not publication_gate.success:
+        await asyncio.to_thread(_remove_failed_build_output, result.pdf_path, output_dir)
+        await asyncio.to_thread(_remove_failed_build_output, output_dir / f"{output_stem}.pdf", output_dir)
 
-    final_success = result.success and figures_prepared_successfully and not errors
+    if emit_artifact_manifest and not preserved_tex_differs_from_config:
+        manifest = await _build_and_emit_artifact_manifest(
+            config,
+            output_dir,
+            tex_path=tex_path,
+            bib_path=bib_path,
+            bib_entry_source=bib_entry_source,
+            bibliography_audit_path=bibliography_audit_path,
+            bibliography_audit=bibliography_audit,
+            figure_source_pairs=figure_source_pairs,
+            pdf_path=publication_gate.pdf_path,
+            manifest_path=manifest_path,
+            failure_stage=publication_gate.failure_stage,
+            errors=errors,
+        )
 
     return PaperOutput(
         tex_content=tex_content,
         bib_content=bib_content,
+        tex_path=tex_path,
         figures_dir=figures_dir,
-        pdf_path=result.pdf_path,
+        pdf_path=publication_gate.pdf_path,
         bibliography_audit_path=bibliography_audit_path,
         bibliography_audit=bibliography_audit,
-        manifest_path=manifest_path,
+        reference_bibtex_keys=reference_bibtex_keys,
+        manifest_path=manifest_path if manifest is not None else None,
         manifest=manifest,
-        success=final_success,
+        success=publication_gate.success,
         errors=errors,
+        citation_warnings=citation_warnings,
     )

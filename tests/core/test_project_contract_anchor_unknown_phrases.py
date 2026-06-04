@@ -1,14 +1,24 @@
-"""Focused regression tests for approved-mode anchor-gap phrasing."""
+"""Focused assertions for approved-mode anchor-gap phrasing."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
+from gpd.adapters.install_utils import expand_at_includes
 from gpd.core.contract_validation import validate_project_contract
+from tests.assertion_taxonomy_support import assert_prompt_contracts, semantic_concept
 
 FIXTURES_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "stage0"
-WORKFLOW_SPEC = Path(__file__).resolve().parents[2] / "src" / "gpd" / "specs" / "workflows" / "new-project.md"
+WORKFLOW_SPEC = (
+    Path(__file__).resolve().parents[2]
+    / "src"
+    / "gpd"
+    / "specs"
+    / "workflows"
+    / "new-project"
+    / "scope-approval.md"
+)
 STATE_SCHEMA_SPEC = (
     Path(__file__).resolve().parents[2] / "src" / "gpd" / "specs" / "templates" / "state-json-schema.md"
 )
@@ -68,6 +78,17 @@ def test_approved_mode_does_not_treat_generic_benchmark_parameter_questions_as_a
     assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
 
 
+def test_approved_mode_rejects_repeated_generic_paper_phrase_as_grounding() -> None:
+    contract = _load_contract_fixture()
+    _remove_incidental_grounding(contract)
+    contract["context_intake"]["known_good_baselines"] = ["paper paper paper"]
+
+    result = validate_project_contract(contract, mode="approved")
+
+    assert result.valid is False
+    assert any("approved project contract requires at least one concrete anchor" in error for error in result.errors)
+
+
 def test_approved_mode_rejects_target_not_yet_chosen_phrase_in_weakest_anchors() -> None:
     contract = _load_contract_fixture()
     _remove_incidental_grounding(contract)
@@ -115,9 +136,27 @@ def test_approved_mode_still_rejects_generic_open_gap_without_anchor_unknown_phr
 
 def test_specs_surface_anchor_gap_phrases_for_runtime_visibility() -> None:
     workflow_text = WORKFLOW_SPEC.read_text(encoding="utf-8")
-    state_schema_text = STATE_SCHEMA_SPEC.read_text(encoding="utf-8")
+    state_schema_text = expand_at_includes(
+        STATE_SCHEMA_SPEC.read_text(encoding="utf-8"),
+        Path(__file__).resolve().parents[2] / "src" / "gpd" / "specs",
+        "/runtime/",
+    )
 
-    assert "need grounding" in workflow_text
-    assert "target not yet chosen" in workflow_text
-    assert "Need grounding before the decisive anchor is chosen." in state_schema_text
-    assert "Decisive target not yet chosen before planning can proceed." in state_schema_text
+    assert "explicit missing-anchor uncertainty" in workflow_text
+    assert_prompt_contracts(
+        workflow_text,
+        *semantic_concept(
+            "scope approval surfaces concrete anchor gap phrasing",
+            required=("at least one concrete anchor, reference, prior-output constraint, or baseline",),
+        ),
+    )
+    assert_prompt_contracts(
+        state_schema_text,
+        *semantic_concept(
+            "state schema surfaces anchor gap examples",
+            required=(
+                "Need grounding before the decisive anchor is chosen.",
+                "Decisive target not yet chosen before planning can proceed.",
+            ),
+        ),
+    )

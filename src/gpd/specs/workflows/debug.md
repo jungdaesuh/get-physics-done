@@ -26,13 +26,7 @@ Detection: If `$ARGUMENTS` contains `--batch` or if `gaps_from_verification` con
 <paths>
 DEBUG_DIR=GPD/debug
 
-Ensure the debug directory exists before writing:
-
-```bash
-mkdir -p GPD/debug
-```
-
-Debug files use the `GPD/debug/` path (hidden directory with leading dot).
+Debug files use the `GPD/debug/` path.
 </paths>
 
 <quick_triage>
@@ -75,8 +69,23 @@ With diagnosis: "Result disagrees with literature" -> "Missing factor of 2 from 
 
 <process>
 
+<step name="route_mode">
+**Route before loading evidence:**
+
+- Interactive mode (direct user invocation): do not parse `VERIFICATION.md`. Run `gpd --raw init progress --include state,roadmap,config --no-project-reentry`, list active `GPD/debug/*.md` sessions when `$ARGUMENTS` is empty, gather the missing symptom fields with `ask_user`, and spawn one diagnosis-only `gpd-debugger`.
+- Batch mode (verify-work handoff): parse `VERIFICATION.md` gaps and spawn one diagnosis-only `gpd-debugger` per gap.
+
+Interactive symptom fields: expected result, actual result, discrepancy character, parameter/regime where it breaks, and checks already tried. If an active session is resumed, the continuation prompt points the child to `GPD/debug/{slug}.md`; do not inline an `@GPD/debug/{slug}.md` attachment.
+
+Interactive typed-return handling:
+
+- `gpd_return.status: completed` -- verify `GPD/debug/{slug}.md`, present the evidence-backed root cause, and offer: Fix now, Plan fix, Manual fix.
+- `gpd_return.status: checkpoint` -- present the checkpoint, collect the user response, and spawn a fresh continuation that first reads the session file.
+- `gpd_return.status: blocked` or `failed` -- show what was checked and offer: Continue investigating, Manual investigation, Add more context, Simplify the problem.
+</step>
+
 <step name="parse_gaps">
-**Extract gaps from VERIFICATION.md:**
+**Batch mode: extract gaps from VERIFICATION.md:**
 
 Read the "Gaps" section (YAML format):
 
@@ -86,7 +95,6 @@ Read the "Gaps" section (YAML format):
   reason: "Researcher reported: energy drifts by 1% over 1000 timesteps"
   severity: major
   check: 2
-  artifacts: []
   missing: []
 ```
 
@@ -133,18 +141,20 @@ This runs in parallel - all issues investigated simultaneously.
 
 ```bash
 DEBUGGER_MODEL=$(gpd resolve-model gpd-debugger)
-AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
+AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default supervised 2>/dev/null || echo "supervised")
 ```
 
 **Mode-aware behavior:**
-- `autonomy=supervised`: Pause after each debugger agent returns findings. Present the diagnosis to the user before proceeding to a fix.
-- `autonomy=balanced` (default): Spawn the debugger agents, collect findings, and apply routine fixes automatically. Pause only if there are multiple plausible root causes or the fix changes assumptions or scope.
-- `autonomy=yolo`: Spawn debuggers, apply first plausible fix immediately without detailed diagnosis.
+- `autonomy=supervised` (default): Pause after each debugger agent returns findings. Present the diagnosis to the user before proceeding to a fix.
+- `autonomy=balanced`: Spawn the debugger agents, collect findings, and apply routine fixes automatically. Pause only if there are multiple plausible root causes or the fix changes assumptions or scope.
+- `autonomy=yolo`: Spawn debuggers and continue automatically only after a specific evidence-backed root cause is identified. Do not apply a merely plausible fix.
 
 **Spawn investigation agents in parallel:**
 
 For each gap, fill the debug subagent prompt template (see `{GPD_INSTALL_DIR}/templates/debug-subagent-prompt.md` for the full template with placeholders, continuation format, and failure protocol) and spawn:
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> Apply the canonical runtime delegation convention already loaded above.
 
 ```
 task(
@@ -156,7 +166,7 @@ task(
 )
 ```
 
-**If any debugger agent fails to spawn or returns an error:** Continue with remaining agents. A single failed agent does not invalidate other investigations. After all agents complete, report which investigations failed and offer: 1) Retry failed investigations, 2) Investigate the failed truths in the main context, 3) Skip failed truths and proceed with available root causes.
+**If any debugger agent fails to spawn or returns an error:** Continue with remaining agents. A single failed agent does not invalidate other investigations. After all agents complete, report which investigations failed and offer: 1) Retry failed investigations, 2) Investigate the failed truths in the main context, 3) Proceed only with the evidence-backed root causes that were actually established while keeping unresolved gaps open.
 
 **All agents spawn in single message** (parallel execution).
 
@@ -188,86 +198,22 @@ Each agent should consider these common root causes:
   </step>
 
 <step name="collect_results">
-**Collect root causes from agents:**
+**Collect root causes from the typed return envelope:**
 
-Each agent returns with:
+Each agent returns one typed `gpd_return` envelope and points to `GPD/debug/{slug}.md` as the session file.
 
-```
-## ROOT CAUSE FOUND
-
-**Debug Session:** ${DEBUG_DIR}/{slug}.md
-
-**Root Cause:** {specific cause with evidence}
-
-**Evidence Summary:**
-- {key finding 1}
-- {key finding 2}
-- {key finding 3}
-
-**Files Involved:**
-- {file1}: {what is wrong}
-- {file2}: {related issue}
-
-**Physics Impact:** {how this error propagates through the calculation}
-
-**Suggested Fix Direction:** {brief hint for plan-phase --gaps}
-```
-
-Parse each return to extract:
-
-- root_cause: The diagnosed cause
-- files: Files involved
-- debug_path: Path to debug session file
-- physics_impact: How the error affects results
-- suggested_fix: Hint for gap closure plan
-
-**If agent return matches `## ROOT CAUSE FOUND` with expected fields:** Parse structured fields directly as above.
-
-**If agent return does NOT match the expected format** (missing fields, different heading structure, or unstructured text):
-
-1. Search the return text for a `## ROOT CAUSE` heading (any variation: `ROOT CAUSE FOUND`, `ROOT CAUSE`, `Root Cause`)
-2. If found, extract the paragraph(s) following the heading as `root_cause`
-3. Search for file paths (patterns like `src/...`, `*.py`, `*.tex`) anywhere in the return as `files`
-4. Search for keywords "impact", "effect", "propagat" to extract `physics_impact`; default to "Unknown — review debug session" if not found
-5. Search for keywords "fix", "suggest", "recommend", "should" to extract `suggested_fix`; default to "See debug session for investigation details" if not found
-6. If NO root cause heading exists at all, treat the entire agent return as an unstructured investigation report:
-   - Set `root_cause` to the first substantive paragraph (skip blank lines and banners)
-   - Set `debug_path` to `${DEBUG_DIR}/DEBUG-{slug}.md` (check if the agent wrote it)
-   - Log: "Agent returned unstructured response — extracted what was available"
-
-If agent returns `## INVESTIGATION INCONCLUSIVE`:
-
-- root_cause: "Investigation inconclusive - expert review needed"
-- Note which issue needs expert attention
-- Include remaining possibilities from agent return
+- If `gpd_return.status: completed`, read `gpd_return.session_file` and use the file-backed diagnosis as the authoritative root-cause record.
+- If `gpd_return.status: checkpoint`, present the checkpoint details to the user and spawn a fresh continuation run.
+- If `gpd_return.status: blocked` or `failed`, report what was checked and keep the investigation incomplete.
+- Do not route on heading markers in the returned text; use the typed `gpd_return` envelope and the session file instead.
   </step>
 
 <step name="update_validation">
 **Update VERIFICATION.md gaps with diagnosis:**
 
-For each gap in the Gaps section, add artifacts and missing fields:
+For each gap in the Gaps section, record the diagnosis fields the verifier actually consumes: `root_cause`, `missing`, `physics_impact`, and `debug_session`. Keep the update focused on the diagnosis rather than restating artifact inventories or path lists.
 
-```yaml
-- expectation: "Energy is conserved to machine precision"
-  status: failed
-  reason: "Researcher reported: energy drifts by 1% over 1000 timesteps"
-  severity: major
-  check: 2
-  root_cause: "Forward Euler integrator used instead of symplectic Verlet; energy error accumulates linearly"
-  artifacts:
-    - path: "src/integrator.py"
-      issue: "Using Euler method for Hamiltonian system"
-    - path: "src/simulation.py"
-      issue: "No energy conservation check in main loop"
-  missing:
-    - "Replace forward Euler with velocity Verlet integrator"
-    - "Add energy conservation monitoring per timestep"
-    - "Verify energy drift < 1e-10 over 10^6 steps"
-  physics_impact: "Energy drift causes systematic heating, affecting all thermodynamic averages"
-  debug_session: GPD/debug/energy-not-conserved.md
-```
-
-Keep canonical verification `status` unchanged and set `session_status: diagnosed` in frontmatter.
+Keep canonical verification `status` unchanged and set `session_status: diagnosed` in that verification frontmatter. The debug session file at `GPD/debug/{slug}.md` keeps the debug-session `status` lifecycle and does not use `session_status`.
 
 Commit the updated VERIFICATION.md:
 
@@ -281,7 +227,7 @@ gpd commit "docs({phase}): add root causes from diagnosis" --files "${phase_dir}
 </step>
 
 <step name="report_results">
-**Report diagnosis results and hand off:**
+**Batch mode: report diagnosis results and hand off:**
 
 Display:
 
@@ -302,13 +248,14 @@ Proceeding to plan fixes...
 ```
 
 Return to verify-work orchestrator for automatic planning.
-Do NOT offer manual next steps - verify-work handles the rest.
+Do NOT offer manual next steps in batch mode - verify-work handles the rest.
 </step>
 
 </process>
 
 <context_efficiency>
-Agents start with symptoms pre-filled from validation (no symptom gathering).
+Batch agents start with symptoms pre-filled from validation (no symptom gathering).
+Interactive agents gather only missing symptom fields before spawn.
 Agents only diagnose -- plan-phase --gaps handles fixes (no fix application).
 </context_efficiency>
 
@@ -317,18 +264,18 @@ Agents only diagnose -- plan-phase --gaps handles fixes (no fix application).
 
 - Mark gap as "needs expert review"
 - Continue with other gaps
-- Report incomplete diagnosis
+- Report incomplete diagnosis and keep the gap unresolved; do not generate a speculative fix plan for that gap
 
 **Agent times out:**
 
 - Check DEBUG-{slug}.md for partial progress
-- Can resume with /gpd:debug
+- Can resume with gpd:debug
 
 **All agents fail:**
 
 - Something systemic (environment, dependencies, etc.)
 - Report for expert investigation
-- Fall back to plan-phase --gaps without root causes (less precise)
+- Return blocked with the unresolved gaps and missing diagnostic evidence; do not fall back to plan-phase --gaps without root causes
   </failure_handling>
 
 <success_criteria>
@@ -336,7 +283,7 @@ Agents only diagnose -- plan-phase --gaps handles fixes (no fix application).
 - [ ] Gaps parsed from VERIFICATION.md
 - [ ] Investigation agents spawned in parallel
 - [ ] Root causes collected from all agents
-- [ ] VERIFICATION.md gaps updated with artifacts, missing items, and physics impact
+- [ ] VERIFICATION.md gaps updated with diagnosis and missing actions
 - [ ] Debug sessions saved to ${DEBUG_DIR}/
 - [ ] Hand off to verify-work for automatic planning
 

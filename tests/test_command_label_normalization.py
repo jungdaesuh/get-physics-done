@@ -11,8 +11,11 @@ from gpd.command_labels import (
     canonical_command_label,
     canonical_skill_label,
     command_slug_from_label,
+    parse_command_label,
     rewrite_runtime_command_surfaces,
     runtime_command_prefixes,
+    runtime_public_command_prefixes,
+    validated_public_command_prefix,
 )
 from gpd.mcp.servers.skills_server import _canonicalize_command_surface
 
@@ -44,10 +47,14 @@ def test_runtime_command_prefixes_are_derived_from_the_runtime_catalog() -> None
     expected_prefixes: list[str] = []
     seen: set[str] = set()
     for descriptor in iter_runtime_descriptors():
-        for candidate in (descriptor.command_prefix, descriptor.command_prefix[1:] if descriptor.command_prefix[:1] in {"/", "$"} else None):
-            if candidate and candidate not in seen:
-                seen.add(candidate)
-                expected_prefixes.append(candidate)
+        for prefix in (descriptor.command_prefix, validated_public_command_prefix(descriptor)):
+            for candidate in (
+                prefix,
+                prefix[1:] if prefix[:1] in {"/", "$"} else None,
+            ):
+                if candidate and candidate not in seen:
+                    seen.add(candidate)
+                    expected_prefixes.append(candidate)
     for canonical_prefix in ("gpd:", "gpd-"):
         if canonical_prefix not in seen:
             seen.add(canonical_prefix)
@@ -55,6 +62,27 @@ def test_runtime_command_prefixes_are_derived_from_the_runtime_catalog() -> None
     expected_prefixes.sort(key=len, reverse=True)
 
     assert runtime_command_prefixes() == tuple(expected_prefixes)
+
+
+def test_runtime_public_command_prefixes_are_derived_from_the_runtime_catalog() -> None:
+    expected_prefixes = []
+    seen: set[str] = set()
+    for descriptor in iter_runtime_descriptors():
+        prefix = validated_public_command_prefix(descriptor)
+        if prefix in seen:
+            continue
+        seen.add(prefix)
+        expected_prefixes.append(prefix)
+    expected_prefixes.sort(key=len, reverse=True)
+
+    assert runtime_public_command_prefixes() == tuple(expected_prefixes)
+    assert all(prefix in runtime_public_command_prefixes() for prefix in expected_prefixes)
+
+
+def test_validated_public_command_prefix_uses_descriptor_owned_surface() -> None:
+    descriptor = iter_runtime_descriptors()[0]
+
+    assert validated_public_command_prefix(descriptor) == descriptor.public_command_surface_prefix
 
 
 @pytest.mark.parametrize("descriptor", iter_runtime_descriptors(), ids=lambda item: item.runtime_name)
@@ -71,6 +99,32 @@ def test_registry_accepts_runtime_native_command_labels(
     command = registry.get_command(_command_label(descriptor.command_prefix, "execute-phase"))
 
     assert command.name == "gpd:execute-phase"
+
+
+def test_registry_accepts_descriptor_owned_public_command_labels(
+    _registry_roots: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    commands_dir, _ = _registry_roots
+    (commands_dir / "peer-review.md").write_text(
+        "---\nname: gpd:peer-review\ndescription: Review\n---\nReview body.\n",
+        encoding="utf-8",
+    )
+    descriptors = (
+        SimpleNamespace(command_prefix="/adapter-only:", public_command_surface_prefix="/public:"),
+    )
+    monkeypatch.setattr("gpd.adapters.runtime_catalog.iter_runtime_descriptors", lambda: descriptors)
+    runtime_command_prefixes.cache_clear()
+    runtime_public_command_prefixes.cache_clear()
+    try:
+        command = registry.get_command("/public:peer-review")
+    finally:
+        runtime_command_prefixes.cache_clear()
+        runtime_public_command_prefixes.cache_clear()
+
+    assert command.name == "gpd:peer-review"
 
 
 @pytest.mark.parametrize("descriptor", iter_runtime_descriptors(), ids=lambda item: item.runtime_name)
@@ -98,6 +152,28 @@ def test_runtime_native_command_labels_canonicalize_across_shared_surfaces(descr
     assert _canonical_command_name(label) == "gpd:execute-phase"
 
 
+@pytest.mark.parametrize(
+    ("label", "expected_slug", "expected_args"),
+    [
+        ("gpd:new-project --minimal", "new-project", "--minimal"),
+        ("$gpd-new-project --minimal", "new-project", "--minimal"),
+        ("new-project --minimal", "new-project", "--minimal"),
+        ("gpd:new-project --minimal @plan.md", "new-project", "--minimal @plan.md"),
+    ],
+)
+def test_command_label_parser_normalizes_base_command_and_preserves_inline_args(
+    label: str,
+    expected_slug: str,
+    expected_args: str,
+) -> None:
+    parsed = parse_command_label(label)
+
+    assert parsed.slug == expected_slug
+    assert parsed.inline_args == expected_args
+    assert command_slug_from_label(label) == expected_slug
+    assert canonical_command_label(label) == f"gpd:{expected_slug}"
+
+
 @pytest.mark.parametrize("descriptor", iter_runtime_descriptors(), ids=lambda item: item.runtime_name)
 def test_runtime_native_command_surfaces_rewrite_to_canonical_skill_labels(descriptor: object) -> None:
     content = (
@@ -112,10 +188,50 @@ def test_runtime_native_command_surfaces_rewrite_to_canonical_skill_labels(descr
     assert _canonicalize_command_surface(content) == rewritten
 
 
+@pytest.mark.parametrize("descriptor", iter_runtime_descriptors(), ids=lambda item: item.runtime_name)
+def test_runtime_native_command_wildcard_surfaces_rewrite_to_canonical_skill_wildcard(descriptor: object) -> None:
+    content = f"Use `{descriptor.command_prefix}*` to browse runtime commands.\n"
+
+    assert _canonicalize_command_surface(content) == "Use `gpd-*` to browse runtime commands.\n"
+
+
 def test_runtime_command_surface_rewrite_does_not_mutate_markdown_paths() -> None:
     content = "Read /tmp/specs/gpd-help.md and /tmp/agents/gpd-executor.md before continuing."
 
     assert rewrite_runtime_command_surfaces(content, canonical="skill") == content
+
+
+def test_runtime_command_surface_rewrite_skips_urls_and_paths_but_keeps_examples() -> None:
+    content = (
+        "Use /gpd:help when you want a real command example.\n"
+        "See https://example.test//gpd:help and /tmp//gpd:help.txt and /tmp/$gpd-help.txt.\n"
+        "Keep ./docs/gpd-help.md and foo$gpd-help/bar untouched.\n"
+    )
+
+    rewritten = rewrite_runtime_command_surfaces(content, canonical="skill")
+
+    assert "Use gpd-help when you want a real command example." in rewritten
+    assert "https://example.test//gpd:help" in rewritten
+    assert "/tmp//gpd:help.txt" in rewritten
+    assert "/tmp/$gpd-help.txt" in rewritten
+    assert "./docs/gpd-help.md" in rewritten
+    assert "foo$gpd-help/bar" in rewritten
+
+
+def test_runtime_command_surface_rewrite_uses_registry_command_slugs_for_public_labels() -> None:
+    content = (
+        "Run $gpd-help and /gpd:execute-phase as commands.\n"
+        "Keep checkpoint gpd-phase-03, agent gpd-planner, file gpd-file-manifest.json, "
+        "and generated gpd-help.json unchanged.\n"
+    )
+
+    rewritten = rewrite_runtime_command_surfaces(content, canonical="command")
+
+    assert "Run gpd:help and gpd:execute-phase as commands." in rewritten
+    assert "checkpoint gpd-phase-03" in rewritten
+    assert "agent gpd-planner" in rewritten
+    assert "file gpd-file-manifest.json" in rewritten
+    assert "generated gpd-help.json" in rewritten
 
 
 def test_foreign_bare_slash_command_is_not_canonicalized_into_gpd() -> None:

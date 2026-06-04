@@ -11,10 +11,13 @@ allowed-tools:
   - search_files
   - find_files
   - ask_user
+help:
+  group: Writing and publication
+  order: 490
+  compact_description: Create presentation slides
+  display_signature: gpd:slides [topic, audience, or source path]
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Create a presentation deck tailored to the user's source material, audience, and delivery format.
@@ -42,10 +45,7 @@ find . -maxdepth 2 \( -name "*.tex" -o -name "*.md" -o -name "*.ipynb" -o -name 
 ```
 
 If a GPD project exists, use it:
-
-@GPD/PROJECT.md
-@GPD/ROADMAP.md
-@GPD/STATE.md
+include the discovered project files as source material, but do not require a project for folder-backed decks.
 </context>
 
 <process>
@@ -69,7 +69,7 @@ Ask a compact set of high-leverage questions for any missing requirements, inclu
 
 ## 3. Execute the Slides Workflow
 
-Follow the slides workflow from `@{GPD_INSTALL_DIR}/workflows/slides.md` end-to-end.
+Follow the included slides workflow end-to-end.
 
 ## 4. Write Deliverables
 

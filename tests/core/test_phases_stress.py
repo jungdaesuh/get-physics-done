@@ -43,11 +43,18 @@ def _create_phase_dir(tmp_path: Path, name: str) -> Path:
     return phase_dir
 
 
+def _write_passed_verification(phase_dir: Path) -> Path:
+    phase_number = phase_dir.name.split("-", 1)[0]
+    path = phase_dir / f"{phase_number}-VERIFICATION.md"
+    path.write_text("---\nstatus: passed\n---\n\n# Verification\nPASS\n", encoding="utf-8")
+    return path
+
+
 def _create_roadmap(tmp_path: Path, content: str) -> Path:
     """Write ROADMAP.md and return its path."""
     roadmap = tmp_path / "GPD" / "ROADMAP.md"
     roadmap.parent.mkdir(parents=True, exist_ok=True)
-    roadmap.write_text(textwrap.dedent(content))
+    roadmap.write_text(textwrap.dedent(content), encoding="utf-8")
     return roadmap
 
 
@@ -108,7 +115,7 @@ class TestManyPlans:
         phase_dir = _create_phase_dir(tmp_path, "01-big")
         for i in range(1, 51):
             letter = chr(ord("a") + (i - 1) % 26) + str((i - 1) // 26 or "")
-            (phase_dir / f"{letter}-PLAN.md").write_text(f"plan {i}")
+            (phase_dir / f"{letter}-PLAN.md").write_text(f"plan {i}", encoding="utf-8")
 
         result = find_phase(tmp_path, "1")
         assert result is not None
@@ -120,8 +127,8 @@ class TestManyPlans:
         phase_dir = _create_phase_dir(tmp_path, "01-big")
         for i in range(1, 51):
             letter = chr(ord("a") + (i - 1) % 26) + str((i - 1) // 26 or "")
-            (phase_dir / f"{letter}-PLAN.md").write_text(f"plan {i}")
-            (phase_dir / f"{letter}-SUMMARY.md").write_text(f"summary {i}")
+            (phase_dir / f"{letter}-PLAN.md").write_text(f"plan {i}", encoding="utf-8")
+            (phase_dir / f"{letter}-SUMMARY.md").write_text(f"summary {i}", encoding="utf-8")
 
         result = find_phase(tmp_path, "1")
         assert result is not None
@@ -135,9 +142,9 @@ class TestManyPlans:
         phase_dir = _create_phase_dir(tmp_path, "01-big")
         for i in range(1, 51):
             letter = chr(ord("a") + (i - 1) % 26) + str((i - 1) // 26 or "")
-            (phase_dir / f"{letter}-PLAN.md").write_text(f"plan {i}")
+            (phase_dir / f"{letter}-PLAN.md").write_text(f"plan {i}", encoding="utf-8")
             if i <= 25:
-                (phase_dir / f"{letter}-SUMMARY.md").write_text(f"summary {i}")
+                (phase_dir / f"{letter}-SUMMARY.md").write_text(f"summary {i}", encoding="utf-8")
 
         result = progress_render(tmp_path, "json")
         assert result.total_plans == 50
@@ -154,10 +161,10 @@ class TestIdenticalNamesDifferentExtensions:
     def test_plan_and_summary_same_prefix(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
         phase_dir = _create_phase_dir(tmp_path, "01-test")
-        (phase_dir / "a-PLAN.md").write_text("plan a")
-        (phase_dir / "a-SUMMARY.md").write_text("summary a")
-        (phase_dir / "a-RESEARCH.md").write_text("research a")
-        (phase_dir / "a-CONTEXT.md").write_text("context a")
+        (phase_dir / "a-PLAN.md").write_text("plan a", encoding="utf-8")
+        (phase_dir / "a-SUMMARY.md").write_text("summary a", encoding="utf-8")
+        (phase_dir / "a-RESEARCH.md").write_text("research a", encoding="utf-8")
+        (phase_dir / "a-CONTEXT.md").write_text("context a", encoding="utf-8")
 
         result = find_phase(tmp_path, "1")
         assert result is not None
@@ -171,10 +178,10 @@ class TestIdenticalNamesDifferentExtensions:
         """Plans a, b, c where only b has a summary."""
         _setup_project(tmp_path)
         phase_dir = _create_phase_dir(tmp_path, "01-partial")
-        (phase_dir / "a-PLAN.md").write_text("plan a")
-        (phase_dir / "b-PLAN.md").write_text("plan b")
-        (phase_dir / "b-SUMMARY.md").write_text("summary b")
-        (phase_dir / "c-PLAN.md").write_text("plan c")
+        (phase_dir / "a-PLAN.md").write_text("plan a", encoding="utf-8")
+        (phase_dir / "b-PLAN.md").write_text("plan b", encoding="utf-8")
+        (phase_dir / "b-SUMMARY.md").write_text("summary b", encoding="utf-8")
+        (phase_dir / "c-PLAN.md").write_text("plan c", encoding="utf-8")
 
         result = find_phase(tmp_path, "1")
         assert result is not None
@@ -257,7 +264,7 @@ class TestRenumbering20Phases:
 
         for i in range(1, 21):
             d = _create_phase_dir(tmp_path, f"{str(i).zfill(2)}-phase-{i}")
-            (d / f"{str(i).zfill(2)}-PLAN.md").write_text(f"plan {i}")
+            (d / f"{str(i).zfill(2)}-PLAN.md").write_text(f"plan {i}", encoding="utf-8")
 
         result = phase_remove(tmp_path, "1")
         assert result.removed == "1"
@@ -266,7 +273,7 @@ class TestRenumbering20Phases:
         phases_dir = tmp_path / "GPD" / "phases"
         remaining = sorted(d.name for d in phases_dir.iterdir() if d.is_dir())
         assert len(remaining) == 19
-        # First directory should now be "01-phase-2" (originally phase 2, renumbered to 01)
+        # First directory should be "01-phase-2" (phase 2 renumbered to 01 after removal)
         assert remaining[0].startswith("01-")
 
     def test_remove_middle_phase_of_20(self, tmp_path: Path) -> None:
@@ -492,10 +499,10 @@ class TestPhaseCompleteIncomplete:
     def test_complete_one_of_three_plans(self, tmp_path: Path) -> None:
         _setup_project(tmp_path)
         phase_dir = _create_phase_dir(tmp_path, "01-work")
-        (phase_dir / "a-PLAN.md").write_text("plan a")
-        (phase_dir / "a-SUMMARY.md").write_text("summary a")
-        (phase_dir / "b-PLAN.md").write_text("plan b")
-        (phase_dir / "c-PLAN.md").write_text("plan c")
+        (phase_dir / "a-PLAN.md").write_text("plan a", encoding="utf-8")
+        (phase_dir / "a-SUMMARY.md").write_text("summary a", encoding="utf-8")
+        (phase_dir / "b-PLAN.md").write_text("plan b", encoding="utf-8")
+        (phase_dir / "c-PLAN.md").write_text("plan c", encoding="utf-8")
 
         with pytest.raises(PhaseIncompleteError) as exc_info:
             phase_complete(tmp_path, "1")
@@ -520,10 +527,10 @@ class TestPhaseCompleteIncomplete:
 
 
 class TestFindPhaseAmbiguous:
-    """find_phase returns the first matching directory in sorted order."""
+    """find_phase resolves base and decimal phase directory matches deterministically."""
 
-    def test_find_phase_returns_first_match(self, tmp_path: Path) -> None:
-        """When multiple directories could match, first sorted match wins."""
+    def test_find_phase_prefers_base_phase_over_decimal_descendant(self, tmp_path: Path) -> None:
+        """A base phase query should prefer the base directory over a decimal descendant."""
         _setup_project(tmp_path)
         _create_phase_dir(tmp_path, "01-alpha")
         _create_phase_dir(tmp_path, "01.1-beta")
@@ -685,8 +692,9 @@ class TestPhaseCompleteLargeProject:
         )
 
         phase_dir = _create_phase_dir(tmp_path, "01-setup")
-        (phase_dir / "a-PLAN.md").write_text("plan")
-        (phase_dir / "a-SUMMARY.md").write_text("done")
+        (phase_dir / "a-PLAN.md").write_text("plan", encoding="utf-8")
+        (phase_dir / "a-SUMMARY.md").write_text("done", encoding="utf-8")
+        _write_passed_verification(phase_dir)
         _create_phase_dir(tmp_path, "02-build")
         _create_phase_dir(tmp_path, "03-deploy")
 
@@ -701,8 +709,9 @@ class TestPhaseCompleteLargeProject:
         _create_roadmap(tmp_path, "### Phase 1: Only\n**Goal:** only\n")
 
         phase_dir = _create_phase_dir(tmp_path, "01-only")
-        (phase_dir / "a-PLAN.md").write_text("plan")
-        (phase_dir / "a-SUMMARY.md").write_text("done")
+        (phase_dir / "a-PLAN.md").write_text("plan", encoding="utf-8")
+        (phase_dir / "a-SUMMARY.md").write_text("done", encoding="utf-8")
+        _write_passed_verification(phase_dir)
 
         result = phase_complete(tmp_path, "1")
         assert result.is_last_phase is True
@@ -755,7 +764,7 @@ class TestPhaseRemoveDecimalRenumbering:
         _create_phase_dir(tmp_path, "01-base")
         for i in range(1, 4):
             d = _create_phase_dir(tmp_path, f"01.{i}-sub")
-            (d / f"01.{i}-PLAN.md").write_text(f"plan {i}")
+            (d / f"01.{i}-PLAN.md").write_text(f"plan {i}", encoding="utf-8")
 
         phase_remove(tmp_path, "1.1", force=True)
 
@@ -807,8 +816,8 @@ class TestPhaseRemoveWithSummariesNeedsForce:
             """,
         )
         phase_dir = _create_phase_dir(tmp_path, "01-done")
-        (phase_dir / "a-PLAN.md").write_text("plan")
-        (phase_dir / "a-SUMMARY.md").write_text("summary")
+        (phase_dir / "a-PLAN.md").write_text("plan", encoding="utf-8")
+        (phase_dir / "a-SUMMARY.md").write_text("summary", encoding="utf-8")
         _create_phase_dir(tmp_path, "02-next")
 
         with pytest.raises(PhaseValidationError, match="force"):
@@ -827,8 +836,8 @@ class TestPhaseRemoveWithSummariesNeedsForce:
             """,
         )
         phase_dir = _create_phase_dir(tmp_path, "01-done")
-        (phase_dir / "a-PLAN.md").write_text("plan")
-        (phase_dir / "a-SUMMARY.md").write_text("summary")
+        (phase_dir / "a-PLAN.md").write_text("plan", encoding="utf-8")
+        (phase_dir / "a-SUMMARY.md").write_text("summary", encoding="utf-8")
         _create_phase_dir(tmp_path, "02-next")
 
         result = phase_remove(tmp_path, "1", force=True)

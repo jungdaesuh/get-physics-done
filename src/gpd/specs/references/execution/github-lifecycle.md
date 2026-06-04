@@ -112,7 +112,7 @@ For single-researcher projects on the default branch, PRs are optional. Use them
 Before opening or merging a PR, verify:
 
 1. **All plans have SUMMARY.md files.** No orphaned PLANs without completion records.
-2. **STATE.md is current.** Position, decisions, and session info reflect the latest work.
+2. **STATE.md is current.** Position, decisions, and the Session Continuity rendering reflect the latest canonical continuation.
 3. **ROADMAP.md is updated.** Completed phases marked with dates.
 4. **No sensitive data.** API keys, credentials, and large data files excluded.
 5. **No stale artifacts.** Temporary files, scratch notebooks, and debug logs removed.
@@ -252,7 +252,7 @@ Tags create permanent, named snapshots of important project states.
 | Paper submission | `paper/{venue}-{version}` | `paper/prl-v1` |
 | Paper revision | `paper/{venue}-{version}` | `paper/prl-v2` |
 | Dataset release | `data/{name}-{version}` | `data/spectrum-v1` |
-| GPD checkpoint (internal) | `gpd-checkpoint/{description}` | `gpd-checkpoint/phase-03-plan-02-1709312400` |
+| GPD checkpoint (internal) | `gpd-checkpoint-{description}` | `gpd-checkpoint-phase-03-plan-02-1709312400` |
 
 ### Tagging Protocol
 
@@ -267,7 +267,7 @@ git tag -a paper/prl-v1 -m "Initial PRL submission. 4 pages, 3 figures."
 
 ```bash
 git tag phase/03-complete
-git tag gpd-checkpoint/phase-03-plan-02-$(date +%s)
+git tag gpd-checkpoint-phase-03-plan-02-$(date +%s)
 ```
 
 3. **Push tags explicitly.** Tags are not pushed by default:
@@ -281,6 +281,6 @@ git push "$REMOTE_NAME" --tags
 
 4. **Never delete published tags.** If a tag points to incorrect work, create a new tag at the corrected commit rather than moving or deleting the old one.
 
-5. **GPD checkpoint tags are ephemeral.** Clean up `gpd-checkpoint/*` tags after successful plan completion (see `execute-plan-checkpoints.md`).
+5. **GPD checkpoint tags are ephemeral.** Clean up `gpd-checkpoint-*` tags after successful plan completion (see `execute-plan-checkpoints.md`).
 
 </tagging_conventions>

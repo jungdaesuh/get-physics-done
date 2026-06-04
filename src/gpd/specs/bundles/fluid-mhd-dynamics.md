@@ -45,8 +45,11 @@ assets:
     - path: references/protocols/non-equilibrium-transport.md
     - path: references/protocols/stochastic-processes.md
     - path: references/protocols/kinetic-theory.md
+  planning_guides:
+    - path: references/planning/numerical-pde-ode.md
+      note: Use the discretization, stability, convergence, and production-solve skeleton for fluid/MHD planning.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/fluid-mhd-dynamics.md
 anchor_prompts:
   - State the flow regime from dimensionless numbers before choosing equations, numerics, or turbulence assumptions.
   - Surface the decisive instability, spectrum, conservation law, or wave-speed benchmark that will make the run trustworthy.

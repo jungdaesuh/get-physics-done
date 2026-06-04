@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 from unittest.mock import ANY, MagicMock, patch
 
@@ -15,6 +17,7 @@ from gpd.core.git_ops import (
     cmd_commit,
     cmd_pre_commit_check,
 )
+from gpd.core.storage_paths import ManagedOutputPolicy
 
 runner = CliRunner()
 
@@ -26,6 +29,20 @@ runner = CliRunner()
 
 class TestPreCommitCheck:
     """Tests for cmd_pre_commit_check."""
+
+    def _write_convention_lock(self, tmp_path: Path, **lock_fields: object) -> None:
+        gpd_dir = tmp_path / "GPD"
+        gpd_dir.mkdir(parents=True, exist_ok=True)
+        (gpd_dir / "state.json").write_text(
+            json.dumps({"convention_lock": lock_fields}, indent=2),
+            encoding="utf-8",
+        )
+
+    def _write_markdown(self, tmp_path: Path, relative_path: str, content: str) -> Path:
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
 
     def test_no_files_passes(self, tmp_path: Path) -> None:
         result = cmd_pre_commit_check(tmp_path, [])
@@ -93,6 +110,34 @@ class TestPreCommitCheck:
         result = cmd_pre_commit_check(tmp_path, ["data.json"])
         assert result.passed is True
         assert result.details[0].frontmatter_valid is None  # not checked
+
+    def test_binary_pdf_source_passes_without_utf8_text_validation(self, tmp_path: Path) -> None:
+        pdf = tmp_path / "source.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n")
+
+        result = cmd_pre_commit_check(tmp_path, ["source.pdf"])
+
+        assert result.passed is True
+        assert result.files_checked == 1
+        assert result.details[0].readable is True
+        assert result.details[0].frontmatter_valid is None
+        assert result.details[0].has_nan is False
+
+    def test_state_md_validation_does_not_persist_readonly_state_recovery(self, tmp_path: Path) -> None:
+        from gpd.core.state import generate_state_markdown
+
+        gpd_dir = tmp_path / "GPD"
+        gpd_dir.mkdir()
+        (gpd_dir / "STATE.md").write_text(
+            generate_state_markdown({"convention_lock": {"metric_signature": "mostly-minus"}}),
+            encoding="utf-8",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/STATE.md"])
+
+        assert result.passed is True
+        assert not (gpd_dir / "state.json").exists()
+        assert not (gpd_dir / "state.json.bak").exists()
 
     def test_json_nonfinite_detection_fails(self, tmp_path: Path) -> None:
         txt = tmp_path / "data.json"
@@ -179,6 +224,254 @@ class TestPreCommitCheck:
         assert result.details[0].storage_class == "internal_durable"
         assert any("internal metadata directories" in warning for warning in result.warnings)
 
+    def test_policy_owned_gpd_managed_commit_target_passes_storage_validation(self, tmp_path: Path) -> None:
+        target = tmp_path / "GPD" / "publication" / "curvature-flow" / "manuscript" / "main.tex"
+        target.parent.mkdir(parents=True)
+        target.write_text("\\documentclass{article}\n", encoding="utf-8")
+
+        result = cmd_pre_commit_check(
+            tmp_path,
+            ["GPD/publication/curvature-flow/manuscript/main.tex"],
+            managed_output_policies=(ManagedOutputPolicy.publication_manuscript_subtree("curvature-flow"),),
+        )
+
+        assert result.passed is True
+        assert result.details[0].storage_valid is True
+        assert result.details[0].storage_class == "internal_durable"
+
+    def test_derivation_markdown_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-01.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-minus -->\n\n# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-01.md"])
+
+        assert result.passed is True
+        assert result.files_checked == 1
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is True
+        assert result.details[0].assertion_count == 1
+
+    def test_derivation_markdown_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-02.md",
+            "# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-02.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 0
+        assert any(
+            "Missing ASSERT_CONVENTION header" in warning for warning in result.warnings
+        )
+
+    def test_derivation_markdown_mismatch_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-03.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-03.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+    def test_derivation_markdown_missing_required_key_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(
+            tmp_path,
+            metric_signature="mostly-minus",
+            fourier_convention="physics",
+        )
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-04.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-minus -->\n\n# Derivation\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-04.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("fourier_convention" in warning for warning in result.warnings)
+
+    def test_derivation_python_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-05.py",
+            "# ASSERT_CONVENTION: metric_signature=mostly-minus\n\nvalue = 1\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-05.py"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is True
+        assert result.details[0].assertion_count == 1
+
+    def test_derivation_python_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/derivation-06.py",
+            "print('derivation helper')\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/derivation-06.py"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 0
+        assert any("Missing ASSERT_CONVENTION header" in warning for warning in result.warnings)
+
+    def test_non_derivation_markdown_remains_unaffected(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/summary.md",
+            "# Notes\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/summary.md"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is None
+
+    def test_non_derivation_markdown_with_assertion_mismatch_fails(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/summary.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Notes\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/summary.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+    def test_phase_verification_markdown_with_matching_assertion_passes(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/02-VERIFICATION.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-minus -->\n\n# Verification\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/02-VERIFICATION.md"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is True
+        assert result.details[0].assertion_count == 1
+
+    def test_phase_verification_markdown_missing_assertion_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/02-VERIFICATION.md",
+            "# Verification\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/02-VERIFICATION.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 0
+        assert any("Missing ASSERT_CONVENTION header" in warning for warning in result.warnings)
+
+    def test_phase_verification_markdown_mismatch_fails_when_lock_exists(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "GPD/phases/02-derivation/02-VERIFICATION.md",
+            "<!-- ASSERT_CONVENTION: metric_signature=mostly-plus -->\n\n# Verification\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["GPD/phases/02-derivation/02-VERIFICATION.md"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is True
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+    def test_repo_level_verification_markdown_outside_phases_remains_unaffected(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "docs/VERIFICATION.md",
+            "# Verification Notes\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["docs/VERIFICATION.md"])
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is None
+
+    def test_docs_phases_verification_markdown_is_not_convention_gated(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "docs/phases/02-derivation/02-VERIFICATION.md",
+            "# Verification Notes\n",
+        )
+
+        result = cmd_pre_commit_check(
+            tmp_path,
+            ["docs/phases/02-derivation/02-VERIFICATION.md"],
+        )
+
+        assert result.passed is True
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is None
+
+    def test_non_gated_python_with_assertion_mismatch_fails(self, tmp_path: Path) -> None:
+        self._write_convention_lock(tmp_path, metric_signature="mostly-minus")
+        self._write_markdown(
+            tmp_path,
+            "analysis/check.py",
+            "# ASSERT_CONVENTION: metric_signature=mostly-plus\n\nprint('check')\n",
+        )
+
+        result = cmd_pre_commit_check(tmp_path, ["analysis/check.py"])
+
+        assert result.passed is False
+        assert result.details[0].assert_convention_required is False
+        assert result.details[0].assert_convention_valid is False
+        assert result.details[0].assertion_count == 1
+        assert any("ASSERT_CONVENTION mismatch" in warning for warning in result.warnings)
+
+
+def test_assert_convention_support_helper_is_defined_once() -> None:
+    import inspect
+
+    import gpd.core.git_ops as git_ops
+
+    assert inspect.getsource(git_ops).count("def _supports_assert_convention_validation(") == 1
+
 
 # ---------------------------------------------------------------------------
 # Commit — unit tests (mocked git)
@@ -187,6 +480,15 @@ class TestPreCommitCheck:
 
 class TestCommit:
     """Tests for cmd_commit with mocked git subprocess."""
+
+    def _git(self, cwd: Path, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
     def test_empty_message_raises(self, tmp_path: Path) -> None:
         from gpd.core.errors import ValidationError
@@ -233,6 +535,9 @@ class TestCommit:
             patch("gpd.core.git_ops._exec_git") as mock_git,
         ):
             mock_git.side_effect = [
+                (0, "", ""),  # git diff --name-only under default GPD/ pathspec
+                (0, "", ""),  # git diff --cached --name-only under default GPD/ pathspec
+                (0, "", ""),  # git ls-files --others under default GPD/ pathspec
                 (0, "", ""),  # git add
                 (0, "", ""),  # git diff --cached --quiet (0 = no changes)
             ]
@@ -251,6 +556,9 @@ class TestCommit:
             patch("gpd.core.git_ops._exec_git") as mock_git,
         ):
             mock_git.side_effect = [
+                (0, "", ""),  # git diff --name-only under default GPD/ pathspec
+                (0, "", ""),  # git diff --cached --name-only under default GPD/ pathspec
+                (0, "", ""),  # git ls-files --others under default GPD/ pathspec
                 (128, "", "fatal: not a git repository"),  # git add fails
             ]
             result = cmd_commit(tmp_path, "test: failing add")
@@ -268,6 +576,9 @@ class TestCommit:
             patch("gpd.core.git_ops._exec_git") as mock_git,
         ):
             mock_git.side_effect = [
+                (0, "GPD/STATE.md", ""),  # git diff --name-only under default GPD/ pathspec
+                (0, "", ""),              # git diff --cached --name-only under default GPD/ pathspec
+                (0, "", ""),              # git ls-files --others under default GPD/ pathspec
                 (0, "", ""),     # git add
                 (1, "", ""),     # diff --cached (has changes)
                 (1, "", "error: something went wrong"),  # git commit fails
@@ -307,6 +618,9 @@ class TestCommit:
             patch("gpd.core.git_ops._exec_git") as mock_git,
         ):
             mock_git.side_effect = [
+                (0, "GPD/STATE.md", ""),  # git diff --name-only under default GPD/ pathspec
+                (0, "", ""),              # git diff --cached --name-only under default GPD/ pathspec
+                (0, "", ""),              # git ls-files --others under default GPD/ pathspec
                 (0, "", ""),       # git add
                 (1, "", ""),       # diff --cached
                 (0, "", ""),       # git commit
@@ -314,9 +628,9 @@ class TestCommit:
             ]
             cmd_commit(tmp_path, "test: default staging")
             # Verify the git add was called with GPD/
-            add_call = mock_git.call_args_list[0]
+            add_call = mock_git.call_args_list[3]
             assert "GPD/" in add_call[0][1]
-            mock_precheck.assert_called_once_with(tmp_path, ["GPD/"])
+            mock_precheck.assert_called_once_with(tmp_path, ["GPD/STATE.md"])
 
     def test_empty_files_defaults_to_planning_dir(self, tmp_path: Path) -> None:
         with (
@@ -328,15 +642,18 @@ class TestCommit:
             patch("gpd.core.git_ops._exec_git") as mock_git,
         ):
             mock_git.side_effect = [
+                (0, "GPD/PROJECT.md", ""),  # git diff --name-only under default GPD/ pathspec
+                (0, "", ""),                # git diff --cached --name-only under default GPD/ pathspec
+                (0, "GPD/state.json", ""),  # git ls-files --others under default GPD/ pathspec
                 (0, "", ""),       # git add
                 (1, "", ""),       # diff --cached
                 (0, "", ""),       # git commit
                 (0, "def5678", ""),  # rev-parse
             ]
             cmd_commit(tmp_path, "test: default staging", files=[])
-            add_call = mock_git.call_args_list[0]
+            add_call = mock_git.call_args_list[3]
             assert "GPD/" in add_call[0][1]
-            mock_precheck.assert_called_once_with(tmp_path, ["GPD/"])
+            mock_precheck.assert_called_once_with(tmp_path, ["GPD/PROJECT.md", "GPD/state.json"])
 
     def test_commit_blocks_when_pre_commit_check_fails(self, tmp_path: Path) -> None:
         pre_commit = PreCommitCheckResult(
@@ -369,6 +686,77 @@ class TestCommit:
         assert result.reason == "commit_docs_disabled"
         mock_precheck.assert_not_called()
         mock_git.assert_not_called()
+
+    def test_commit_preserves_unrelated_pre_staged_paths(self, tmp_path: Path) -> None:
+        self._git(tmp_path, "init")
+        self._git(tmp_path, "config", "user.email", "test@example.com")
+        self._git(tmp_path, "config", "user.name", "Test User")
+
+        state_path = tmp_path / "GPD" / "STATE.md"
+        state_path.parent.mkdir()
+        state_path.write_text("# Research State\n", encoding="utf-8")
+        unrelated_path = tmp_path / "notes.txt"
+        unrelated_path.write_text("initial\n", encoding="utf-8")
+        self._git(tmp_path, "add", "GPD/STATE.md", "notes.txt")
+        self._git(tmp_path, "commit", "-m", "initial")
+
+        unrelated_path.write_text("pre-staged unrelated change\n", encoding="utf-8")
+        self._git(tmp_path, "add", "notes.txt")
+        state_path.write_text("# Research State\n\nScoped change.\n", encoding="utf-8")
+
+        result = cmd_commit(tmp_path, "test: scoped commit", files=["GPD/STATE.md"])
+
+        assert result.committed is True
+        committed_paths = [
+            line
+            for line in self._git(
+                tmp_path,
+                "show",
+                "--format=",
+                "--name-only",
+                "HEAD",
+            ).stdout.splitlines()
+            if line
+        ]
+        assert committed_paths == ["GPD/STATE.md"]
+        staged_paths = self._git(
+            tmp_path,
+            "diff",
+            "--cached",
+            "--name-only",
+        ).stdout.splitlines()
+        assert staged_paths == ["notes.txt"]
+
+    def test_default_commit_validates_only_changed_paths_under_planning_pathspec(self, tmp_path: Path) -> None:
+        self._git(tmp_path, "init")
+        self._git(tmp_path, "config", "user.email", "test@example.com")
+        self._git(tmp_path, "config", "user.name", "Test User")
+
+        state_path = tmp_path / "GPD" / "STATE.md"
+        invalid_stable_path = tmp_path / "GPD" / "tmp" / "final.csv"
+        invalid_stable_path.parent.mkdir(parents=True)
+        state_path.write_text("# Research State\n", encoding="utf-8")
+        invalid_stable_path.write_text("value\nNaN\n", encoding="utf-8")
+        self._git(tmp_path, "add", "GPD/STATE.md", "GPD/tmp/final.csv")
+        self._git(tmp_path, "commit", "-m", "initial")
+
+        state_path.write_text("# Research State\n\nScoped change.\n", encoding="utf-8")
+
+        result = cmd_commit(tmp_path, "test: default scoped commit")
+
+        assert result.committed is True
+        committed_paths = [
+            line
+            for line in self._git(
+                tmp_path,
+                "show",
+                "--format=",
+                "--name-only",
+                "HEAD",
+            ).stdout.splitlines()
+            if line
+        ]
+        assert committed_paths == ["GPD/STATE.md"]
 
 
 # ---------------------------------------------------------------------------

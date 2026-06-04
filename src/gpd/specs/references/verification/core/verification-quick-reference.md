@@ -86,6 +86,18 @@ The difference between checking that a result *exists* and checking that the *ph
 
 ---
 
+## Minimum Evidence By Target Type
+
+- Analytical derivation: dimensional trace, at least one independently computed limiting case, and an independent cross-check or benchmark.
+- Numerical result: executed run, convergence or stability evidence, uncertainty handling, and comparison to an analytical limit or benchmark when available.
+- Simulation: conservation/statistical checks plus convergence or finite-size analysis where relevant.
+- Reference target: concrete completed action and comparison evidence, not a citation alone.
+- Forbidden proxy: explicit rejection that the proxy was not used as success evidence.
+
+Record each decisive check with inputs, expected result, actual output, verdict, contract IDs, and any uncertainty or benchmark threshold.
+
+---
+
 ## In-Execution Validation (Catch Errors During the Calculation)
 
 Don't wait until the end. Validate after every intermediate step:

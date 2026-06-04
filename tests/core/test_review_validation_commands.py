@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from gpd.cli import app
@@ -11,6 +12,8 @@ from gpd.mcp.paper.models import (
     ClaimIndex,
     ClaimRecord,
     ClaimType,
+    ProofAuditRecord,
+    ProofAuditStatus,
     ReviewConfidence,
     ReviewFinding,
     ReviewIssueSeverity,
@@ -21,6 +24,7 @@ from gpd.mcp.paper.models import (
 )
 
 runner = CliRunner()
+MANUSCRIPT_PATH = "paper/curvature_flow_bounds.tex"
 CANONICAL_STAGE_ARTIFACTS = [
     "GPD/review/STAGE-reader.json",
     "GPD/review/STAGE-literature.json",
@@ -39,6 +43,10 @@ REVIEW_STAGE_ORDER = (
 
 def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _write_invalid_utf8_json(path: Path) -> None:
+    path.write_bytes(b"{\x80invalid-utf8-json")
 
 
 def _write_claim_index(
@@ -101,7 +109,12 @@ def _write_stage_review_report_artifact(
     )
 
 
-def _write_canonical_stage_artifacts(project_root: Path, *, manuscript_path: str = "paper/main.tex", round_number: int = 1) -> None:
+def _write_canonical_stage_artifacts(
+    project_root: Path,
+    *,
+    manuscript_path: str = MANUSCRIPT_PATH,
+    round_number: int = 1,
+) -> None:
     review_dir = project_root / "GPD" / "review"
     review_dir.mkdir(parents=True, exist_ok=True)
     round_suffix = "" if round_number == 1 else f"-R{round_number}"
@@ -115,24 +128,45 @@ def _write_canonical_stage_artifacts(project_root: Path, *, manuscript_path: str
         )
 
 
+def _write_matching_review_ledger(
+    project_root: Path,
+    *,
+    manuscript_path: str = MANUSCRIPT_PATH,
+    round_number: int = 1,
+) -> Path:
+    ledger_path = project_root / "review-ledger.json"
+    _write_json(
+        ledger_path,
+        {
+            "version": 1,
+            "round": round_number,
+            "manuscript_path": manuscript_path,
+            "issues": [],
+        },
+    )
+    return ledger_path
+
+
 def test_validate_review_claim_index_accepts_canonical_payload(tmp_path: Path) -> None:
     claim_index_path = tmp_path / "CLAIMS.json"
     claim_index = ClaimIndex(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims=[
             ClaimRecord(
                 claim_id="CLM-001",
                 claim_type=ClaimType.significance,
                 text="The result has broad significance.",
-                artifact_path="paper/main.tex",
+                artifact_path=MANUSCRIPT_PATH,
                 section="Conclusion",
             )
         ],
     )
     _write_json(claim_index_path, claim_index.model_dump(mode="json"))
 
-    result = runner.invoke(app, ["--raw", "validate", "review-claim-index", str(claim_index_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-claim-index", str(claim_index_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
@@ -146,14 +180,16 @@ def test_validate_review_claim_index_reports_required_field_errors(tmp_path: Pat
         json.dumps(
             {
                 "version": 1,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "claims": [],
             }
         ),
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["--raw", "validate", "review-claim-index", str(claim_index_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-claim-index", str(claim_index_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -175,7 +211,9 @@ def test_validate_review_claim_index_rejects_blank_manuscript_path(tmp_path: Pat
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["--raw", "validate", "review-claim-index", str(claim_index_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-claim-index", str(claim_index_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -184,13 +222,13 @@ def test_validate_review_claim_index_rejects_blank_manuscript_path(tmp_path: Pat
 
 def test_validate_review_stage_report_accepts_canonical_payload(tmp_path: Path) -> None:
     stage_report_path = tmp_path / "STAGE-reader.json"
-    _write_claim_index(tmp_path, manuscript_path="paper/main.tex")
+    _write_claim_index(tmp_path, manuscript_path=MANUSCRIPT_PATH)
     stage_report = StageReviewReport(
         version=1,
         round=1,
         stage_id=ReviewStageKind.reader.value,
         stage_kind=ReviewStageKind.reader,
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims_reviewed=["CLM-001"],
         summary="The manuscript claims are clearly extracted.",
@@ -201,7 +239,7 @@ def test_validate_review_stage_report_accepts_canonical_payload(tmp_path: Path) 
                 claim_ids=["CLM-001"],
                 severity=ReviewIssueSeverity.major,
                 summary="The main claim is overstated.",
-                evidence_refs=["paper/main.tex#Conclusion"],
+                evidence_refs=[f"{MANUSCRIPT_PATH}#Conclusion"],
             )
         ],
         confidence=ReviewConfidence.medium,
@@ -209,7 +247,9 @@ def test_validate_review_stage_report_accepts_canonical_payload(tmp_path: Path) 
     )
     _write_json(stage_report_path, stage_report.model_dump(mode="json"))
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
@@ -218,15 +258,332 @@ def test_validate_review_stage_report_accepts_canonical_payload(tmp_path: Path) 
     assert payload["recommendation_ceiling"] == "major_revision"
 
 
-def test_validate_review_stage_report_rejects_noncanonical_filename(tmp_path: Path) -> None:
-    stage_report_path = tmp_path / "reader-output.json"
-    _write_claim_index(tmp_path, manuscript_path="paper/main.tex")
+def test_validate_review_stage_report_file_path_falls_back_to_workspace_claim_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    workspace_review_dir = tmp_path / "GPD" / "review"
+    workspace_review_dir.mkdir(parents=True)
+    _write_claim_index(workspace_review_dir, manuscript_path=MANUSCRIPT_PATH)
+    external_review_dir = tmp_path / "round-artifacts"
+    external_review_dir.mkdir()
+    _write_stage_review_report_artifact(
+        external_review_dir,
+        stage_kind=ReviewStageKind.reader,
+        manuscript_path=MANUSCRIPT_PATH,
+    )
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "review-stage-report", str(external_review_dir / "STAGE-reader.json")],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["stage_id"] == "reader"
+
+
+def test_validate_review_stage_report_file_path_prefers_sibling_claim_index(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    workspace_review_dir = tmp_path / "GPD" / "review"
+    workspace_review_dir.mkdir(parents=True)
+    _write_claim_index(workspace_review_dir, manuscript_path=MANUSCRIPT_PATH, manuscript_sha256="b" * 64)
+    external_review_dir = tmp_path / "round-artifacts"
+    external_review_dir.mkdir()
+    _write_claim_index(external_review_dir, manuscript_path=MANUSCRIPT_PATH)
+    _write_stage_review_report_artifact(
+        external_review_dir,
+        stage_kind=ReviewStageKind.reader,
+        manuscript_path=MANUSCRIPT_PATH,
+    )
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "review-stage-report", str(external_review_dir / "STAGE-reader.json")],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["manuscript_sha256"] == "a" * 64
+
+
+def test_validate_review_stage_report_accepts_generic_claim_kind_without_math_proof_audit(tmp_path: Path) -> None:
+    stage_report_path = tmp_path / "STAGE-math.json"
+    claim_index = ClaimIndex(
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims=[
+            ClaimRecord(
+                claim_id="CLM-001",
+                claim_type=ClaimType.main_result,
+                claim_kind="claim",
+                text="The calibration recipe improves reviewer throughput.",
+                artifact_path=MANUSCRIPT_PATH,
+                section="Methods",
+            )
+        ],
+    )
+    _write_json(tmp_path / "CLAIMS.json", claim_index.model_dump(mode="json"))
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.math.value,
+        stage_kind=ReviewStageKind.math,
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims_reviewed=["CLM-001"],
+        summary="The math review did not need theorem-to-proof auditing for this prose claim.",
+        strengths=[],
+        findings=[],
+        proof_audits=[],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+    _write_json(stage_report_path, stage_report.model_dump(mode="json"))
+
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["stage_id"] == ReviewStageKind.math.value
+    assert payload["proof_audits"] == []
+
+
+def test_validate_review_stage_report_rejects_missing_math_proof_audit_for_theorem_claim(tmp_path: Path) -> None:
+    stage_report_path = tmp_path / "STAGE-math.json"
+    claim_index = ClaimIndex(
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims=[
+            ClaimRecord(
+                claim_id="CLM-001",
+                claim_type=ClaimType.main_result,
+                claim_kind="claim",
+                text="For every r_0 > 0, the orbit intersects the target annulus.",
+                artifact_path=MANUSCRIPT_PATH,
+                section="Main Result",
+                theorem_assumptions=["N is compact"],
+                theorem_parameters=["r_0"],
+            )
+        ],
+    )
+    _write_json(tmp_path / "CLAIMS.json", claim_index.model_dump(mode="json"))
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.math.value,
+        stage_kind=ReviewStageKind.math,
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims_reviewed=["CLM-001"],
+        summary="The proof sketch looks plausible.",
+        strengths=[],
+        findings=[],
+        proof_audits=[],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+    _write_json(stage_report_path, stage_report.model_dump(mode="json"))
+
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "theorem-bearing claims must have proof_audits" in payload["error"]
+
+
+def test_validate_review_stage_report_allows_generic_claim_kind_without_theorem_signals(tmp_path: Path) -> None:
+    stage_report_path = tmp_path / "STAGE-math.json"
+    claim_index = ClaimIndex(
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims=[
+            ClaimRecord(
+                claim_id="CLM-001",
+                claim_type=ClaimType.novelty,
+                claim_kind="claim",
+                text="The manuscript introduces a new computational workflow for the benchmark problem.",
+                artifact_path=MANUSCRIPT_PATH,
+                section="Introduction",
+            )
+        ],
+    )
+    _write_json(tmp_path / "CLAIMS.json", claim_index.model_dump(mode="json"))
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.math.value,
+        stage_kind=ReviewStageKind.math,
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims_reviewed=[],
+        summary="No theorem-bearing claims require proof-audit coverage.",
+        strengths=[],
+        findings=[],
+        proof_audits=[],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+    _write_json(stage_report_path, stage_report.model_dump(mode="json"))
+
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["stage_kind"] == "math"
+    assert payload["manuscript_path"] == MANUSCRIPT_PATH
+
+
+def test_validate_review_stage_report_stdin_uses_workspace_semantic_alignment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
     stage_report = StageReviewReport(
         version=1,
         round=1,
         stage_id=ReviewStageKind.reader.value,
         stage_kind=ReviewStageKind.reader,
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims_reviewed=["CLM-001"],
+        summary="The manuscript claims are clearly extracted.",
+        strengths=[],
+        findings=[],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "review-stage-report", "-"],
+        input=json.dumps(stage_report.model_dump(mode="json")),
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "matching claim index is missing" in payload["error"]
+    assert "references/publication/peer-review-panel.md" in payload["error"]
+
+
+def test_validate_review_stage_report_rejects_unreviewed_theorem_bearing_claim(tmp_path: Path) -> None:
+    stage_report_path = tmp_path / "STAGE-math.json"
+    claim_index = ClaimIndex(
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims=[
+            ClaimRecord(
+                claim_id="CLM-001",
+                claim_type=ClaimType.main_result,
+                claim_kind="claim",
+                text="For every r_0 > 0, the orbit intersects the target annulus.",
+                artifact_path=MANUSCRIPT_PATH,
+                section="Main Result",
+                theorem_assumptions=["N is compact"],
+                theorem_parameters=["r_0"],
+            )
+        ],
+    )
+    _write_json(tmp_path / "CLAIMS.json", claim_index.model_dump(mode="json"))
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.math.value,
+        stage_kind=ReviewStageKind.math,
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims_reviewed=[],
+        summary="The proof sketch looks plausible.",
+        strengths=[],
+        findings=[],
+        proof_audits=[],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+    _write_json(stage_report_path, stage_report.model_dump(mode="json"))
+
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "theorem-bearing claims must appear in claims_reviewed" in payload["error"]
+
+
+def test_validate_review_stage_report_rejects_proof_audit_claim_not_in_claims_reviewed(tmp_path: Path) -> None:
+    stage_report_path = tmp_path / "STAGE-math.json"
+    claim_index = ClaimIndex(
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims=[
+            ClaimRecord(
+                claim_id="CLM-001",
+                claim_type=ClaimType.main_result,
+                claim_kind="claim",
+                text="The manuscript makes one theorem claim.",
+                artifact_path=MANUSCRIPT_PATH,
+                section="Result",
+                theorem_parameters=["r_0"],
+            )
+        ],
+    )
+    _write_json(tmp_path / "CLAIMS.json", claim_index.model_dump(mode="json"))
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.math.value,
+        stage_kind=ReviewStageKind.math,
+        manuscript_path=MANUSCRIPT_PATH,
+        manuscript_sha256="a" * 64,
+        claims_reviewed=[],
+        summary="The proof is checked.",
+        strengths=[],
+        findings=[],
+        proof_audits=[
+            ProofAuditRecord(
+                claim_id="CLM-001",
+                theorem_parameters_checked=["r_0"],
+                proof_locations=[f"{MANUSCRIPT_PATH}:99"],
+                alignment_status=ProofAuditStatus.aligned,
+            )
+        ],
+        confidence=ReviewConfidence.medium,
+        recommendation_ceiling=ReviewRecommendation.major_revision,
+    )
+    _write_json(stage_report_path, stage_report.model_dump(mode="json"))
+
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "proof_audits must only reference claims_reviewed entries" in payload["error"]
+
+
+def test_validate_review_stage_report_rejects_noncanonical_filename(tmp_path: Path) -> None:
+    stage_report_path = tmp_path / "reader-output.json"
+    _write_claim_index(tmp_path, manuscript_path=MANUSCRIPT_PATH)
+    stage_report = StageReviewReport(
+        version=1,
+        round=1,
+        stage_id=ReviewStageKind.reader.value,
+        stage_kind=ReviewStageKind.reader,
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims_reviewed=["CLM-001"],
         summary="The manuscript claims are clearly extracted.",
@@ -237,7 +594,9 @@ def test_validate_review_stage_report_rejects_noncanonical_filename(tmp_path: Pa
     )
     _write_json(stage_report_path, stage_report.model_dump(mode="json"))
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -246,13 +605,13 @@ def test_validate_review_stage_report_rejects_noncanonical_filename(tmp_path: Pa
 
 def test_validate_review_stage_report_rejects_unknown_claim_ids_against_matching_claim_index(tmp_path: Path) -> None:
     stage_report_path = tmp_path / "STAGE-reader.json"
-    _write_claim_index(tmp_path, manuscript_path="paper/main.tex")
+    _write_claim_index(tmp_path, manuscript_path=MANUSCRIPT_PATH)
     stage_report = StageReviewReport(
         version=1,
         round=1,
         stage_id=ReviewStageKind.reader.value,
         stage_kind=ReviewStageKind.reader,
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims_reviewed=["CLM-404"],
         summary="The manuscript claims are clearly extracted.",
@@ -263,7 +622,9 @@ def test_validate_review_stage_report_rejects_unknown_claim_ids_against_matching
     )
     _write_json(stage_report_path, stage_report.model_dump(mode="json"))
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -272,13 +633,13 @@ def test_validate_review_stage_report_rejects_unknown_claim_ids_against_matching
 
 def test_validate_review_stage_report_rejects_filename_round_mismatch(tmp_path: Path) -> None:
     stage_report_path = tmp_path / "STAGE-reader-R2.json"
-    _write_claim_index(tmp_path, manuscript_path="paper/main.tex", round_suffix="-R2")
+    _write_claim_index(tmp_path, manuscript_path=MANUSCRIPT_PATH, round_suffix="-R2")
     stage_report = StageReviewReport(
         version=1,
         round=1,
         stage_id=ReviewStageKind.reader.value,
         stage_kind=ReviewStageKind.reader,
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims_reviewed=["CLM-001"],
         summary="The manuscript claims are clearly extracted.",
@@ -289,7 +650,9 @@ def test_validate_review_stage_report_rejects_filename_round_mismatch(tmp_path: 
     )
     _write_json(stage_report_path, stage_report.model_dump(mode="json"))
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -298,7 +661,7 @@ def test_validate_review_stage_report_rejects_filename_round_mismatch(tmp_path: 
 
 def test_validate_review_stage_report_rejects_uppercase_sha256(tmp_path: Path) -> None:
     stage_report_path = tmp_path / "STAGE-reader.json"
-    _write_claim_index(tmp_path, manuscript_path="paper/main.tex", manuscript_sha256="a" * 64)
+    _write_claim_index(tmp_path, manuscript_path=MANUSCRIPT_PATH, manuscript_sha256="a" * 64)
     stage_report_path.write_text(
         json.dumps(
             {
@@ -306,7 +669,7 @@ def test_validate_review_stage_report_rejects_uppercase_sha256(tmp_path: Path) -
                 "round": 1,
                 "stage_id": "reader",
                 "stage_kind": "reader",
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "A" * 64,
                 "claims_reviewed": ["CLM-001"],
                 "summary": "Summary",
@@ -319,7 +682,9 @@ def test_validate_review_stage_report_rejects_uppercase_sha256(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -335,7 +700,7 @@ def test_validate_review_stage_report_reports_required_field_errors(tmp_path: Pa
                 "round": 1,
                 "stage_id": "reader",
                 "stage_kind": "reader",
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "strengths": [],
                 "findings": [],
@@ -346,7 +711,9 @@ def test_validate_review_stage_report_reports_required_field_errors(tmp_path: Pa
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -356,7 +723,7 @@ def test_validate_review_stage_report_reports_required_field_errors(tmp_path: Pa
 
 def test_validate_review_stage_report_rejects_blank_manuscript_path(tmp_path: Path) -> None:
     stage_report_path = tmp_path / "STAGE-reader.json"
-    _write_claim_index(tmp_path, manuscript_path="paper/main.tex")
+    _write_claim_index(tmp_path, manuscript_path=MANUSCRIPT_PATH)
     stage_report_path.write_text(
         json.dumps(
             {
@@ -377,7 +744,9 @@ def test_validate_review_stage_report_rejects_blank_manuscript_path(tmp_path: Pa
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -393,7 +762,7 @@ def test_validate_review_stage_report_reports_stage_kind_mismatch(tmp_path: Path
                 "round": 1,
                 "stage_id": "reader",
                 "stage_kind": "literature",
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "claims_reviewed": [],
                 "summary": "The manuscript claims are clearly extracted.",
@@ -406,7 +775,9 @@ def test_validate_review_stage_report_reports_stage_kind_mismatch(tmp_path: Path
         encoding="utf-8",
     )
 
-    result = runner.invoke(app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["--raw", "validate", "review-stage-report", str(stage_report_path)], catch_exceptions=False
+    )
 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output)
@@ -417,7 +788,7 @@ def test_validate_review_ledger_accepts_canonical_payload(tmp_path: Path) -> Non
     ledger_path = tmp_path / "REVIEW-LEDGER.json"
     ledger = ReviewLedger(
         round=1,
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         issues=[],
     )
     _write_json(ledger_path, ledger.model_dump(mode="json"))
@@ -426,7 +797,7 @@ def test_validate_review_ledger_accepts_canonical_payload(tmp_path: Path) -> Non
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
-    assert payload["manuscript_path"] == "paper/main.tex"
+    assert payload["manuscript_path"] == MANUSCRIPT_PATH
 
 
 def test_validate_review_ledger_rejects_blank_manuscript_path(tmp_path: Path) -> None:
@@ -448,12 +819,77 @@ def test_validate_review_ledger_rejects_blank_manuscript_path(tmp_path: Path) ->
     assert "review-ledger.manuscript_path" in payload["error"]
 
 
+@pytest.mark.parametrize(
+    ("command_name", "filename"),
+    [
+        ("review-claim-index", "CLAIMS.json"),
+        ("review-stage-report", "STAGE-reader.json"),
+        ("review-ledger", "REVIEW-LEDGER.json"),
+        ("referee-decision", "REFEREE-DECISION.json"),
+    ],
+)
+def test_review_validation_commands_fail_cleanly_on_invalid_utf8_json_input(
+    tmp_path: Path,
+    command_name: str,
+    filename: str,
+) -> None:
+    input_path = tmp_path / filename
+    _write_invalid_utf8_json(input_path)
+
+    result = runner.invoke(app, ["--raw", "validate", command_name, str(input_path)], catch_exceptions=False)
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "UTF-8" in payload["error"]
+    assert filename in payload["error"]
+
+
+def test_validate_referee_decision_strict_fails_cleanly_on_invalid_utf8_review_ledger(tmp_path: Path) -> None:
+    decision_path = tmp_path / "referee-decision.json"
+    _write_json(
+        decision_path,
+        {
+            "manuscript_path": MANUSCRIPT_PATH,
+            "target_journal": "jhep",
+            "final_recommendation": "major_revision",
+            "final_confidence": "high",
+            "stage_artifacts": list(CANONICAL_STAGE_ARTIFACTS),
+            "central_claims_supported": True,
+            "claim_scope_proportionate_to_evidence": True,
+            "physical_assumptions_justified": True,
+            "unsupported_claims_are_central": False,
+            "reframing_possible_without_new_results": True,
+            "mathematical_correctness": "adequate",
+            "novelty": "adequate",
+            "significance": "adequate",
+            "venue_fit": "adequate",
+            "literature_positioning": "adequate",
+            "unresolved_major_issues": 0,
+            "unresolved_minor_issues": 0,
+            "blocking_issue_ids": [],
+        },
+    )
+    ledger_path = tmp_path / "review-ledger.json"
+    _write_invalid_utf8_json(ledger_path)
+
+    result = runner.invoke(
+        app,
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output)
+    assert "UTF-8" in payload["error"]
+    assert "review-ledger.json" in payload["error"]
+
+
 def test_validate_referee_decision_strict_requires_explicit_policy_fields(tmp_path: Path, monkeypatch) -> None:
     _write_canonical_stage_artifacts(tmp_path)
     monkeypatch.chdir(tmp_path)
 
     decision = RefereeDecisionInput(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         target_journal="prl",
         final_recommendation=ReviewRecommendation.major_revision,
         final_confidence=ReviewConfidence.high,
@@ -476,10 +912,11 @@ def test_validate_referee_decision_strict_requires_explicit_policy_fields(tmp_pa
     payload.pop("final_confidence")
     decision_path = tmp_path / "referee-decision.json"
     _write_json(decision_path, payload)
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -497,7 +934,7 @@ def test_validate_referee_decision_strict_requires_explicit_policy_fields_for_st
     monkeypatch.chdir(tmp_path)
 
     decision = RefereeDecisionInput(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         target_journal="jhep",
         final_recommendation=ReviewRecommendation.major_revision,
         final_confidence=ReviewConfidence.high,
@@ -520,10 +957,11 @@ def test_validate_referee_decision_strict_requires_explicit_policy_fields_for_st
     payload.pop("final_confidence")
     decision_path = tmp_path / "referee-decision-jhep.json"
     _write_json(decision_path, payload)
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -562,10 +1000,11 @@ def test_validate_referee_decision_strict_rejects_blank_manuscript_path(tmp_path
             "blocking_issue_ids": [],
         },
     )
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -582,7 +1021,7 @@ def test_validate_referee_decision_strict_rejects_blank_review_ledger_manuscript
     monkeypatch.chdir(tmp_path)
 
     decision = RefereeDecisionInput(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         target_journal="jhep",
         final_recommendation=ReviewRecommendation.major_revision,
         final_confidence=ReviewConfidence.high,
@@ -637,7 +1076,7 @@ def test_validate_referee_decision_strict_rejects_stage_artifact_claim_index_mis
     claim_index_path.write_text(json.dumps(claim_index, indent=2), encoding="utf-8")
 
     decision = RefereeDecisionInput(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         target_journal="jhep",
         final_recommendation=ReviewRecommendation.major_revision,
         final_confidence=ReviewConfidence.high,
@@ -658,10 +1097,11 @@ def test_validate_referee_decision_strict_rejects_stage_artifact_claim_index_mis
     )
     decision_path = tmp_path / "referee-decision.json"
     _write_json(decision_path, decision.model_dump(mode="json"))
+    ledger_path = _write_matching_review_ledger(tmp_path)
 
     result = runner.invoke(
         app,
-        ["--raw", "validate", "referee-decision", str(decision_path), "--strict"],
+        ["--raw", "validate", "referee-decision", str(decision_path), "--strict", "--ledger", str(ledger_path)],
         catch_exceptions=False,
     )
 
@@ -678,7 +1118,7 @@ def test_validate_referee_decision_strict_anchors_relative_stage_artifacts_to_ab
     outside_cwd.mkdir(parents=True, exist_ok=True)
 
     decision = RefereeDecisionInput(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         target_journal="jhep",
         final_recommendation=ReviewRecommendation.major_revision,
         final_confidence=ReviewConfidence.high,
@@ -699,6 +1139,16 @@ def test_validate_referee_decision_strict_anchors_relative_stage_artifacts_to_ab
     )
     decision_path = tmp_path / "GPD" / "review" / "REFEREE-DECISION.json"
     _write_json(decision_path, decision.model_dump(mode="json"))
+    ledger_path = tmp_path / "GPD" / "review" / "REVIEW-LEDGER.json"
+    _write_json(
+        ledger_path,
+        {
+            "version": 1,
+            "round": 1,
+            "manuscript_path": MANUSCRIPT_PATH,
+            "issues": [],
+        },
+    )
 
     result = runner.invoke(
         app,
@@ -710,6 +1160,8 @@ def test_validate_referee_decision_strict_anchors_relative_stage_artifacts_to_ab
             "referee-decision",
             str(decision_path),
             "--strict",
+            "--ledger",
+            str(ledger_path),
         ],
         catch_exceptions=False,
     )
@@ -721,7 +1173,7 @@ def test_validate_referee_decision_strict_anchors_relative_stage_artifacts_to_ab
 
 def test_evaluate_referee_decision_strict_rejects_omitted_defaults_in_model_construct() -> None:
     explicit_values = {
-        "manuscript_path": "paper/main.tex",
+        "manuscript_path": MANUSCRIPT_PATH,
         "target_journal": "prl",
         "final_recommendation": ReviewRecommendation.major_revision,
         "final_confidence": ReviewConfidence.high,
@@ -729,6 +1181,8 @@ def test_evaluate_referee_decision_strict_rejects_omitted_defaults_in_model_cons
         "central_claims_supported": True,
         "claim_scope_proportionate_to_evidence": True,
         "physical_assumptions_justified": True,
+        "proof_audit_coverage_complete": True,
+        "theorem_proof_alignment_adequate": True,
         "unsupported_claims_are_central": False,
         "reframing_possible_without_new_results": True,
         "mathematical_correctness": ReviewAdequacy.adequate,
@@ -754,7 +1208,7 @@ def test_evaluate_referee_decision_strict_rejects_omitted_defaults_in_model_cons
 
 def test_evaluate_referee_decision_strict_rejects_omitted_defaults_for_standard_venue() -> None:
     explicit_values = {
-        "manuscript_path": "paper/main.tex",
+        "manuscript_path": MANUSCRIPT_PATH,
         "target_journal": "jhep",
         "final_recommendation": ReviewRecommendation.major_revision,
         "final_confidence": ReviewConfidence.high,
@@ -762,6 +1216,8 @@ def test_evaluate_referee_decision_strict_rejects_omitted_defaults_for_standard_
         "central_claims_supported": True,
         "claim_scope_proportionate_to_evidence": True,
         "physical_assumptions_justified": True,
+        "proof_audit_coverage_complete": True,
+        "theorem_proof_alignment_adequate": True,
         "unsupported_claims_are_central": False,
         "reframing_possible_without_new_results": True,
         "mathematical_correctness": ReviewAdequacy.adequate,

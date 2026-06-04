@@ -3,8 +3,30 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _stable_hook_python(request):
+    """Keep hook_python_interpreter() on the active test interpreter.
+
+    Adapter tests intentionally patch ``gpd.adapters.install_utils.sys.executable``
+    in a few places. Returning that fallback from ``resolve_checkout_python``
+    keeps the generated artifacts deterministic without pretending that checkout
+    detection failed. Tests that need the real checkout resolution can opt out
+    with ``@pytest.mark.no_stable_hook_python``.
+    """
+    if request.node.get_closest_marker("no_stable_hook_python"):
+        yield
+        return
+
+    def _use_fallback(*_: object, fallback: str | None = None) -> str | None:
+        return fallback
+
+    with patch("gpd.version.resolve_checkout_python", side_effect=_use_fallback):
+        yield
 
 
 @pytest.fixture()
@@ -67,6 +89,7 @@ def gpd_root(tmp_path: Path) -> Path:
     hooks.mkdir()
     (hooks / "statusline.py").write_text("#!/usr/bin/env python3\nprint('status')\n", encoding="utf-8")
     (hooks / "check_update.py").write_text("#!/usr/bin/env python3\nprint('update')\n", encoding="utf-8")
+    (hooks / "notify.py").write_text("#!/usr/bin/env python3\nprint('notify')\n", encoding="utf-8")
 
     # specs/ (GPD content directories)
     for subdir in ("references", "templates", "workflows"):

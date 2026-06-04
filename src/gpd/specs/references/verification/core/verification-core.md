@@ -37,14 +37,16 @@ A calculation existing does not mean the physics is right. Verification must che
 3. **Physically plausible** - Result is the right order of magnitude, has correct sign, obeys known constraints
 4. **Cross-validated** - Agrees with independent methods, known limits, conservation laws, and literature
 
-Levels 1-3 can often be checked programmatically. Level 4 requires deeper analysis and sometimes human judgment.
+Checks 1-3 can often be checked programmatically. Check 4 requires deeper analysis and sometimes human judgment.
+
+This core-check ladder is separate from the verifier agent's artifact levels: executed checks feed artifact Level 3, while goal, contract, convention, and downstream fit are artifact Level 4.
 
 **Level 5: External Oracle** — Result verified by an independent computational system (SymPy, numpy, or other CAS/numerical library) whose output is shown in VERIFICATION.md. This is the strongest form of verification because it breaks the LLM self-consistency loop: the LLM cannot hallucinate a correct CAS output.
 
 Every VERIFICATION.md MUST include at least one Level 5 check — an executed code block with actual output. See `references/verification/core/computational-verification-templates.md` for copy-paste-ready templates.
 </core_principle>
 
-> **Key companion document:** See `../errors/llm-physics-errors.md` for the catalog of 104 LLM-specific physics error classes with detection strategies and traceability matrix.
+> **Key companion documents:** See `../errors/llm-physics-errors.md` for the 104-class error catalog and `../errors/llm-errors-traceability.md` for the traceability matrix.
 
 <dimensional_analysis>
 

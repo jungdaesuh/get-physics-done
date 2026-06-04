@@ -3,24 +3,52 @@ name: gpd:discover
 description: Run discovery phase to investigate methods, literature, and approaches before planning
 argument-hint: "[phase or topic] [--depth quick|medium|deep]"
 context_mode: project-aware
-requires:
-  files: ["GPD/ROADMAP.md"]
+command-policy:
+  schema_version: 1
+  subject_policy:
+    subject_kind: discovery_subject
+    resolution_mode: phase_or_topic
+    explicit_input_kinds:
+      - phase number or standalone topic
+    allow_interactive_without_subject: true
+  supporting_context_policy:
+    project_context_mode: project-aware
+    project_reentry_mode: disallowed
+    optional_file_patterns:
+      - GPD/STATE.md
+      - GPD/ROADMAP.md
+  output_policy:
+    output_mode: managed
+    managed_root_kind: gpd_managed_durable
+    default_output_subtree: GPD/analysis
 allowed-tools:
   - file_read
+  - file_write
   - shell
   - search_files
   - find_files
   - web_search
   - web_fetch
+help:
+  group: Planning and execution
+  order: 150
+  compact_description: Survey methods, literature, and tools before planning; `quick` is verification-only
+  display_signature: gpd:discover [phase or topic]
+  detail_signature: gpd:discover [phase or topic] [--depth quick|medium|deep]
+  examples:
+    - gpd:discover --depth medium "finite-size scaling"
+  notes:
+    - Depth quick is verification-only and writes no file; medium and deep write discovery artifacts.
+    - Discovery artifacts feed planning or standalone analysis.
+  root_detail_order: 80
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Run a standalone discovery investigation for a research phase. Surveys the physics landscape: what is known, what methods exist, what approximations are valid, what data is available.
+Run a discovery investigation for an explicit research phase or standalone topic. Surveys the physics landscape: what is known, what methods exist, what approximations are valid, what data is available.
 
-Produces RESEARCH.md (with `depth: quick`) that informs subsequent planning via /gpd:plan-phase.
+`--depth quick` (`depth: quick`) is verification-only and returns without writing `RESEARCH.md` or any other discovery file. Produces RESEARCH.md for `--depth medium` or `--depth deep`, which informs subsequent planning via gpd:plan-phase.
+Standalone Level 2-3 artifacts live under `GPD/analysis/` in the invoking workspace; phase-scoped discovery stays in the resolved phase directory.
 
 **Use this when:**
 
@@ -43,12 +71,11 @@ Produces RESEARCH.md (with `depth: quick`) that informs subsequent planning via 
 <context>
 Phase or topic: $ARGUMENTS
 
-@GPD/STATE.md
-@GPD/ROADMAP.md
+Validated command-context owns optional current-workspace project context. Use the `CONTEXT` payload and the workflow-owned `init` step for optional `GPD/STATE.md` / `GPD/ROADMAP.md` background when present; this wrapper must not attach raw project-file includes.
 </context>
 
 <process>
-Execute the discover workflow from @{GPD_INSTALL_DIR}/workflows/discover.md end-to-end.
+Execute the included discover workflow end-to-end.
 
 ## Step 0: Validate Context
 
@@ -61,22 +88,25 @@ fi
 ```
 
 If a phase number is supplied, use project phase context.
-If no project exists, require a standalone topic and proceed in standalone analysis mode.
+If no phase number is supplied, require an explicit topic.
+Do not treat the mere presence of a project as enough to choose a discovery target.
+If a project-backed invocation arrives without either a phase number or a topic, ask one focused question before continuing.
 
 ## Step 1: Parse Arguments
 
-Extract an optional phase number or standalone topic, plus the optional depth flag, from `$ARGUMENTS`.
+Extract a phase number or explicit topic, plus the optional depth flag, from `$ARGUMENTS` or from the focused clarification response when the project-backed invocation arrived without either.
 Default depth: `medium` (Level 2).
 
 ## Step 2: Execute Discovery
 
 Follow the discover workflow for the determined depth level.
 
-## Step 3: Commit (if Level 2-3 produced RESEARCH.md)
+## Step 3: Persistence Policy (if Level 2-3 produced RESEARCH.md)
 
-```bash
-gpd commit "discover(${phase_number}): ${depth} discovery for ${phase_name}" --files "GPD/phases/${padded_phase}-${phase_slug}/RESEARCH.md"
-```
+Do not commit `RESEARCH.md` separately.
+The documented write route is the workflow-owned Level 2-3 discovery artifact path: phase-scoped `${phase_dir}/RESEARCH.md` or current-workspace `GPD/analysis/discovery-{slug}.md`.
+If discovery ran phase-scoped, leave the phase `RESEARCH.md` in the working tree for the later phase-completion commit.
+If discovery ran in standalone mode, report the findings directly and, for Level 2-3, point to `GPD/analysis/discovery-{slug}.md` under the invoking workspace. Do not emit phase-only commit messages or file paths.
 
 ## Step 4: Present Results and Next Steps
 
@@ -89,8 +119,8 @@ Show discovery summary, confidence level, and offer next actions.
 - [ ] Depth level determined (default medium)
 - [ ] Discovery executed at appropriate depth
 - [ ] Standard references consulted before general search
-- [ ] RESEARCH.md created (Level 2-3) with recommendation
+- [ ] RESEARCH.md created (Level 2-3) with recommendation, or Level 1 returned verification-only confirmation without writing a file
 - [ ] Confidence gate applied
-- [ ] Committed to git (Level 2-3)
+- [ ] No separate RESEARCH.md commit
 - [ ] Next steps offered (plan-phase, dig deeper, review)
       </success_criteria>

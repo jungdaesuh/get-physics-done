@@ -1,12 +1,13 @@
 <purpose>
 Execute discovery at the appropriate depth level for a physics research phase.
-Produces RESEARCH.md (for Level 2-3) that informs PLAN.md creation.
+Produces a Level 2-3 discovery artifact that informs planning: phase-scoped `RESEARCH.md` or standalone `GPD/analysis/discovery-{slug}.md`.
+Keep standalone GPD-authored outputs rooted under `GPD/analysis/` in the current workspace. In project-backed mode, phase-scoped discovery still writes inside the resolved phase directory.
 
 Can be invoked before plan-phase for deeper literature/method investigation, or run automatically during plan-phase's research step. Accepts a depth parameter.
 
 This workflow discovers the physics landscape: what is known, what is open, what tools exist, what methods are standard, what data is available, what approximations are valid.
 
-NOTE: For comprehensive literature survey ("what do experts know about this"), use /gpd:research-phase instead, which produces a full-depth RESEARCH.md. This workflow produces a quick-depth RESEARCH.md (depth: quick) suitable for method selection and landscape scanning.
+Level 1 (`--depth quick`) is verification-only and does not write a file or `RESEARCH.md`. For a comprehensive literature survey ("what do experts know about this"), use gpd:research-phase instead.
 </purpose>
 
 <depth_levels>
@@ -15,8 +16,8 @@ NOTE: For comprehensive literature survey ("what do experts know about this"), u
 | Level | Name         | Time      | Output                                      | When                                                                         |
 | ----- | ------------ | --------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
 | 1     | Quick Verify | 2-5 min   | No file, proceed with verified knowledge    | Confirming a formula, checking a known result, verifying a convention        |
-| 2     | Standard     | 15-30 min | RESEARCH.md                                | Choosing between methods, exploring a new regime, setting up a calculation   |
-| 3     | Deep Dive    | 1+ hour   | Detailed RESEARCH.md with validation gates | Novel problems, ambiguous literature, competing claims, foundational choices |
+| 2     | Standard     | 15-30 min | `RESEARCH.md` or `discovery-{slug}.md`               | Choosing between methods, exploring a new regime, setting up a calculation   |
+| 3     | Deep Dive    | 1+ hour   | Detailed discovery artifact with validation gates    | Novel problems, ambiguous literature, competing claims, foundational choices |
 
 **Depth is determined by the caller (plan-phase.md or the user) before routing here.**
 </depth_levels>
@@ -31,7 +32,7 @@ Physics results can be subtle and sign conventions vary across references. Alway
 3. **Preprint servers** - arXiv for recent developments
 4. **web_search LAST** - For community discussions, code repositories, and numerical benchmarks only
 
-See {GPD_INSTALL_DIR}/templates/research.md for the RESEARCH.md template structure (use `depth: quick` for discovery-level output).
+See {GPD_INSTALL_DIR}/templates/research.md for the RESEARCH.md template structure used by Levels 2-3.
 </source_hierarchy>
 
 <process>
@@ -40,10 +41,10 @@ See {GPD_INSTALL_DIR}/templates/research.md for the RESEARCH.md template structu
 **Load project context and conventions:**
 
 ```bash
-INIT=$(gpd init phase-op --include state,config "${PHASE_ARG:-}")
+INIT=$(gpd --raw init phase-op --include state,config "${PHASE_ARG:-}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -51,10 +52,11 @@ Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phas
 
 - Extract `convention_lock` for unit system and sign conventions (so discovered formulas can be matched to project conventions)
 - Extract active approximations (so discovery can focus on the relevant regime)
-- If no project context exists (standalone usage), proceed with user-specified topic
+- If no project context exists (standalone usage), proceed only with a user-specified topic
 
 **If `phase_found` is false and a phase was specified:** Error — phase not found.
-**If no phase specified:** Discovery is standalone; output goes to `GPD/analysis/`. Ensure the directory exists: `mkdir -p GPD/analysis`.
+**If no phase specified:** Discovery is topic-scoped, not auto-phase-selected. Require an explicit topic even inside a project. Standalone output goes to `GPD/analysis/` rooted at the current workspace; ensure the directory exists: `mkdir -p GPD/analysis`.
+**If neither a phase nor a topic was supplied:** Ask one focused question in project-backed mode; standalone preflight should already have rejected the empty invocation.
 </step>
 
 <step name="determine_depth">
@@ -63,7 +65,7 @@ Parse JSON for: `commit_docs`, `phase_found`, `phase_dir`, `phase_number`, `phas
 Extract `--depth` flag if present: `--depth quick`, `--depth medium`, `--depth deep`.
 
 Map to internal depth levels:
-- `--depth quick` or `depth=verify` -> Level 1 (Quick Verification)
+- `--depth quick` or `depth=quick` -> Level 1 (Quick Verification)
 - `--depth medium` or `depth=standard` -> Level 2 (Standard Discovery)
 - `--depth deep` or `depth=deep` -> Level 3 (Deep Dive)
 - No `--depth` flag -> Default to Level 2 (Standard Discovery)
@@ -148,7 +150,7 @@ For: Choosing between methods, exploring a new parameter regime, setting up a ne
 
 7. Return to plan-phase.md.
 
-**Output:** `${phase_dir}/RESEARCH.md`
+**Output:** Phase-scoped `${phase_dir}/RESEARCH.md`, or standalone `GPD/analysis/discovery-{slug}.md`
 </step>
 
 <step name="level_3_deep_dive">
@@ -205,7 +207,7 @@ For: Novel problems, ambiguous or contradictory literature, foundational choices
 
 8. Return to plan-phase.md.
 
-**Output:** `${phase_dir}/RESEARCH.md` (comprehensive)
+**Output:** Phase-scoped `${phase_dir}/RESEARCH.md`, or standalone `GPD/analysis/discovery-{slug}.md` (comprehensive)
 </step>
 
 <step name="identify_unknowns">
@@ -229,7 +231,7 @@ Include:
 - Clear discovery objective (what physical question drives this)
 - Scoped include/exclude lists
 - Source preferences (textbooks, reviews, arXiv, specific journals)
-- Output structure for RESEARCH.md
+- Output structure for the discovery artifact
   </step>
 
 <step name="execute_discovery">
@@ -243,7 +245,10 @@ Run the discovery:
 </step>
 
 <step name="create_discovery_output">
-Ensure output directory exists and write RESEARCH.md:
+For Level 2-3, ensure the output directory exists and write the discovery artifact:
+
+This workflow is the documented write route for `gpd:discover` managed outputs.
+Keep standalone discovery artifacts rooted under `GPD/analysis/` in the current workspace.
 
 **Phase-scoped:** `${phase_dir}/RESEARCH.md`
 **Standalone (no phase):**
@@ -254,7 +259,7 @@ mkdir -p GPD/analysis
 
 Write to `GPD/analysis/discovery-{slug}.md` (where `{slug}` is derived from the discovery topic).
 
-Contents of RESEARCH.md:
+Contents of the discovery artifact:
 - Summary with recommendation
 - Key findings with sources (specific references, not vague citations)
 - Explicit formulas with conventions stated
@@ -263,7 +268,7 @@ Contents of RESEARCH.md:
 </step>
 
 <step name="confidence_gate">
-After creating RESEARCH.md, check confidence level.
+After creating the Level 2-3 discovery artifact, check confidence level.
 
 > **Platform note:** If `ask_user` is not available, present these options in plain text and wait for the user's freeform response.
 
@@ -285,7 +290,7 @@ Proceed directly, just note: "Discovery complete (high confidence)."
 </step>
 
 <step name="open_questions_gate">
-If RESEARCH.md has open_questions:
+If the Level 2-3 discovery artifact has open_questions:
 
 Present them inline:
 "Open questions from discovery:
@@ -300,20 +305,26 @@ If "address first": Gather user input on questions, update discovery.
 
 <step name="offer_next">
 ```
-Discovery complete: ${phase_dir}/RESEARCH.md
+Discovery complete.
+Artifact:
+- Level 1 quick verify: no file written
+- Phase-scoped Level 2-3: ${phase_dir}/RESEARCH.md
+- Standalone Level 2-3: GPD/analysis/discovery-{slug}.md
 Recommendation: [one-liner]
 Confidence: [level]
 
 What's next?
 
-1. Discuss phase context (/gpd:discuss-phase [current-phase])
-2. Create phase plan (/gpd:plan-phase [current-phase])
+1. If phase-scoped: Discuss phase context (gpd:discuss-phase [current-phase])
+2. If phase-scoped: Create phase plan (gpd:plan-phase [current-phase])
 3. Refine discovery (dig deeper)
-4. Review discovery
+4. Review discovery or continue from the standalone findings
 
 ```
 
-NOTE: RESEARCH.md is NOT committed separately. It will be committed with phase completion.
+NOTE: No discovery artifact is committed separately. Phase-scoped `RESEARCH.md` is committed with phase completion.
+
+The standalone artifact path above is always rooted at the current workspace `GPD/analysis/` directory.
 </step>
 
 </process>
@@ -328,7 +339,7 @@ NOTE: RESEARCH.md is NOT committed separately. It will be committed with phase c
 - Standard references consulted for all approaches
 - Claims cross-verified against independent sources
 - Conventions explicitly stated
-- RESEARCH.md created with recommendation
+- Discovery artifact created with recommendation
 - Confidence level MEDIUM or higher
 - Ready to inform PLAN.md creation
 
@@ -337,7 +348,7 @@ NOTE: RESEARCH.md is NOT committed separately. It will be committed with phase c
 - Literature exhaustively surveyed (textbooks, reviews, primary papers, arXiv)
 - All claims verified against independent sources
 - Conventions reconciled across references
-- RESEARCH.md created with comprehensive analysis
+- Discovery artifact created with comprehensive analysis
 - Quality report with source attribution
 - If LOW confidence findings -> validation checkpoints defined (reproduce known result X before proceeding)
 - Confidence gate passed

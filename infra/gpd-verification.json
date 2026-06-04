@@ -1,6 +1,6 @@
 {
   "name": "gpd-verification",
-  "description": "GPD physics verification checks. Tools for running contract-aware checks, dimensional analysis, domain and bundle-specific checklists, limiting case checks, symmetry verification, and coverage gap analysis. Contract-aware tools accept structured request objects or schema_version=1 contract payloads, expose the exact request shape through `required_request_fields`, `optional_request_fields`, and `request_template`, and surface the supported binding fields `binding.observable_id(s)`, `binding.claim_id(s)`, `binding.deliverable_id(s)`, `binding.acceptance_test_id(s)`, `binding.reference_id(s)`, and `binding.forbidden_proxy_id(s)`. These live semantic integrity rules reject target IDs reused across contract kinds when that makes target resolution ambiguous, and treat `references[].carry_forward_to` entries as workflow scope labels only, never contract IDs.",
+  "description": "GPD physics verification support tools. They expose check metadata, static triage, contract-aware check execution, dimensional-analysis helpers, domain and bundle-specific checklists, limiting-case prompts, symmetry-check prompts, and coverage gap analysis; MCP results do not by themselves grant final scientific verification status. Contract-aware requests are closed and schema-driven; full rules live on the `contract` input schema. Proof checks require authoritative contract payloads. Missing grounding, evidence, or proof artifacts stay explicit. Use `suggest_contract_checks(...)` before `run_contract_check(...)`. Only contract-payload enum case drift is recoverable; observed enums must match source evidence exactly.",
   "transport": "stdio",
   "command": "gpd-mcp-verification",
   "args": [],
@@ -23,6 +23,7 @@
     "Install GPD before enabling built-in MCP servers."
   ],
   "health_check": {
+    "probe_kind": "schema_valid",
     "tool": "get_checklist",
     "input": {
       "domain": "qft"
@@ -31,12 +32,12 @@
   },
   "alternatives": {
     "python_module": {
-      "command": "python3",
+      "command": "${GPD_PYTHON}",
       "args": [
         "-m",
         "gpd.mcp.servers.verification_server"
       ],
-      "notes": "Requires gpd package installed and Python >=3.11"
+      "notes": "Replace `${GPD_PYTHON}` with a Python >=3.11 interpreter that has GPD installed."
     }
   }
 }

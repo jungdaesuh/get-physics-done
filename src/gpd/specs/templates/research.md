@@ -4,11 +4,11 @@ template_version: 1
 
 # Research Template
 
-Template for `GPD/phases/XX-name/{phase}-RESEARCH.md` - comprehensive literature and methods research before planning a physics research phase.
+Template for phase-scoped `GPD/phases/XX-name/{phase}-RESEARCH.md` and standalone discovery artifacts such as `GPD/analysis/discovery-{slug}.md`.
 
 **Purpose:** Document what the agent needs to know to execute a research phase well - not just "which method" but "how do experts approach this problem, what's known, what's open, and what notation conventions exist."
 
-**Depth parameter:** This is the comprehensive research template. For lighter pre-planning exploration, see `discovery.md` which produces DISCOVERY.md. Use the `depth` field to control scope:
+**Depth parameter:** This is the comprehensive research template. For lighter pre-planning exploration, use `gpd:discover`: `--depth quick` verifies without writing a file, while `--depth medium` or `--depth deep` writes the discovery artifact. Use the `depth` field to control scope:
 - `quick` — Landscape scan: Summary, Key Findings, Recommended Methods, What Was NOT Found, Sources. Skip detailed analysis.
 - `standard` — Balanced: all sections at moderate depth (default).
 - `deep` — Thorough: all sections with full analysis, citation verification, controversy mapping.
@@ -18,18 +18,20 @@ Template for `GPD/phases/XX-name/{phase}-RESEARCH.md` - comprehensive literature
 ## File Template
 
 ````markdown
-# Phase [X]: [Name] - Research
+# [Phase [X]: ] [Name or Topic] - Research
 
 **Researched:** [date]
 **Domain:** [primary physics subfield / problem domain]
 **Depth:** [quick|standard|deep]
 **Confidence:** [HIGH/MEDIUM/LOW]
 
+[For standalone discovery output, omit the `Phase [X]:` prefix and use the topic name directly.]
+
 <user_constraints>
 
 ## User Constraints (from CONTEXT.md)
 
-**CRITICAL:** If CONTEXT.md exists from /gpd:discuss-phase, copy locked decisions here verbatim. These MUST be honored by the planner.
+**CRITICAL:** If CONTEXT.md exists from gpd:discuss-phase, copy locked decisions here verbatim. These MUST be honored by the planner.
 
 ### Locked Decisions
 
@@ -497,7 +499,7 @@ Key finding: The ramp region is where physics lives - it emerges from the connec
 - When notation conventions across papers need reconciliation
 - When known results and limiting cases must be catalogued before computation
 - When "how do experts approach this" matters more than "which tool"
-- For quick landscape scans, use `depth: quick` (alternatively, use `discovery.md` for lightweight pre-planning exploration)
+- For quick landscape scans, use `gpd:discover --depth quick` for verification-only checks, or `gpd:discover --depth medium` when you need a lightweight written artifact
 
 **Structure:**
 

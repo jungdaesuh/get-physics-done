@@ -4,6 +4,17 @@ Common protocols referenced by multiple GPD agents. Import via `references/share
 
 Agents must NEVER install dependencies silently. Ask the user before any install attempt, including Python packages, CLI tools, and TeX distributions. If TeX is required and missing, the user may choose to install BasicTeX yourself (small macOS option, about 100MB) or use an environment that already has TeX.
 
+## Epistemic Rigor Protocol
+
+Default to scientific skepticism and critical thinking.
+
+- Treat user preferences, prior notes, and model intuitions as hypotheses to test, not positions to oppose or conclusions to defend
+- Look for missing anchors, disconfirming evidence, proxy success, and regime violations before endorsing a result
+- Ground claims in inspected artifacts, executed checks, cited sources, or clearly labeled background knowledge
+- If a required artifact, citation, benchmark, or source cannot be found, produced, verified, or reproduced, keep that gap explicit as missing, failed, blocked, or inconclusive
+- Never fabricate references, numbers, derivations, files, figures, tables, logs, summaries, proofs, or claimed task completion
+- Narrow the claim when evidence is partial; do not upgrade uncertainty into agreement
+
 ## Forbidden Files
 
 **NEVER read or quote contents from these files (even if they exist):**
@@ -58,7 +69,7 @@ Every phase, plan, or derivation must declare:
 
 At the start of every task:
 
-1. Read `convention_lock` from STATE.md/state.json
+1. Read `convention_lock` from `state.json`; `STATE.md` is the readable state document
 2. Read `conventions` from the plan frontmatter
 3. If this task uses results from a prior plan: verify that prior plan's conventions match
 4. State explicitly at the top of every derivation file which conventions are in effect
@@ -159,13 +170,13 @@ When a phase consumes results from a prior phase, uncertainties must be tracked 
 2. **Propagate uncertainties.** Use standard error propagation (quadrature for independent errors, linear for correlated errors) through every calculation step that uses imported quantities.
 3. **Document propagation.** In the phase SUMMARY, include a section listing: (a) imported quantities with their uncertainties, (b) how uncertainties entered the current calculation, (c) the resulting uncertainty on this phase's outputs.
 4. **Flag amplification.** If uncertainty is amplified (e.g., exponentiation, division by small numbers, chaotic sensitivity), flag this explicitly as a potential validity concern.
-5. **Use `/gpd:error-propagation`** for systematic tracking across multi-phase calculations.
+5. **Use `gpd:error-propagation`** for systematic tracking across multi-phase calculations.
 
 **Why this matters:** Without explicit tracking, error bars on final results are underestimated. A 5% uncertainty in Phase 2 can become 50% by Phase 6 through amplification, but if never tracked, the final result appears precise.
 
 ### Machine-Readable Convention Assertions
 
-Every derivation file, computation script, and notebook must include a parseable assertion line declaring which conventions are in effect. This enables automated verification by the consistency checker and verifier agent.
+Every derivation file must include a parseable assertion line declaring which conventions are in effect. Convention-sensitive computation scripts and notebooks should also include one when they are meant to be reused or audited later. This enables automated verification by the consistency checker, verifier, and pre-commit gate.
 
 **Syntax:**
 
@@ -211,9 +222,9 @@ For LaTeX files, use `%` comment prefix. For Python, use `#`. For Markdown, use 
 **Verification protocol:**
 
 1. The executor writes an `ASSERT_CONVENTION` line at the top of every derivation file it creates or modifies
-2. The verifier scans for `ASSERT_CONVENTION` lines in all phase artifacts and compares each declared value against the project convention lock in `state.json`
+2. `gpd pre-commit-check` blocks changed derivation artifacts and canonical phase verification reports when their `ASSERT_CONVENTION` header is missing or mismatched against the active project convention lock
 3. A mismatch between an assertion and the lock is a **blocker** — it means the file was written under different conventions than the project standard
-4. A missing assertion in a file that contains equations is a **warning** — conventions should be declared explicitly
+4. A missing assertion in a convention-gated artifact is a **blocker**; outside that gated set, any explicit `ASSERT_CONVENTION` line is still checked against the lock and a mismatch remains a **blocker**
 
 ## Source Hierarchy
 
@@ -416,8 +427,8 @@ Both researcher agents follow the same methodology, differing only in scope (pro
 | Aspect | gpd-project-researcher | gpd-phase-researcher |
 |--------|----------------------|---------------------|
 | Scope | Entire project domain | Single phase domain |
-| Trigger | /gpd:new-project | /gpd:plan-phase or /gpd:research-phase |
-| Output | GPD/research/ (5 files) | ${phase_dir}/{phase}-RESEARCH.md |
+| Trigger | gpd:new-project | gpd:plan-phase or gpd:research-phase |
+| Output | GPD/literature/ (5 files) | ${phase_dir}/{phase}-RESEARCH.md |
 | Consumer | gpd-roadmapper | gpd-planner |
 | Commits | No (orchestrator commits) | No (orchestrator commits) |
 

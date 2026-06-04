@@ -17,10 +17,11 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from gpd.core.artifact_text import TEXT_LIKE_ARTIFACT_SUFFIXES
 from gpd.core.constants import PLANNING_DIR_NAME
 from gpd.core.errors import ConfigError, ValidationError
 from gpd.core.observability import instrument_gpd_function
-from gpd.core.storage_paths import ProjectStorageLayout, StoragePathError
+from gpd.core.storage_paths import ManagedOutputPolicy, ProjectStorageLayout, StoragePathError
 
 __all__ = [
     "CommitResult",
@@ -46,6 +47,9 @@ class FileCheckDetail(BaseModel):
     storage_valid: bool | None = None
     storage_class: str | None = None
     frontmatter_valid: bool | None = None
+    assert_convention_required: bool = False
+    assert_convention_valid: bool | None = None
+    assertion_count: int = 0
     has_nan: bool = False
     warnings: list[str] = Field(default_factory=list)
 
@@ -104,6 +108,7 @@ _ASSIGNMENT_NONFINITE_RE = re.compile(
     """,
     re.VERBOSE,
 )
+_DERIVATION_ASSERT_TARGET_RE = re.compile(r"(?i)^derivation-(?!state\.).+\.(?:md|py)$")
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +139,35 @@ def _staged_files(cwd: Path) -> list[str]:
     return [line.strip() for line in stdout.splitlines() if line.strip()]
 
 
+def _changed_files_for_pathspec(cwd: Path, pathspecs: list[str]) -> list[str]:
+    """Return changed, staged, or untracked regular-file paths under *pathspecs*."""
+    if not pathspecs:
+        return []
+
+    changed: list[str] = []
+    seen: set[str] = set()
+
+    def _append_from_stdout(stdout: str) -> None:
+        for line in stdout.splitlines():
+            file_path = line.strip()
+            if not file_path or file_path in seen:
+                continue
+            seen.add(file_path)
+            changed.append(file_path)
+
+    commands = (
+        ["diff", "--name-only", "--diff-filter=ACMR", "--", *pathspecs],
+        ["diff", "--cached", "--name-only", "--diff-filter=ACMR", "--", *pathspecs],
+        ["ls-files", "--others", "--exclude-standard", "--", *pathspecs],
+    )
+    for args in commands:
+        rc, stdout, _stderr = _exec_git(cwd, args)
+        if rc == 0 and stdout:
+            _append_from_stdout(stdout)
+
+    return changed
+
+
 def _expand_check_inputs(cwd: Path, files: list[str]) -> list[str]:
     """Resolve staged-file defaults and expand directory inputs recursively."""
     inputs = files or _staged_files(cwd)
@@ -146,18 +180,92 @@ def _expand_check_inputs(cwd: Path, files: list[str]) -> list[str]:
 
         if full_path.is_dir():
             for child in sorted(path for path in full_path.rglob("*") if path.is_file()):
-                resolved = str(child if input_path.is_absolute() else child.relative_to(cwd))
+                resolved = child.as_posix() if input_path.is_absolute() else child.relative_to(cwd).as_posix()
                 if resolved not in seen:
                     seen.add(resolved)
                     expanded.append(resolved)
             continue
 
-        normalized = str(input_path if input_path.is_absolute() else file_path)
+        normalized = str(input_path) if input_path.is_absolute() else Path(file_path).as_posix()
         if normalized not in seen:
             seen.add(normalized)
             expanded.append(normalized)
 
     return expanded
+
+
+def _is_derivation_assert_target(file_path: str) -> bool:
+    """Return whether a file is a derivation artifact subject to ASSERT gating."""
+    return _is_gpd_phase_path(file_path) and bool(
+        _DERIVATION_ASSERT_TARGET_RE.fullmatch(Path(file_path).name)
+    )
+
+
+def _is_gpd_phase_path(file_path: str) -> bool:
+    """Return whether *file_path* is under the canonical GPD/phases tree."""
+    parts = tuple(part.lower() for part in Path(file_path).parts)
+    return len(parts) >= 3 and parts[0] == PLANNING_DIR_NAME.lower() and parts[1] == "phases"
+
+
+def _is_phase_verification_target(file_path: str) -> bool:
+    """Return whether a file is a phase verification artifact subject to ASSERT gating."""
+    if not _is_gpd_phase_path(file_path):
+        return False
+    path = Path(file_path)
+    name = path.name.lower()
+    return name == "verification.md" or name.endswith("-verification.md")
+
+
+def _supports_assert_convention_validation(file_path: str) -> bool:
+    """Return whether a file type supports ASSERT_CONVENTION parsing."""
+    return Path(file_path).suffix.lower() in {".md", ".markdown", ".tex", ".py"}
+
+
+def _requires_assert_convention_check(file_path: str) -> bool:
+    """Return whether a file should be gated on ASSERT_CONVENTION coverage."""
+    return _is_derivation_assert_target(file_path) or _is_phase_verification_target(file_path)
+
+
+def _requires_utf8_text_validation(file_path: str) -> bool:
+    """Return whether a file should be decoded as UTF-8 and text-validated."""
+    return Path(file_path).suffix.lower() in TEXT_LIKE_ARTIFACT_SUFFIXES
+
+
+def _has_assert_convention_marker(content: str) -> bool:
+    """Return whether content contains at least one ASSERT_CONVENTION directive marker."""
+    return "ASSERT_CONVENTION" in content
+
+
+def _load_active_convention_lock(cwd: Path) -> tuple[object | None, bool]:
+    """Load the project convention lock if it has any active values."""
+    from gpd.core.conventions import ConventionLock, is_bogus_value
+    from gpd.core.state import load_state_json_readonly
+
+    try:
+        state = load_state_json_readonly(cwd) or {}
+    except Exception:
+        return None, False
+
+    lock_data = state.get("convention_lock")
+    if not isinstance(lock_data, dict):
+        return None, False
+
+    has_active_values = any(
+        not is_bogus_value(value) for key, value in lock_data.items() if key != "custom_conventions"
+    )
+    custom_conventions = lock_data.get("custom_conventions")
+    if isinstance(custom_conventions, dict):
+        has_active_values = has_active_values or any(
+            not is_bogus_value(value) for value in custom_conventions.values()
+        )
+
+    if not has_active_values:
+        return None, False
+
+    try:
+        return ConventionLock.model_validate(lock_data), True
+    except Exception:
+        return None, False
 
 
 def _token_is_nonfinite(token: str) -> bool:
@@ -285,21 +393,104 @@ def _check_json(content: str, detail: FileCheckDetail) -> None:
         _mark_nonfinite(detail)
 
 
-def _check_storage_path(layout: ProjectStorageLayout, full_path: Path, detail: FileCheckDetail) -> None:
+def _check_storage_path(
+    layout: ProjectStorageLayout,
+    full_path: Path,
+    detail: FileCheckDetail,
+    *,
+    managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+) -> None:
     """Validate that the file path itself is safe to commit."""
     detail.storage_class = layout.classify(full_path).value
     try:
-        layout.validate_commit_target(full_path)
+        layout.validate_commit_target(full_path, managed_output_policies=managed_output_policies)
         detail.storage_valid = True
     except StoragePathError as exc:
         detail.storage_valid = False
         detail.warnings.append(str(exc))
 
 
-def _check_single_file(cwd: Path, file_path: str, *, layout: ProjectStorageLayout) -> FileCheckDetail:
+def _check_assert_conventions(
+    content: str,
+    detail: FileCheckDetail,
+    *,
+    file_path: str,
+    convention_lock: object | None,
+    require_assertions: bool,
+) -> None:
+    """Validate ASSERT_CONVENTION coverage for convention-gated artifacts."""
+    from gpd.core.conventions import check_assertions, required_assertion_keys
+
+    detail.assert_convention_required = require_assertions
+    required_keys = required_assertion_keys(convention_lock) if require_assertions and convention_lock is not None else []
+    result = check_assertions(
+        content,
+        convention_lock,
+        filename=file_path,
+        require_assertions=require_assertions,
+        required_keys=required_keys,
+    )
+    detail.assertion_count = result.assertion_count
+
+    if not result.lock_available:
+        if require_assertions or result.assertion_count:
+            detail.warnings.append(
+                f"Skipping ASSERT_CONVENTION checks for {file_path}: no active convention lock"
+            )
+        return
+
+    if not require_assertions and result.assertion_count == 0:
+        return
+
+    if result.missing_required_assertions:
+        detail.assert_convention_valid = False
+        detail.warnings.append(f"Missing ASSERT_CONVENTION header in convention-gated artifact: {file_path}")
+        return
+
+    if result.missing_required_keys:
+        detail.assert_convention_valid = False
+        detail.warnings.append(
+            "Missing required ASSERT_CONVENTION keys in convention-gated artifact: "
+            f"{file_path} ({', '.join(result.missing_required_keys)})"
+        )
+        return
+
+    if result.mismatches:
+        detail.assert_convention_valid = False
+        for mismatch in result.mismatches:
+            detail.warnings.append(
+                "ASSERT_CONVENTION mismatch in "
+                f"{mismatch.file}: {mismatch.key}={mismatch.file_value!r} "
+                f"does not match lock value {mismatch.lock_value!r}"
+            )
+        return
+
+    detail.assert_convention_valid = True
+
+
+def _project_relative_file_path(cwd: Path, full_path: Path, original_path: str) -> str:
+    """Return a project-relative POSIX path when an absolute input lives inside *cwd*."""
+    if not Path(original_path).is_absolute():
+        return Path(original_path).as_posix()
+
+    try:
+        return full_path.resolve(strict=False).relative_to(cwd.resolve(strict=False)).as_posix()
+    except ValueError:
+        return Path(original_path).as_posix()
+
+
+def _check_single_file(
+    cwd: Path,
+    file_path: str,
+    *,
+    layout: ProjectStorageLayout,
+    convention_lock: object | None = None,
+    managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+) -> FileCheckDetail:
     """Run pre-commit checks on a single file."""
     detail = FileCheckDetail(file=file_path)
     full_path = Path(file_path) if Path(file_path).is_absolute() else cwd / file_path
+    project_file_path = _project_relative_file_path(cwd, full_path, file_path)
 
     if not full_path.exists():
         detail.exists = False
@@ -311,13 +502,30 @@ def _check_single_file(cwd: Path, file_path: str, *, layout: ProjectStorageLayou
         detail.warnings.append(f"Not a regular file: {file_path}")
         return detail
 
-    _check_storage_path(layout, full_path.resolve(strict=False), detail)
+    _check_storage_path(
+        layout,
+        full_path.resolve(strict=False),
+        detail,
+        managed_output_policies=managed_output_policies,
+    )
 
-    try:
-        content = full_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        detail.readable = False
-        detail.warnings.append(f"Cannot read file: {exc}")
+    content: str | None = None
+    if _requires_utf8_text_validation(file_path):
+        try:
+            content = full_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as exc:
+            detail.readable = False
+            detail.warnings.append(f"Cannot read file: {exc}")
+            return detail
+    else:
+        try:
+            full_path.read_bytes()
+        except OSError as exc:
+            detail.readable = False
+            detail.warnings.append(f"Cannot read file: {exc}")
+            return detail
+
+    if content is None:
         return detail
 
     suffix = full_path.suffix.lower()
@@ -328,6 +536,18 @@ def _check_single_file(cwd: Path, file_path: str, *, layout: ProjectStorageLayou
     elif _text_contains_nonfinite_value(content):
         _mark_nonfinite(detail)
 
+    require_assertions = _requires_assert_convention_check(project_file_path)
+    if require_assertions or (
+        _supports_assert_convention_validation(project_file_path) and _has_assert_convention_marker(content)
+    ):
+        _check_assert_conventions(
+            content,
+            detail,
+            file_path=file_path,
+            convention_lock=convention_lock,
+            require_assertions=require_assertions,
+        )
+
     return detail
 
 
@@ -337,40 +557,57 @@ def _check_single_file(cwd: Path, file_path: str, *, layout: ProjectStorageLayou
 
 
 @instrument_gpd_function("git_ops.pre_commit_check")
-def cmd_pre_commit_check(cwd: Path, files: list[str]) -> PreCommitCheckResult:
+def cmd_pre_commit_check(
+    cwd: Path,
+    files: list[str],
+    *,
+    managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+) -> PreCommitCheckResult:
     """Run pre-commit validation checks on planning files.
 
     Checks:
     1. Storage-path policy for commit targets
     2. Frontmatter YAML validity (for .md files)
     3. NaN/Inf detection in serialized file content
+    4. ASSERT_CONVENTION coverage for derivation and phase verification artifacts with an active lock,
+       plus mismatch validation for any explicit ASSERT_CONVENTION lines in supported text artifacts
 
     Behavior:
     - If *files* is empty, validates the currently staged files.
     - Directory inputs are expanded recursively to regular files.
     - Blocks scratch/internal artifact paths while allowing normal `GPD` docs.
+    - Optional managed-output policies may explicitly allow durable `GPD/` outputs.
     """
     resolved_files = _expand_check_inputs(cwd, files)
     if not resolved_files:
         return PreCommitCheckResult(passed=True, files_checked=0)
 
     layout = ProjectStorageLayout(cwd)
+    convention_lock, convention_lock_active = _load_active_convention_lock(cwd)
     details: list[FileCheckDetail] = []
     all_warnings: list[str] = []
 
     for file_path in resolved_files:
-        detail = _check_single_file(cwd, file_path, layout=layout)
+        detail = _check_single_file(
+            cwd,
+            file_path,
+            layout=layout,
+            convention_lock=convention_lock if convention_lock_active else None,
+            managed_output_policies=managed_output_policies,
+        )
         details.append(detail)
         all_warnings.extend(detail.warnings)
 
     # Determine overall pass/fail
-    # Fail on: storage violations, invalid frontmatter, NaN detected, missing files
+    # Fail on: storage violations, invalid frontmatter, NaN detected, missing files,
+    # and derivation ASSERT_CONVENTION mismatches or missing required assertions.
     passed = all(
         detail.exists
         and detail.regular_file
         and detail.readable
         and detail.storage_valid is not False
         and detail.frontmatter_valid is not False
+        and detail.assert_convention_valid is not False
         and not detail.has_nan
         for detail in details
     )
@@ -407,7 +644,8 @@ def cmd_commit(
 
     # Determine files to stage
     files_to_stage: list[str]
-    if files:
+    explicit_file_args = bool(files)
+    if explicit_file_args:
         files_to_stage = list(files)
     else:
         files_to_stage = [f"{PLANNING_DIR_NAME}/"]
@@ -434,7 +672,8 @@ def cmd_commit(
             reason="commit_docs_disabled",
         )
 
-    pre_commit = cmd_pre_commit_check(cwd, files_to_stage)
+    files_to_validate = files_to_stage if explicit_file_args else _changed_files_for_pathspec(cwd, files_to_stage)
+    pre_commit = cmd_pre_commit_check(cwd, files_to_validate)
     if not pre_commit.passed:
         warning_summary = "; ".join(dict.fromkeys(pre_commit.warnings)) or "validation failed"
         return CommitResult(
@@ -457,8 +696,12 @@ def cmd_commit(
             reason="git_add_failed",
         )
 
-    # Check if there's anything to commit
-    rc, stdout, stderr = _exec_git(cwd, ["diff", "--cached", "--quiet"])
+    # Check whether the intended pathspec has staged changes. The index may
+    # already contain unrelated staged paths that this command must preserve.
+    rc, stdout, stderr = _exec_git(
+        cwd,
+        ["diff", "--cached", "--quiet", "--", *files_to_stage],
+    )
     if rc == 0:
         # Nothing staged — no changes to commit
         return CommitResult(
@@ -477,8 +720,8 @@ def cmd_commit(
             reason="git_diff_failed",
         )
 
-    # Commit
-    rc, stdout, stderr = _exec_git(cwd, ["commit", "-m", message])
+    # Commit only the intended pathspec, preserving unrelated staged paths.
+    rc, stdout, stderr = _exec_git(cwd, ["commit", "-m", message, "--", *files_to_stage])
     if rc != 0:
         return CommitResult(
             committed=False,

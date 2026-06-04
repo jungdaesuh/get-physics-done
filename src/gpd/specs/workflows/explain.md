@@ -1,5 +1,5 @@
 <workflow_goal>
-Explain a requested physics concept rigorously and in context. The command must work both inside an initialized GPD project and from a standalone question.
+Explain a requested physics concept rigorously and in context. The command supports project-backed explanations and standalone explanations only when the standalone request already names an explicit target.
 </workflow_goal>
 
 <step name="validate_context">
@@ -15,15 +15,19 @@ fi
 
 Parse the returned JSON.
 
-- If `project_exists=true`, operate in project-context mode.
-- If `project_exists=false`, require an explicit concept/topic from `$ARGUMENTS` and operate in standalone mode.
-- If the request is empty or too vague to explain meaningfully, ask one clarifying question.
+Load and follow `{GPD_INSTALL_DIR}/references/results/result-lookup-policy.md` whenever canonical result-registry lookup is needed.
+
+- If `project_exists=true`, operate in project-context mode. If `$ARGUMENTS` is empty, ask one focused question to identify the concept, result, method, notation, or paper to explain before continuing.
+- If `project_exists=false`, require an explicit concept/topic from `$ARGUMENTS` and operate in standalone mode. Do not promise that an empty standalone launch can be clarified later; centralized preflight should reject it.
+- If the request is non-empty but too vague to explain meaningfully, ask one clarifying question.
+- If structured citation-source fields are present in init payloads, treat them as the preferred paper catalog for follow-up links and reference IDs.
+- If the concept maps to a canonical stored result, apply the shared result lookup policy before dependency tracing.
 </step>
 
 <step name="scope_request">
 Determine what kind of explanation is needed.
 
-1. Extract the core concept, method, notation, result, or paper title from `$ARGUMENTS`.
+1. Extract the core concept, method, notation, result, or paper title from `$ARGUMENTS` or from the focused clarification answer collected in project-context mode.
 2. Infer the likely explanation goal:
    - Conceptual grounding for the active phase
    - Formal clarification of notation/equations
@@ -33,6 +37,8 @@ Determine what kind of explanation is needed.
    - Brief operational clarification if the request is narrow and local
    - Full conceptual + formal explanation if the request is broader or foundational
 4. Generate a slug for the output file from the concept.
+5. If structured citation-source metadata is available, prefer it over prose-only reference reconstruction when selecting papers to mention or link.
+6. If the explanation needs canonical stored-result context, apply the shared result lookup policy.
 
 **Important:** Do not default to a generic textbook exposition. The explanation must answer why this matters in the user's current workflow or requested standalone task.
 </step>
@@ -41,7 +47,7 @@ Determine what kind of explanation is needed.
 If project context exists, gather the minimum useful context packet before spawning the explainer.
 
 ```bash
-INIT=$(gpd init progress --include project,state,roadmap,config)
+INIT=$(gpd --raw init progress --include project,state,roadmap,config --no-project-reentry)
 ```
 
 Use the init payload to extract:
@@ -50,6 +56,9 @@ Use the init payload to extract:
 - Current phase and next phase
 - Whether work is paused or currently executing
 - Research mode, autonomy mode, and model profile
+- Any structured citation-source catalog fields such as `citation_source_files`, `citation_source_count`, and `derived_citation_sources`
+- Any manuscript-local reference status surfaced as `derived_manuscript_reference_status` when the explanation is about the active paper or manuscript
+- Canonical stored-result metadata plus direct, upstream, or downstream context gathered with the shared result lookup policy when the concept maps to `intermediate_results`
 
 Search the local workspace for relevant mentions of the requested concept:
 
@@ -61,10 +70,15 @@ Also check for nearby high-value context when present:
 
 - `GPD/research-map/*.md`
 - Current phase `PLAN.md`, `SUMMARY.md`, `RESEARCH.md`, `VERIFICATION.md`
-- `paper/`, `manuscript/`, or `GPD/paper/`
+- `paper/`, `manuscript/`, or `draft/`
 - Existing `GPD/literature/*REVIEW.md`
+- Existing `GPD/literature/*-CITATION-SOURCES.json`
+- Existing manuscript-local `BIBLIOGRAPHY-AUDIT.json` when available
+- Existing canonical result entries and dependency context gathered with the shared result lookup policy
 
 If no project context exists, gather only the user request plus any relevant local files in the current working directory.
+
+Keep all GPD-authored explanation artifacts rooted under `GPD/explanations/` in the current workspace. In project-context mode, that means the resolved project root's `GPD/explanations/`; in standalone mode, it means `./GPD/explanations/` in the invoking workspace.
 
 Create the output directory:
 
@@ -80,7 +94,9 @@ Resolve the explainer model:
 EXPLAINER_MODEL=$(gpd resolve-model gpd-explainer)
 ```
 
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> Apply the canonical runtime delegation convention already loaded above.
 
 ```markdown
 <objective>
@@ -106,9 +122,11 @@ Explain the following concept rigorously and in context: {concept}
 4. Give the rigorous core: definition, physical meaning, assumptions, limits, and equations/derivation where needed.
 5. Connect the concept to this project's files, conventions, current phase, or manuscript claims when available.
 6. Distinguish established literature facts from project-specific assumptions or interpretations.
-7. Include a literature guide with papers the user can open directly. Prefer arXiv abstract links when available; otherwise use DOI or INSPIRE links.
-8. Never fabricate citations. If a reference is uncertain, mark it clearly as unverified instead of guessing.
-9. Close with common confusions, failure modes, and the next questions the user should ask.
+7. If structured citation-source metadata is available, use it to keep the literature guide tied to stable `reference_id` entries and openable URLs.
+8. If canonical stored-result context is available, use the direct, dependency, or impact context gathered by the shared result lookup policy.
+9. Include a literature guide with papers the user can open directly. Prefer arXiv abstract links when available; otherwise use DOI or INSPIRE links.
+10. Never fabricate citations. If a reference is uncertain, mark it clearly as unverified instead of guessing.
+11. Close with common confusions, failure modes, and the next questions the user should ask.
 </requirements>
 
 <output>
@@ -152,7 +170,7 @@ Resolve bibliographer model:
 BIBLIO_MODEL=$(gpd resolve-model gpd-bibliographer)
 ```
 
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, perform the audit in the main context.
+Apply the canonical runtime delegation convention already loaded above.
 
 ```
 task(
@@ -169,12 +187,11 @@ For every paper or book in the Literature Guide:
 3. Flag hallucinated, inaccurate, or weakly supported references
 4. Write the audit to `GPD/explanations/{slug}-CITATION-AUDIT.md`
 
-Return `BIBLIOGRAPHY UPDATED` if all references are verified or corrected.
-Return `CITATION ISSUES FOUND` if any references remain uncertain or invalid."
+Return a typed `gpd_return` envelope. Use `status: completed` when the audit finished, even if the human-readable heading is `## CITATION ISSUES FOUND`; use `status: checkpoint` only when researcher input is required to continue."
 )
 ```
 
-If `CITATION ISSUES FOUND`:
+If the bibliographer completed with issues recorded in the audit report:
 
 - Read the audit report
 - Correct metadata in the explanation file where the fix is straightforward

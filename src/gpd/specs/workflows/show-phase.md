@@ -12,10 +12,10 @@ Read all files referenced by the invoking prompt's execution_context before star
 **Initialize phase context:**
 
 ```bash
-INIT=$(gpd init phase-op "$PHASE")
+INIT=$(gpd --raw init phase-op "$PHASE")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -27,7 +27,7 @@ Extract from init JSON: `phase_dir`, `phase_number`, `phase_name`, `phase_found`
 Phase not found. Available phases:
 [list from roadmap]
 
-Usage: /gpd:show-phase <phase-number>
+Usage: gpd:show-phase <phase-number>
 ```
 
 Exit.
@@ -45,8 +45,7 @@ Categorize files into:
 - **Plans:** `PLAN.md` and `*-PLAN.md`
 - **Summaries:** `SUMMARY.md` and `*-SUMMARY.md`
 - **Context:** `*-CONTEXT.md`
-- **Research:** `*-RESEARCH.md`
-- **Discovery:** `DISCOVERY.md`
+- **Research:** `RESEARCH.md` and `*-RESEARCH.md`
 - **Verification:** `*-VERIFICATION.md`
 - **Validation:** `*-VALIDATION.md`
 - **Scripts:** `*.py`, `*.jl`, `*.m`, `*.nb`
@@ -58,7 +57,7 @@ Categorize files into:
 **Extract phase info from ROADMAP.md:**
 
 ```bash
-PHASE_INFO=$(gpd roadmap get-phase "${phase_number}")
+PHASE_INFO=$(gpd --raw roadmap get-phase "${phase_number}")
 ```
 
 Extract: `phase_name`, `goal`, `dependencies`, `status` (from disk analysis).
@@ -66,7 +65,7 @@ Extract: `phase_name`, `goal`, `dependencies`, `status` (from disk analysis).
 Also get overall roadmap context:
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 Find this phase in the phases array to get `disk_status` (complete/partial/planned/empty/no_directory), `plan_count`, `summary_count`.
@@ -101,7 +100,7 @@ Present as table:
 For each summary artifact (`SUMMARY.md` or `*-SUMMARY.md`):
 
 ```bash
-gpd summary-extract <path> --field one_liner --field key_results --field equations
+gpd --raw summary-extract <path> --field one_liner --field key_results --field equations
 ```
 
 Collect:
@@ -150,7 +149,7 @@ Present:
 | Validation   | 04-VALIDATION.md         | complete | 5      | 5      | 0      |
 ```
 
-If no verification files: "No verification performed yet. Run /gpd:verify-work {phase} to validate results."
+If no verification files: "No verification performed yet. Run gpd:verify-work {phase} to validate results."
 </step>
 
 <step name="convention_changes">
@@ -224,9 +223,9 @@ Present with human-readable sizes:
 
 ----------------------------------------------------------------
 **Also available:**
-- /gpd:verify-work {N} -- run physics validation checks
-- /gpd:execute-phase {N} -- execute pending plans
-- /gpd:plan-phase {N} -- create new plans
+- gpd:verify-work {N} -- run physics validation checks
+- gpd:execute-phase {N} -- execute pending plans
+- gpd:plan-phase {N} -- create new plans
 ----------------------------------------------------------------
 ```
 

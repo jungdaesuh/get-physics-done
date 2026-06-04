@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 dist/
-docs/
 build/
 .venv/
 .env
@@ -12,10 +11,35 @@ build/
 .pytest_cache/
 .mypy_cache/
 .npm-cache/
+.uv-cache/
+.tox/
+.nox/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+junit.xml
+pytest-report.xml
+*.prof
+*.profraw
+*.profdata
+tmp/
+# Literal shell-temp dirs created by misquoted install/debug commands.
+/$tmpdir/
+/"$tmpdir"/
+# Local product/debug reports from live GPD runs do not belong in release commits.
+GPD-FIX-REPORT-*.md
+GPD-FIX-REPORT*/
+# Repo-root crash-recovery state noise from accidental local GPD runs.
+GPD/state.json.bak
+GPD/state.json.lock
 .mcp.json
 # Runtime-owned local mirrors/config snapshots.
 .agents/
+.claude/
 .codex/
-.planning/
+.copilot/
 .gemini/
 .opencode/
+.playwright-mcp/
+node_modules/

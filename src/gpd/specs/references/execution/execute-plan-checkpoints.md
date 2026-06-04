@@ -1,14 +1,20 @@
 # Execute-Plan: Checkpoint Protocol
 
-Referenced by `src/gpd/specs/workflows/execute-plan.md`. Governs checkpoint creation, previous attempt detection, checkpoint handling during execution, and cleanup.
+Referenced by `{GPD_INSTALL_DIR}/workflows/execute-plan.md`. Governs checkpoint creation, previous attempt detection, checkpoint handling during execution, and cleanup. Use `references/orchestration/continuation-boundary.md` for the shared one-shot child/fresh-continuation boundary.
 
 ## Create Rollback Tag
 
 **Create a git rollback tag before any plan execution begins.** This enables clean recovery if the plan fails partway through. The git tag is a rollback primitive, not the bounded execution checkpoint state itself.
 
 ```bash
-CHECKPOINT_TAG="gpd-checkpoint/phase-${PHASE}-plan-${PLAN}-$(date +%s)"
-git tag "${CHECKPOINT_TAG}"
+CHECKPOINT_TAG="gpd-checkpoint-phase-${PHASE}-plan-${PLAN}-$(date +%s)"
+if git rev-parse --verify "refs/tags/${CHECKPOINT_TAG}" >/dev/null 2>&1; then
+  CHECKPOINT_TAG="${CHECKPOINT_TAG}-$$"
+fi
+if ! git tag "${CHECKPOINT_TAG}"; then
+  echo "ERROR: failed to create checkpoint tag ${CHECKPOINT_TAG}" >&2
+  exit 1
+fi
 ```
 
 Store the tag name for use in failure recovery:
@@ -70,6 +76,22 @@ git log --oneline --grep="(${PHASE}-${PLAN}): ${TASK_NAME}" | head -1
 
 If an exact match exists and the task output is identical, skip the commit with a note: "Task N already committed ({hash}), skipping duplicate."
 
+## First-Result, Skeptical, and Pre-Fanout Gates
+
+Run the first-result sanity gate at the earliest of: first quantitative result, first derived core equation, first produced artifact, first benchmark-style comparison, or two completed auto tasks. Ask what claim/deliverable/acceptance test the result would unlock, whether it is load-bearing or proxy-only, which quick sanity/benchmark/convention check passed, what decisive evidence is still missing, and what disconfirming observation would break the framing.
+
+Record gate-enter and gate-clear events on the existing `execution` payload. First-result fields are `review_cadence`, `first_result_ready`, `first_result_gate_pending`, and `current_task`. If a tangent appears at the same stop, keep optional `tangent_summary` / `tangent_decision` fields on that payload.
+
+If the first result is proxy-only, benchmark-thin, or lacks the decisive evidence the contract still owes, strengthen the same stop into skeptical review with `skeptical_requestioning_required`, `skeptical_requestioning_summary`, `weakest_unchecked_anchor`, `disconfirming_observation`, and `downstream_locked`. Resolve it with an explicit `skeptical_requestioning` clear; a first-result clear does not retire skeptical state.
+
+Before downstream dependent tasks or fanout continue, emit a pre-fanout lock when later work would rely on this result as decisive. The pre-fanout payload carries `pre_fanout_review_pending`, `downstream_locked`, and `last_result_label`. Record both the reason-scoped `pre_fanout` clear and the matching fanout unlock; neither transition implies the other.
+
+## Dense Supervised Clean-Wave Batching
+
+Batch only when `AUTONOMY="supervised"`, `review_cadence=dense`, every task has no deviation trace events, every `verification-complete` event has typed payload `verification.status="passed"` and `verification.issue_count=0`, no first-result / pre-fanout / skeptical gate is pending, and the return envelope has `status="completed"` with empty `issues`.
+
+Do not parse prose such as "failure language" to decide batching eligibility. On `Y` / Enter, all batched tasks are accepted at once; on `n`, re-present each task checkpoint individually; on `e`, open freeform per-task notes. Any deviation, failed verification, missing typed verification outcome, or required gate immediately reverts the wave to per-task checkpoints for remaining tasks.
+
 ## Checkpoint Protocol (During Execution)
 
 On `type="checkpoint:*"`: automate everything possible first. Checkpoints are for verification/decisions only.
@@ -90,11 +112,11 @@ See references/orchestration/checkpoints.md for details.
 
 When spawned via task and hitting checkpoint: return structured state (cannot interact with user directly).
 
-**Required return:** 1) Completed Tasks table (hashes + files) 2) Current task (what's blocking) 3) Checkpoint Details (user-facing content) 4) Awaiting (what's needed from user) 5) `execution_segment` payload with cursor, checkpoint cause, completed tasks, resume preconditions, and any first-result or pre-fanout gate state.
+**Required return:** 1) Completed Tasks table (hashes + files) 2) Current task (what's blocking) 3) Checkpoint Details (user-facing content) 4) Awaiting (what the orchestrator must resolve before continuation) 5) `execution_segment` runtime handoff payload with cursor, checkpoint cause, completed tasks, resume preconditions, and any first-result or pre-fanout gate state. If the stop is durably recorded, the same payload is what later persists as `continuation.bounded_segment`.
 
 If the stop is tied to first-result, skeptical, or pre-fanout review, the `execution_segment` must say which gate is still pending. A gate clear must name the specific reason being retired, and `fanout unlock` never substitutes for that clear. For `pre_fanout`, return `pre_fanout_review_cleared: true` when the review outcome is known but downstream unlock is still outstanding.
 
-Orchestrator parses -> presents to user -> spawns fresh continuation with your completed tasks state plus the `execution_segment` payload. You will NOT be resumed. In main context: use checkpoint protocol above.
+Orchestrator parses -> presents to user -> spawns fresh continuation with your completed tasks state plus the `execution_segment` payload. Apply `references/orchestration/continuation-boundary.md`: the child never waits for user approval inside the same run and will NOT be resumed in place. In main context: use checkpoint protocol above.
 
 ## Cleanup Checkpoint
 

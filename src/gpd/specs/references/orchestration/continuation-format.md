@@ -1,184 +1,62 @@
 # Continuation Format
 
-Standard format for presenting next steps after completing a research command or workflow.
-
-## Core Structure
-
-```
----
-
-## > Next Up
-
-**{identifier}: {name}** -- {one-line description}
-
-`{command to copy-paste}`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-
-**Also available:**
-- `{alternative option 1}` -- description
-- `{alternative option 2}` -- description
-
----
-```
-
-## Format Rules
-
-1. **Always show what it is** -- name + description, never just a command path
-2. **Pull context from source** -- ROADMAP.md for phases, PLAN.md `<objective>` for plans
-3. **Command in inline code** -- backticks, easy to copy-paste, renders as clickable link
-4. **`/clear` explanation** -- always include, keeps it concise but explains why
-5. **"Also available" not "Other options"** -- sounds more app-like
-6. **Visual separators** -- `---` above and below to make it stand out
-
-## Variants
-
-### Execute Next Plan
-
-```
----
-
-## > Next Up
-
-**02-03: Perturbative Corrections** -- Compute one-loop self-energy with RPA screening
-
-`/gpd:execute-phase 2`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-
-**Also available:**
-- Review plan before executing
-- `/gpd:list-phase-assumptions 2` -- check physical assumptions
-
----
-```
-
-### Execute Final Plan in Phase
-
-Add note that this is the last plan and what comes after:
-
-```
----
-
-## > Next Up
-
-**02-03: Perturbative Corrections** -- Compute one-loop self-energy with RPA screening
-<sub>Final plan in Phase 2</sub>
-
-`/gpd:execute-phase 2`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-
-**After this completes:**
-- Phase 2 -> Phase 3 transition
-- Next: **Phase 3: Non-perturbative Effects** -- Instanton contributions and resummation
-
----
-```
-
-### Plan a Phase
-
-```
----
-
-## > Next Up
-
-**Phase 2: Linear Response** -- Compute susceptibilities and response functions
-
-`/gpd:plan-phase 2`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-
-**Also available:**
-- `/gpd:discuss-phase 2` -- gather context first
-- `/gpd:research-phase 2` -- investigate unknowns
-- Review roadmap
-
----
-```
-
-### Phase Complete, Ready for Next
-
-Show completion status before next action:
-
-```
----
-
-## Phase 2 Complete
-
-3/3 plans executed
-
-## > Next Up
-
-**Phase 3: Non-perturbative Effects** -- Instanton contributions, resummation, and strong-coupling analysis
-
-`/gpd:plan-phase 3`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-
-**Also available:**
-- `/gpd:discuss-phase 3` -- gather context first
-- `/gpd:research-phase 3` -- investigate unknowns
-- Review what Phase 2 established
-
----
-```
-
-### Multiple Equal Options
-
-When there's no clear primary action:
-
-```
----
-
-## > Next Up
-
-**Phase 3: Non-perturbative Effects** -- Instanton contributions, resummation, and strong-coupling analysis
-
-**To plan directly:** `/gpd:plan-phase 3`
-
-**To discuss context first:** `/gpd:discuss-phase 3`
-
-**To research unknowns:** `/gpd:research-phase 3`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-```
-
-### Milestone Complete
-
-```
----
-
-## Milestone v1.0 Complete
-
-All 4 phases completed
-
-## > Next Up
-
-**Start v1.1** -- questioning -> literature review -> research plan -> roadmap
-
-`/gpd:new-milestone`
-
-<sub>`/clear` first -> fresh context window</sub>
-
----
-```
+Continuation output is presentation layer only. Route authority comes from the
+code-owned stage-stop envelope, lifecycle route, recovery advice, or typed
+suggestion payload; this file must not choose lifecycle routes itself.
+
+## Rendering Contract
+
+Use `stage-stop-envelope.md` for the public stop shape. When a workflow receives
+a typed route payload, emit its renderer-owned `## > Next Up` markdown and the
+matching `stage_stop.next_runtime_command` / `stage_stop.also_available`
+projection.
+
+If a payload has typed `NextCommand` fields but no rendered next-up markdown,
+render the same owner labels used by `render_next_up_block`:
+
+- `Primary:`
+- `Primary local transition:`
+- `**After this completes:**`
+- `Secondary runtime:`
+- `Secondary local helper:`
+- `Secondary local finalizer:`
+
+Do not expose raw init, field-access, readiness, cleanup, shell-control,
+structural verification, or local helper commands as public runtime next
+commands.
+
+## Stop And Checkpoint Rules
+
+Every completion, checkpoint, blocked return, failed return, retry gate, or stop
+that expects later action must end with a concrete route from the owning payload.
+Do not end on labels such as "ready", "continue", "retry", "review", or "stop
+here" unless the same final section gives the exact command or artifact action.
+
+Start a fresh context window only when the next command and project rediscovery path are explicit.
+Fresh context reset means a fresh context reset of the runtime window, not project recovery. Before
+reopening the runtime, use your normal terminal to rediscover the workspace when
+needed: `gpd resume` for the current recovery snapshot, or
+`gpd resume --recent` to find the workspace first. do not treat the fresh context reset as project recovery.
+
+Use these route families only as payload expectations, not prompt-owned branch
+logic:
+
+- persisted handoff/checkpoint: runtime resume route, usually `gpd:resume-work`;
+- same workflow retried after user edits: the original runtime command, such as
+  `gpd:new-project --minimal @file.md`;
+- lifecycle phase planning/execution/verification/closeout: lifecycle or
+  `gpd --raw suggest` route payload;
+- convention or recovery blockers: recovery-advice route payload;
+- no clear primary route: `gpd:suggest-next`.
+
+If the owning payload is missing or unparseable, surface the payload/error and
+stop instead of inventing a route.
 
 ## Pulling Context
 
-### For phases (from ROADMAP.md):
+Context labels are descriptive only; they cannot override the typed command.
+
+For phases, extract the name and goal from `ROADMAP.md`:
 
 ```markdown
 ### Phase 2: Linear Response
@@ -186,17 +64,12 @@ All 4 phases completed
 **Goal:** Compute susceptibilities and response functions in RPA
 ```
 
-Extract: `**Phase 2: Linear Response** -- Compute susceptibilities and response functions in RPA`
+Display context can become `Phase 2: Linear Response -- Compute
+susceptibilities and response functions in RPA`.
 
-### For plans (from ROADMAP.md):
-
-```markdown
-Plans:
-
-- [ ] 02-03: Compute perturbative corrections to self-energy
-```
-
-Or from PLAN.md `<objective>`:
+For plans, prefer `PLAN.md` frontmatter/body fields already surfaced by the
+runtime. If only the plan body is available, use the `<objective>` block as a
+one-line description:
 
 ```xml
 <objective>
@@ -206,46 +79,10 @@ Purpose: Obtain quasiparticle lifetime and effective mass renormalization.
 </objective>
 ```
 
-Extract: `**02-03: Perturbative Corrections** -- Compute one-loop self-energy with RPA screening`
-
 ## Anti-Patterns
 
-### Don't: Command-only (no context)
-
-```
-## To Continue
-
-Run `/clear`, then paste:
-/gpd:execute-phase 2
-```
-
-User has no idea what 02-03 is about.
-
-### Don't: Missing /clear explanation
-
-```
-`/gpd:plan-phase 3`
-
-Run /clear first.
-```
-
-Doesn't explain why. User might skip it.
-
-### Don't: "Other options" language
-
-```
-Other options:
-- Review roadmap
-```
-
-Sounds like an afterthought. Use "Also available:" instead.
-
-### Don't: Fenced code blocks for commands
-
-````
-```
-/gpd:plan-phase 3
-```
-````
-
-Fenced blocks inside templates create nesting ambiguity. Use inline backticks instead.
+- Command-only continuation with no context label.
+- Fresh-context text without an exact next command from the owning route.
+- "Other options" language instead of renderer-owned secondary labels.
+- Fenced code blocks for public runtime commands; use inline command labels in
+  renderer-owned lines.

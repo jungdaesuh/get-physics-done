@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "workflow_id": "sync-state",
+  "required_init_field_groups": {
+    "workspace_reentry_context": [
+      "workspace_root",
+      "project_root",
+      "project_root_source",
+      "project_root_auto_selected",
+      "init_root_policy",
+      "project_reentry_mode",
+      "project_reentry_guidance"
+    ],
+    "project_root_context": [
+      "project_root"
+    ],
+    "state_file_presence": [
+      "state_md_exists",
+      "state_json_exists",
+      "state_json_backup_exists"
+    ],
+    "state_recovery_status": [
+      "state_recovery_guidance",
+      "state_load_source",
+      "state_integrity_issues"
+    ],
+    "state_file_bodies": [
+      "state_md_content",
+      "state_json_content",
+      "state_json_backup_content"
+    ],
+    "state_integrity_status": [
+      "state_load_source",
+      "state_integrity_issues"
+    ],
+    "contract_gate_status": [
+      "project_contract",
+      "project_contract_gate",
+      "project_contract_load_info",
+      "project_contract_validation"
+    ],
+    "platform_context": [
+      "platform"
+    ]
+  },
+  "authority_groups": {
+    "state_schema": [
+      "templates/state-json-schema.md"
+    ]
+  },
+  "stage_defaults": {
+    "allowed_tools": [
+      "file_read",
+      "file_write",
+      "find_files",
+      "search_files",
+      "shell"
+    ],
+    "writes_allowed": []
+  },
+  "stages": [
+    {
+      "id": "sync_bootstrap",
+      "order": 1,
+      "purpose": "state-file existence detection and reconciliation path selection",
+      "mode_paths": [
+        "workflows/sync-state/sync-bootstrap.md"
+      ],
+      "required_init_field_groups": [
+        "workspace_reentry_context",
+        "state_file_presence",
+        "state_recovery_status",
+        "platform_context"
+      ],
+      "loaded_authorities": [
+        "workflows/sync-state/sync-bootstrap.md"
+      ],
+      "conditional_authorities": [],
+      "must_not_eager_load": [
+        "workflows/sync-state.md",
+        "workflows/sync-state/single-source-recovery.md",
+        "workflows/sync-state/conflict-analysis.md",
+        "workflows/sync-state/reconcile-and-validate.md"
+      ],
+      "must_not_eager_load_groups": [
+        "state_schema"
+      ],
+      "produced_state": [
+        "reconciliation path",
+        "bootstrap integrity summary"
+      ],
+      "next_stages": [
+        "single_source_recovery",
+        "conflict_analysis"
+      ],
+      "checkpoints": [
+        "state file availability established",
+        "bootstrap keeps schema deferred"
+      ]
+    },
+    {
+      "id": "single_source_recovery",
+      "order": 2,
+      "purpose": "missing-file regeneration from the single authoritative surviving source",
+      "mode_paths": [
+        "workflows/sync-state/single-source-recovery.md"
+      ],
+      "required_init_field_groups": [
+        "project_root_context",
+        "state_file_presence",
+        "state_recovery_status"
+      ],
+      "loaded_authorities": [
+        "workflows/sync-state/single-source-recovery.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "backend_validation_failed_needs_schema_context",
+          "authorities": [
+            "templates/state-json-schema.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/sync-state.md"
+      ],
+      "must_not_eager_load_groups": [
+        "state_schema"
+      ],
+      "writes_allowed": [
+        "GPD/STATE.md",
+        "GPD/state.json",
+        "GPD/state.json.bak"
+      ],
+      "produced_state": [
+        "single-source recovery result"
+      ],
+      "next_stages": [
+        "reconcile_and_validate"
+      ],
+      "checkpoints": [
+        "missing mirror regenerated through authoritative code path"
+      ]
+    },
+    {
+      "id": "conflict_analysis",
+      "order": 3,
+      "purpose": "read-only deterministic comparison of mirrored fields for drift reporting",
+      "mode_paths": [
+        "workflows/sync-state/conflict-analysis.md"
+      ],
+      "required_init_field_groups": [
+        "project_root_context",
+        "state_file_presence",
+        "state_file_bodies",
+        "state_integrity_status",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/sync-state/conflict-analysis.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "manual_schema_drift_analysis",
+          "authorities": [
+            "templates/state-json-schema.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/sync-state.md"
+      ],
+      "must_not_eager_load_groups": [
+        "state_schema"
+      ],
+      "produced_state": [
+        "conflict matrix",
+        "reconciliation decision"
+      ],
+      "next_stages": [
+        "reconcile_and_validate"
+      ],
+      "checkpoints": [
+        "state.json authority outranks timestamps",
+        "comparison covers mirrored fields explicitly"
+      ]
+    },
+    {
+      "id": "reconcile_and_validate",
+      "order": 4,
+      "purpose": "apply the chosen repair path, validate both state files, and optionally commit",
+      "mode_paths": [
+        "workflows/sync-state/reconcile-and-validate.md"
+      ],
+      "required_init_field_groups": [
+        "project_root_context",
+        "state_file_presence",
+        "state_recovery_status"
+      ],
+      "loaded_authorities": [
+        "workflows/sync-state/reconcile-and-validate.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "backend_validation_failed_needs_schema_context",
+          "authorities": [
+            "templates/state-json-schema.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/sync-state.md"
+      ],
+      "must_not_eager_load_groups": [
+        "state_schema"
+      ],
+      "writes_allowed": [
+        "GPD/STATE.md",
+        "GPD/state.json",
+        "GPD/state.json.bak"
+      ],
+      "produced_state": [
+        "reconciled state pair",
+        "validation status"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "reconciled state validates",
+        "commit remains optional caller-controlled tail work"
+      ]
+    }
+  ]
+}

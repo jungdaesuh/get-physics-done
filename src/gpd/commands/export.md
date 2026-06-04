@@ -1,7 +1,7 @@
 ---
 name: gpd:export
 description: Export research results to HTML, LaTeX, or ZIP package
-argument-hint: "[--format html|latex|zip|all]"
+argument-hint: "[--format html|latex|zip|all] [--commit]"
 context_mode: project-required
 allowed-tools:
   - file_read
@@ -9,10 +9,18 @@ allowed-tools:
   - shell
   - search_files
   - find_files
+help:
+  group: Tangents, memory, and exports
+  order: 580
+  compact_description: Export project artifacts; generated text exports are committed only with explicit `--commit`
+  display_signature: gpd:export [--format html|latex|zip|all] [--commit]
+  examples:
+    - gpd:export --format latex --commit
+  notes:
+    - For generated text exports, outputs are committed only with explicit `--commit`.
+    - gpd observe execution, gpd observe sessions, gpd observe show, and gpd trace show inspect only; gpd observe event, gpd observe export, and gpd trace start|log|stop write observability.
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Export research results into shareable formats. Collects key results, equations, derivations, and figures from all completed phases and packages them for external consumption.
@@ -25,6 +33,7 @@ Export research results into shareable formats. Collects key results, equations,
 - `all`: Generate all formats
 
 Use this when sharing results with collaborators, preparing for publication, or archiving a milestone.
+
 </objective>
 
 <execution_context>
@@ -32,7 +41,7 @@ Use this when sharing results with collaborators, preparing for publication, or 
 </execution_context>
 
 <context>
-Format: $ARGUMENTS (optional -- if not provided, ask user)
+Format and commit intent: $ARGUMENTS (optional -- if not provided, ask user)
 
 @GPD/PROJECT.md
 @GPD/ROADMAP.md
@@ -40,35 +49,17 @@ Format: $ARGUMENTS (optional -- if not provided, ask user)
 </context>
 
 <process>
-Execute the export workflow from @{GPD_INSTALL_DIR}/workflows/export.md end-to-end.
-
-## Step 1: Load Project Context
-
-Read PROJECT.md, ROADMAP.md, and all SUMMARY.md files from completed phases.
-
-## Step 2: Determine Format
-
-Parse --format from $ARGUMENTS. If not specified, ask user.
-
-## Step 3: Generate Export
-
-Route to appropriate generator (html, latex, zip, or all).
-
-## Step 4: Write Output
-
+Execute the included export workflow end-to-end.
+The workflow owns loading, format resolution, generation, file writing, and reporting.
 Write files to `exports/`.
-
-## Step 5: Report
-
-Display file locations, sizes, and instructions for each format.
+Files written to exports/ are reported by the workflow.
+Do not commit generated exports unless `$ARGUMENTS` includes `--commit`.
 </process>
 
 <success_criteria>
 
-- [ ] Project context loaded (PROJECT.md, ROADMAP.md, all SUMMARYs)
-- [ ] Format determined (from args or user choice)
-- [ ] Export generated in requested format(s)
-- [ ] Key results and equations included
-- [ ] Files written to exports/
-- [ ] File locations reported to user
-      </success_criteria>
+- [ ] Export workflow executed as the authority for export mechanics
+- [ ] Requested format from `$ARGUMENTS` handed to workflow-owned resolution
+- [ ] Workflow-owned output and reporting contract preserved
+- [ ] Text export commit skipped unless `--commit` was explicitly requested
+</success_criteria>

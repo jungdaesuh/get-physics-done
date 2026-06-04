@@ -12,28 +12,37 @@ Read all files referenced by the invoking prompt's execution_context before star
 Load todo context:
 
 ```bash
-INIT=$(gpd init todos)
+INIT=$(gpd --raw init todos)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
-Extract from init JSON: `todo_count`, `todos`, `pending_dir`.
+Extract from init JSON: `todo_count`, `todos`, `pending_dir`, `done_dir`, `project_exists`, `workspace_root`, `project_root`.
+
+Before file operations, bind to the effective root returned by init so nested workspaces use the ancestor project todo tree instead of creating a second local `GPD/` tree:
+
+```bash
+project_root=$(echo "$INIT" | gpd json get .project_root --default "$(pwd)")
+pending_dir=$(echo "$INIT" | gpd json get .pending_dir --default "GPD/todos/pending")
+done_dir=$(echo "$INIT" | gpd json get .done_dir --default "GPD/todos/done")
+cd "$project_root" || exit 1
+```
 
 If `todo_count` is 0:
 
 ```
 No pending todos.
 
-Todos are captured during work sessions with /gpd:add-todo.
+Todos are captured during work sessions with gpd:add-todo.
 
 ---
 
 Would you like to:
 
-1. Continue with current phase (/gpd:progress)
-2. Add a todo now (/gpd:add-todo)
+1. Continue with current phase (gpd:progress)
+2. Add a todo now (gpd:add-todo)
 ```
 
 Exit.
@@ -41,10 +50,10 @@ Exit.
 
 <step name="parse_filter">
 Check for area filter in arguments:
-- `/gpd:check-todos` -> show all
-- `/gpd:check-todos analytical` -> filter to area:analytical only
-- `/gpd:check-todos numerical` -> filter to area:numerical only
-- `/gpd:check-todos formalism` -> filter to area:formalism only
+- `gpd:check-todos` -> show all
+- `gpd:check-todos analytical` -> filter to area:analytical only
+- `gpd:check-todos numerical` -> filter to area:numerical only
+- `gpd:check-todos formalism` -> filter to area:formalism only
 </step>
 
 <step name="list_todos">
@@ -62,7 +71,7 @@ Pending Todos:
 ---
 
 Reply with a number to view details, or:
-- `/gpd:check-todos [area]` to filter by area
+- `gpd:check-todos [area]` to filter by area
 - `q` to exit
 ```
 
@@ -129,7 +138,7 @@ Use ask_user:
 - question: "What would you like to do with this todo?"
 - options:
   - "Work on it now" -- move to done, start working
-  - "Create a phase" -- /gpd:add-phase with this scope
+  - "Create a phase" -- gpd:add-phase with this scope
   - "Brainstorm approach" -- think through before deciding
   - "Put it back" -- return to list
     </step>
@@ -138,20 +147,20 @@ Use ask_user:
 **Work on it now:**
 ```bash
 todo_name="$(basename "$todo_file")"
-done_file="GPD/todos/done/${todo_name}"
+done_file="${done_dir}/${todo_name}"
 mv "$todo_file" "$done_file"
 ```
-Update STATE.md todo count. Present problem/solution context. Begin work or ask how to proceed.
+Do not hand-edit STATE.md todo count. Present problem/solution context. Begin work or ask how to proceed.
 
 **Add to phase plan:**
 Note todo reference in phase planning notes. Keep in pending. Return to list or exit.
 
 **Create a phase:**
-Display: `/gpd:add-phase [description from todo]`
+Display: `gpd:add-phase [description from todo]`
 Keep in pending. User runs command in fresh context.
 
 **Brainstorm approach:**
-Keep in pending. Start discussion about problem and approaches. **Maximum 4 brainstorm iterations.** After 4 rounds, summarize approaches discussed and suggest creating a concrete plan (e.g., via `/gpd:add-phase` or `/gpd:plan-phase`).
+Keep in pending. Start discussion about problem and approaches. **Maximum 4 brainstorm iterations.** After 4 rounds, summarize approaches discussed and suggest creating a concrete plan (e.g., via `gpd:add-phase` or `gpd:plan-phase`).
 
 **Put it back:**
 Return to list_todos step.
@@ -160,7 +169,7 @@ Return to list_todos step.
 <step name="update_state">
 After any action that changes todo count:
 
-Re-run `init todos` to get updated count, then update STATE.md "### Pending Todos" section if exists.
+Re-run `init todos` to get the updated count. The todo files are the source of truth; do not hand-edit STATE.md "### Pending Todos" with ad hoc text manipulation.
 </step>
 
 <step name="git_commit">
@@ -169,10 +178,10 @@ If todo was moved to done/, commit the change:
 ```bash
 git rm --cached "$todo_file" 2>/dev/null || true
 
-PRE_CHECK=$(gpd pre-commit-check --files "$done_file" GPD/STATE.md 2>&1) || true
+PRE_CHECK=$(gpd pre-commit-check --files "$done_file" 2>&1) || true
 echo "$PRE_CHECK"
 
-gpd commit "docs: start work on todo - ${title}" --files "$done_file" GPD/STATE.md
+gpd commit "docs: start work on todo - ${title}" --files "$todo_file" "$done_file"
 ```
 
 Tool respects `commit_docs` config and gitignore automatically.
@@ -190,7 +199,7 @@ Confirm: "Committed: docs: start work on todo - ${title}"
 - [ ] Roadmap context checked for phase match
 - [ ] Appropriate actions offered
 - [ ] Selected action executed
-- [ ] STATE.md updated if todo count changed
+- [ ] STATE.md not hand-edited; todo count remains file-derived
 - [ ] Changes committed to git (if todo moved to done/)
 
 </success_criteria>

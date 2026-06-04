@@ -1,5 +1,5 @@
 <purpose>
-Create a git branch for parallel investigation of an alternative hypothesis or approach. Sets up isolated research state with hypothesis documentation, enabling side-by-side comparison later via /gpd:compare-branches. Common in physics when multiple approximation schemes, gauge choices, or derivation pathways need to be compared systematically.
+Create a git branch for parallel investigation of an alternative hypothesis or approach. Sets up isolated research state with hypothesis documentation, enabling side-by-side comparison later via gpd:compare-branches. Common in physics when multiple approximation schemes, gauge choices, or derivation pathways need to be compared systematically.
 </purpose>
 
 <required_reading>
@@ -12,10 +12,10 @@ Read all files referenced by the invoking prompt's execution_context before star
 Load project context:
 
 ```bash
-INIT=$(gpd init phase-op --include state,config "${PHASE_ARG:-}")
+INIT=$(gpd --raw init phase-op --include state,config "${PHASE_ARG:-}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -26,15 +26,15 @@ This command requires project context because it forks hypothesis state from the
 <step name="parse_arguments">
 Parse the hypothesis description from command arguments.
 
-Example: `/gpd:branch-hypothesis Use dimensional regularization instead of hard cutoff`
+Example: `gpd:branch-hypothesis Use dimensional regularization instead of hard cutoff`
 -> description = "Use dimensional regularization instead of hard cutoff"
 
 If no arguments provided:
 
 ```
 ERROR: Hypothesis description required
-Usage: /gpd:branch-hypothesis <description>
-Example: /gpd:branch-hypothesis Use dimensional regularization instead of hard cutoff
+Usage: gpd:branch-hypothesis <description>
+Example: gpd:branch-hypothesis Use dimensional regularization instead of hard cutoff
 ```
 
 Exit.
@@ -169,7 +169,7 @@ Help the researcher populate the HYPOTHESIS.md placeholders by inferring content
 
 ```bash
 # Get current phase and project state via gpd CLI
-INIT=$(gpd init progress --include roadmap,state)
+INIT=$(gpd --raw init progress --include roadmap,state)
 ```
 
 Parse from INIT JSON: `project_exists`, `state_exists`, `current_phase` (object with `number`, `name`, `directory`), `state_content`, `roadmap_content`.
@@ -191,7 +191,7 @@ CURRENT_PHASE_NUM="${current_phase.number}"
 PHASE_DIR=$(gpd --raw phase find "$CURRENT_PHASE_NUM")
 if [ $? -ne 0 ]; then
   echo "ERROR: Could not find phase directory for phase $CURRENT_PHASE_NUM"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -252,20 +252,7 @@ Fork STATE.md to include hypothesis context:
 gpd state add-decision --phase "${CURRENT_PHASE_NUM}" --summary "Created hypothesis branch: ${description}" --rationale "Investigating alternative approach on branch hypothesis/${slug}"
 ```
 
-2. Optionally add a short hypothesis note to `STATE.md` via file_edit tool. After the `## Current Position` section, add:
-
-```markdown
-## Active Hypothesis
-
-**Branch:** hypothesis/{slug}
-**Description:** {description}
-**Parent:** {parent_branch}
-
-This is a hypothesis branch investigating an alternative approach.
-Compare results with parent branch via `/gpd:compare-branches`.
-```
-
-3. Treat that note as markdown-only context. It is not part of the structured state schema, so it will not be mirrored into `state.json`, and future JSON-driven state rewrites may replace it. The durable record for the hypothesis is the `gpd state add-decision` entry plus `GPD/hypotheses/${SLUG}/HYPOTHESIS.md`.
+2. Treat the durable record for the hypothesis as the `gpd state add-decision` entry plus `GPD/hypotheses/${SLUG}/HYPOTHESIS.md`.
    </step>
 
 <step name="commit_setup">
@@ -284,7 +271,7 @@ gpd commit "docs: create hypothesis branch for {slug}" --files GPD/hypotheses/${
 <step name="completion">
 Present completion summary:
 
-```
+```text
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  GPD > HYPOTHESIS BRANCH CREATED
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -301,13 +288,13 @@ Present completion summary:
 1. **Fill in HYPOTHESIS.md** — document motivation, expected outcome, and success criteria
 2. **Plan the phase** using the alternative approach:
 
-   /gpd:plan-phase {current_phase}
+   gpd:plan-phase {current_phase}
 
-   <sub>/clear first -> fresh context window</sub>
+   <sub>Start a fresh context window</sub>
 
 3. **Execute and compare** when ready:
 
-   /gpd:compare-branches
+   gpd:compare-branches
 
 ---
 

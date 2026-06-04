@@ -6,11 +6,38 @@
     "config_dir_name": ".claude",
     "install_flag": "--claude",
     "launch_command": "claude",
+    "adapter_module": "gpd.adapters.claude_code",
+    "adapter_class": "ClaudeCodeAdapter",
     "command_prefix": "/gpd:",
     "native_include_support": true,
     "activation_env_vars": ["CLAUDE_CODE_SESSION", "CLAUDE_CODE"],
     "selection_flags": ["--claude-code", "--claude"],
     "selection_aliases": ["claude-code", "claude code", "claude"],
+    "installer_help_example_scope": "global",
+    "validated_command_surface": "public_runtime_slash_command",
+    "capabilities": {
+      "permissions_surface": "config-file",
+      "permission_surface_kind": "settings.json:permissions.defaultMode",
+      "prompt_free_mode_value": "bypassPermissions",
+      "supports_runtime_permission_sync": true,
+      "supports_prompt_free_mode": true,
+      "prompt_free_requires_relaunch": true,
+      "statusline_surface": "explicit",
+      "statusline_config_surface": "settings.json:statusLine",
+      "supports_context_meter": true
+    },
+    "hook_payload": {
+      "workspace_keys": ["cwd", "current_dir", "path", "workspace_dir"],
+      "project_dir_keys": ["project_dir"],
+      "target_path_keys": ["target_path"],
+      "target_root_keys": ["target_root"],
+      "model_keys": ["display_name", "name", "id"],
+      "context_window_size_keys": ["context_window_size"],
+      "context_remaining_keys": ["remaining_percentage", "remainingPercent", "remaining"]
+    },
+    "managed_install_surface": {
+      "nested_command_globs": ["commands/gpd/**/*"]
+    },
     "global_config": {
       "strategy": "env_or_home",
       "env_var": "CLAUDE_CONFIG_DIR",
@@ -24,12 +51,44 @@
     "config_dir_name": ".gemini",
     "install_flag": "--gemini",
     "launch_command": "gemini",
+    "adapter_module": "gpd.adapters.gemini",
+    "adapter_class": "GeminiAdapter",
     "command_prefix": "/gpd:",
     "native_include_support": false,
     "activation_env_vars": ["GEMINI_CLI"],
     "selection_flags": ["--gemini", "--gemini-cli"],
     "selection_aliases": ["gemini", "gemini cli"],
     "agent_prompt_uses_dollar_templates": true,
+    "validated_command_surface": "public_runtime_slash_command",
+    "capabilities": {
+      "permissions_surface": "launch-wrapper",
+      "permission_surface_kind": "managed-launcher-wrapper",
+      "prompt_free_mode_value": "yolo",
+      "supports_runtime_permission_sync": true,
+      "supports_prompt_free_mode": true,
+      "prompt_free_requires_relaunch": true,
+      "statusline_surface": "explicit",
+      "statusline_config_surface": "settings.json:statusLine",
+      "supports_context_meter": true
+    },
+    "hook_payload": {
+      "workspace_keys": ["cwd", "current_dir", "path", "workspace_dir"],
+      "project_dir_keys": ["project_dir"],
+      "target_path_keys": ["target_path"],
+      "target_root_keys": ["target_root"],
+      "model_keys": ["display_name", "name", "id"],
+      "context_window_size_keys": ["context_window_size"],
+      "context_remaining_keys": ["remaining_percentage", "remainingPercent", "remaining"]
+    },
+    "managed_install_surface": {
+      "nested_command_globs": ["commands/gpd/**/*"]
+    },
+    "manifest_metadata_list_policies": [
+      {
+        "key": "managed_runtime_files",
+        "value_kind": "relpath"
+      }
+    ],
     "global_config": {
       "strategy": "env_or_home",
       "env_var": "GEMINI_CONFIG_DIR",
@@ -43,14 +102,54 @@
     "config_dir_name": ".codex",
     "install_flag": "--codex",
     "launch_command": "codex",
+    "adapter_module": "gpd.adapters.codex",
+    "adapter_class": "CodexAdapter",
     "command_prefix": "$gpd-",
     "native_include_support": false,
     "activation_env_vars": ["CODEX_SESSION", "CODEX_CLI"],
     "selection_flags": ["--codex"],
     "selection_aliases": ["codex"],
     "manifest_file_prefixes": ["skills/"],
+    "manifest_metadata_list_policies": [
+      {
+        "key": "codex_generated_skill_dirs",
+        "value_kind": "path_segment",
+        "item_prefix": "gpd-"
+      }
+    ],
+    "installer_help_example_scope": "local",
+    "validated_command_surface": "public_runtime_dollar_command",
+    "capabilities": {
+      "permissions_surface": "config-file",
+      "permission_surface_kind": "config.toml:approval_policy+sandbox_mode",
+      "prompt_free_mode_value": "yolo",
+      "supports_runtime_permission_sync": true,
+      "supports_prompt_free_mode": true,
+      "prompt_free_requires_relaunch": true,
+      "notify_surface": "explicit",
+      "notify_config_surface": "config.toml:notify",
+      "telemetry_source": "notify-hook",
+      "telemetry_completeness": "best-effort",
+      "supports_usage_tokens": true,
+      "supports_cost_usd": true,
+      "supports_structured_child_results": true,
+      "continuation_surface": "explicit"
+    },
     "hook_payload": {
-      "notify_event_types": ["agent-turn-complete"]
+      "notify_event_types": ["agent-turn-complete"],
+      "workspace_keys": ["cwd", "current_dir", "path", "workspace_dir"],
+      "project_dir_keys": ["project_dir"],
+      "target_path_keys": ["target_path"],
+      "target_root_keys": ["target_root"],
+      "model_keys": ["display_name", "name", "id"],
+      "provider_keys": ["provider", "vendor"],
+      "usage_keys": ["usage", "token_usage", "tokens"],
+      "input_tokens_keys": ["input_tokens", "prompt_tokens", "inputTokens", "promptTokens"],
+      "output_tokens_keys": ["output_tokens", "completion_tokens", "outputTokens", "completionTokens"],
+      "total_tokens_keys": ["total_tokens", "totalTokens"],
+      "cached_input_tokens_keys": ["cached_input_tokens", "cache_read_input_tokens", "cachedInputTokens", "cacheReadInputTokens"],
+      "cache_write_input_tokens_keys": ["cache_write_input_tokens", "cache_creation_input_tokens", "cacheWriteInputTokens", "cacheCreationInputTokens"],
+      "cost_usd_keys": ["cost_usd", "costUsd", "usd_cost", "usdCost"]
     },
     "global_config": {
       "strategy": "env_or_home",
@@ -65,19 +164,85 @@
     "config_dir_name": ".opencode",
     "install_flag": "--opencode",
     "launch_command": "opencode",
+    "adapter_module": "gpd.adapters.opencode",
+    "adapter_class": "OpenCodeAdapter",
     "command_prefix": "/gpd-",
     "native_include_support": false,
     "activation_env_vars": ["OPENCODE_SESSION"],
     "selection_flags": ["--opencode"],
     "selection_aliases": ["opencode", "open code"],
     "manifest_file_prefixes": ["command/"],
+    "manifest_metadata_list_policies": [
+      {
+        "key": "opencode_generated_command_files",
+        "value_kind": "path_segment",
+        "item_prefix": "gpd-",
+        "item_suffix": ".md"
+      }
+    ],
     "agent_prompt_uses_dollar_templates": true,
+    "validated_command_surface": "public_runtime_slash_command",
+    "capabilities": {
+      "permissions_surface": "config-file",
+      "permission_surface_kind": "opencode.json:permission",
+      "prompt_free_mode_value": "yolo",
+      "supports_runtime_permission_sync": true,
+      "supports_prompt_free_mode": true,
+      "prompt_free_requires_relaunch": true
+    },
+    "hook_payload": {
+      "target_path_keys": ["target_path"],
+      "target_root_keys": ["target_root"]
+    },
+    "managed_install_surface": {
+      "flat_command_globs": ["command/gpd-*.md"]
+    },
     "global_config": {
       "strategy": "xdg_app",
       "env_dir_var": "OPENCODE_CONFIG_DIR",
       "env_file_var": "OPENCODE_CONFIG",
       "xdg_subdir": "opencode",
       "home_subpath": ".config/opencode"
+    }
+  },
+  {
+    "runtime_name": "copilot-cli",
+    "display_name": "GitHub Copilot CLI",
+    "priority": 50,
+    "config_dir_name": ".copilot",
+    "install_flag": "--copilot",
+    "launch_command": "gh copilot",
+    "adapter_module": "gpd.adapters.copilot_cli",
+    "adapter_class": "CopilotCliAdapter",
+    "command_prefix": "/gpd-",
+    "native_include_support": false,
+    "activation_env_vars": ["COPILOT_CLI_SESSION"],
+    "selection_flags": ["--copilot", "--copilot-cli"],
+    "selection_aliases": ["copilot", "copilot cli", "copilot-cli", "github copilot"],
+    "manifest_file_prefixes": ["command/"],
+    "manifest_metadata_list_policies": [
+      {
+        "key": "copilot_generated_command_files",
+        "value_kind": "path_segment",
+        "item_prefix": "gpd-",
+        "item_suffix": ".md"
+      }
+    ],
+    "validated_command_surface": "public_runtime_slash_command",
+    "capabilities": {
+      "permissions_surface": "config-file",
+      "permission_surface_kind": "copilot.json:mcp",
+      "prompt_free_mode_value": "none",
+      "supports_runtime_permission_sync": true
+    },
+    "hook_payload": {},
+    "managed_install_surface": {
+      "flat_command_globs": ["command/gpd-*.md"]
+    },
+    "global_config": {
+      "strategy": "env_or_home",
+      "env_var": "COPILOT_CONFIG_DIR",
+      "home_subpath": ".copilot"
     }
   }
 ]

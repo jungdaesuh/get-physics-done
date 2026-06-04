@@ -3,13 +3,14 @@ template_version: 1
 ---
 
 > **Context:** This template is for the `new-project` literature survey — researching a topic BEFORE
-> starting a new project. For analyzing existing project artifacts, see `templates/analysis/`.
+> starting a new project. For analyzing existing project artifacts, use `map-research`, which writes
+> split outputs under `GPD/research-map/` from `references/templates/research-mapper/`.
 
 > **NOTE:** Project-type pitfalls are inherited from `templates/project-types/`. This file captures project-SPECIFIC pitfalls not covered by the generic template.
 
 # Pitfalls Research Template
 
-Template for `GPD/research/PITFALLS.md` -- survey of known subtleties, common errors, and pitfalls in the research domain.
+Template for `GPD/literature/PITFALLS.md` -- survey of known subtleties, common errors, and pitfalls in the research domain.
 
 <template>
 

@@ -1,7 +1,7 @@
 <purpose>
 After a GPD update wipes and reinstalls files, merge user's previously saved local modifications back into the new version. Uses intelligent comparison to handle cases where the upstream file also changed.
 
-Called from /gpd:reapply-patches command. In the physics research context, "patches" include corrections to calculation templates, custom notation conventions, modified validation checks, and personalized workflow adjustments.
+Called from gpd:reapply-patches command. In the physics research context, "patches" include corrections to calculation templates, custom notation conventions, modified validation checks, and personalized workflow adjustments.
 </purpose>
 
 <process>
@@ -11,8 +11,8 @@ Called from /gpd:reapply-patches command. In the physics research context, "patc
 Check for local patches directory:
 
 ```bash
-PATCHES_DIR="{GPD_CONFIG_DIR}/gpd-local-patches"
-GLOBAL_PATCHES_DIR="{GPD_GLOBAL_CONFIG_DIR}/gpd-local-patches"
+PATCHES_DIR="{GPD_PATCHES_DIR}"
+GLOBAL_PATCHES_DIR="{GPD_GLOBAL_PATCHES_DIR}"
 
 if [ ! -d "$PATCHES_DIR" ] && [ "$PATCHES_DIR" != "$GLOBAL_PATCHES_DIR" ]; then
   PATCHES_DIR="$GLOBAL_PATCHES_DIR"
@@ -26,7 +26,7 @@ Read `backup-meta.json` from the patches directory.
 ```
 No local patches found. Nothing to reapply.
 
-Local patches are automatically saved when you run /gpd:update
+Local patches are automatically saved when you run gpd:update
 after modifying any GPD workflow, command, or agent files.
 ```
 
@@ -51,7 +51,7 @@ Exit.
 
 For each file in `backup-meta.json`:
 
-1. **Read the backed-up version** (user's modified copy from `gpd-local-patches/`)
+1. **Read the backed-up version** (user's modified copy from `{GPD_PATCHES_DIR_NAME}/`)
 2. **Read the newly installed version** (current file after update)
 3. **Compare and merge:**
 
@@ -72,21 +72,17 @@ For each file in `backup-meta.json`:
    - `Skipped` -- modification already in upstream
    - `Conflict` -- user chose resolution
 
-## Step 4: Update manifest
+## Step 4: Record modified files
 
-After reapplying, regenerate the file manifest so future updates correctly detect these as user modifications:
-
-```bash
-# The manifest will be regenerated on next /gpd:update
-# For now, just note which files were modified
-```
+After reapplying, do not invent a manual manifest-regeneration step.
+The managed file manifest is rebuilt by the next `gpd:update`; for now, just record which installed files were modified so the user can review what was re-applied.
 
 ## Step 5: Cleanup option
 
 Ask user:
 
-- "Keep patch backups for reference?" -> preserve `gpd-local-patches/`
-- "Clean up patch backups?" -> remove `gpd-local-patches/` directory
+- "Keep patch backups for reference?" -> preserve `{GPD_PATCHES_DIR_NAME}/`
+- "Clean up patch backups?" -> remove `{GPD_PATCHES_DIR_NAME}/` directory
 
 ## Step 6: Report
 

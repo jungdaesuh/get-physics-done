@@ -1,0 +1,299 @@
+{
+  "schema_version": 1,
+  "workflow_id": "plan-phase",
+  "required_init_field_groups": {
+    "planner_model_context": [
+      "researcher_model",
+      "planner_model"
+    ],
+    "planning_controls": [
+      "research_enabled",
+      "autonomy",
+      "research_mode"
+    ],
+    "checker_controls": [
+      "checker_model",
+      "plan_checker_enabled"
+    ],
+    "phase_target_context": [
+      "phase_found",
+      "phase_dir",
+      "phase_number",
+      "phase_name",
+      "phase_slug",
+      "padded_phase",
+      "has_research",
+      "has_context",
+      "has_plans",
+      "plan_count",
+      "planning_exists",
+      "roadmap_exists"
+    ],
+    "contract_gate_status": [
+      "project_contract",
+      "project_contract_gate",
+      "project_contract_load_info",
+      "project_contract_validation"
+    ],
+    "reference_handle_context": [
+      "contract_intake",
+      "effective_reference_intake",
+      "selected_protocol_bundle_ids",
+      "protocol_bundle_count",
+      "protocol_bundle_load_manifest",
+      "protocol_bundle_verifier_extensions",
+      "reference_artifact_files",
+      "literature_review_files",
+      "literature_review_count",
+      "research_map_reference_files",
+      "research_map_reference_count",
+      "derived_manuscript_proof_review_status"
+    ],
+    "checker_reference_handles": [
+      "contract_intake",
+      "effective_reference_intake",
+      "selected_protocol_bundle_ids",
+      "protocol_bundle_load_manifest",
+      "protocol_bundle_verifier_extensions",
+      "reference_artifact_files",
+      "literature_review_files",
+      "research_map_reference_files"
+    ],
+    "reference_rendered_context": [
+      "active_reference_context"
+    ]
+  },
+  "stage_defaults": {
+    "required_init_field_groups": [
+      "planner_model_context",
+      "planning_controls",
+      "phase_target_context",
+      "contract_gate_status"
+    ],
+    "required_init_fields": [
+      "platform"
+    ],
+    "conditional_authorities": [],
+    "allowed_tools": [
+      "file_read",
+      "shell",
+      "find_files",
+      "search_files",
+      "task"
+    ],
+    "writes_allowed": []
+  },
+  "stages": [
+    {
+      "id": "phase_bootstrap",
+      "order": 1,
+      "purpose": "phase lookup, contract-gate validation, and bootstrap routing",
+      "mode_paths": [
+        "workflows/plan-phase/phase-bootstrap.md"
+      ],
+      "loaded_authorities": [
+        "workflows/plan-phase/phase-bootstrap.md"
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/runtime-delegation-note.md",
+        "references/ui/ui-brand.md",
+        "templates/phase-prompt.md",
+        "templates/plan-contract-schema.md",
+        "templates/planner-subagent-prompt.md",
+        "workflows/plan-phase.md",
+        "workflows/plan-phase/blocked-plan-revision.md",
+        "workflows/plan-phase/checker-revision.md",
+        "workflows/plan-phase/checker-return-routing.md",
+        "workflows/plan-phase/planning-final-offer.md",
+        "workflows/plan-phase/planner-authoring.md",
+        "workflows/plan-phase/revision-planner-handoff.md",
+        "workflows/plan-phase/research-routing.md"
+      ],
+      "produced_state": [
+        "planning bootstrap state",
+        "contract gate decision state"
+      ],
+      "next_stages": [
+        "research_routing"
+      ],
+      "checkpoints": [
+        "phase resolution completed",
+        "contract gate evaluated before planning"
+      ]
+    },
+    {
+      "id": "research_routing",
+      "order": 2,
+      "purpose": "research reuse, refresh, and gap-closure routing",
+      "mode_paths": [
+        "workflows/plan-phase/research-routing.md"
+      ],
+      "loaded_authorities": [
+        "workflows/plan-phase/research-routing.md",
+        "references/orchestration/runtime-delegation-note.md"
+      ],
+      "must_not_eager_load": [
+        "references/ui/ui-brand.md",
+        "templates/phase-prompt.md",
+        "templates/plan-contract-schema.md",
+        "templates/planner-subagent-prompt.md",
+        "workflows/plan-phase.md",
+        "workflows/plan-phase/blocked-plan-revision.md",
+        "workflows/plan-phase/checker-revision.md",
+        "workflows/plan-phase/checker-return-routing.md",
+        "workflows/plan-phase/planning-final-offer.md",
+        "workflows/plan-phase/planner-authoring.md",
+        "workflows/plan-phase/revision-planner-handoff.md"
+      ],
+      "produced_state": [
+        "research routing state",
+        "gap-closure planning mode"
+      ],
+      "next_stages": [
+        "planner_authoring"
+      ],
+      "checkpoints": [
+        "research reuse decision completed",
+        "gap routing decision completed"
+      ]
+    },
+    {
+      "id": "planner_authoring",
+      "order": 3,
+      "purpose": "researcher/planner prompt assembly and plan authoring",
+      "mode_paths": [
+        "workflows/plan-phase/planner-authoring.md"
+      ],
+      "required_init_field_groups": [
+        "planner_model_context",
+        "planning_controls",
+        "checker_controls",
+        "phase_target_context",
+        "contract_gate_status",
+        "reference_handle_context",
+        "reference_rendered_context"
+      ],
+      "required_init_fields": [
+        "state_content",
+        "roadmap_content",
+        "requirements_content",
+        "context_content",
+        "research_content",
+        "platform"
+      ],
+      "loaded_authorities": [
+        "workflows/plan-phase/planner-authoring.md",
+        "templates/planner-subagent-prompt.md"
+      ],
+      "must_not_eager_load": [
+        "references/ui/ui-brand.md",
+        "templates/phase-prompt.md",
+        "templates/plan-contract-schema.md",
+        "workflows/plan-phase/blocked-plan-revision.md",
+        "workflows/plan-phase.md",
+        "workflows/plan-phase/checker-revision.md",
+        "workflows/plan-phase/checker-return-routing.md",
+        "workflows/plan-phase/planning-final-offer.md",
+        "workflows/plan-phase/revision-planner-handoff.md"
+      ],
+      "allowed_tools": [
+        "file_read",
+        "file_write",
+        "shell",
+        "find_files",
+        "search_files",
+        "task",
+        "web_fetch"
+      ],
+      "writes_allowed": [
+        "GPD/phases",
+        "GPD/ROADMAP.md"
+      ],
+      "produced_state": [
+        "research artifacts",
+        "phase plans",
+        "planner prompt state"
+      ],
+      "next_stages": [
+        "checker_revision"
+      ],
+      "checkpoints": [
+        "research refresh completed",
+        "planner prompt assembled with current evidence",
+        "plan artifacts written"
+      ]
+    },
+    {
+      "id": "checker_revision",
+      "order": 4,
+      "purpose": "checker audit, structured approval routing, and blocker reporting",
+      "mode_paths": [
+        "workflows/plan-phase/checker-revision.md"
+      ],
+      "required_init_field_groups": [
+        "checker_controls",
+        "planning_controls",
+        "phase_target_context",
+        "contract_gate_status",
+        "checker_reference_handles"
+      ],
+      "loaded_authorities": [
+        "workflows/plan-phase/checker-revision.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "revision_template_rendering",
+          "authorities": [
+            "templates/planner-subagent-prompt.md"
+          ]
+        },
+        {
+          "when": "checker_return_routing",
+          "authorities": [
+            "workflows/plan-phase/checker-return-routing.md"
+          ]
+        },
+        {
+          "when": "blocked_plan_revision",
+          "authorities": [
+            "workflows/plan-phase/blocked-plan-revision.md"
+          ]
+        },
+        {
+          "when": "revision_planner_handoff",
+          "authorities": [
+            "workflows/plan-phase/revision-planner-handoff.md"
+          ]
+        },
+        {
+          "when": "planning_final_offer",
+          "authorities": [
+            "workflows/plan-phase/planning-final-offer.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/ui/ui-brand.md",
+        "templates/phase-prompt.md",
+        "templates/plan-contract-schema.md",
+        "templates/planner-subagent-prompt.md",
+        "workflows/plan-phase.md",
+        "workflows/plan-phase/blocked-plan-revision.md",
+        "workflows/plan-phase/checker-return-routing.md",
+        "workflows/plan-phase/planning-final-offer.md",
+        "workflows/plan-phase/revision-planner-handoff.md"
+      ],
+      "produced_state": [
+        "checker findings",
+        "approval routing state",
+        "blocked plan routing state"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "checker audit completed",
+        "blocked plans reconciled",
+        "approval routing decided"
+      ]
+    }
+  ]
+}

@@ -8,22 +8,16 @@ allowed-tools:
   - file_write
   - file_edit
   - shell
+help:
+  group: Tangents, memory, and exports
+  order: 620
+  compact_description: Save a project-specific lesson
+  display_signature: gpd:record-insight [description]
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Record a project-specific learning, error pattern, or insight to `GPD/INSIGHTS.md`.
-
-Routes to the record-insight workflow which handles:
-
-- Creating INSIGHTS.md if it doesn't exist
-- Duplicate detection
-- Category-to-section mapping
-- Structured table row creation
-- STATE.md updates
-- Git commits
 
 Typical insights include:
 
@@ -42,13 +36,5 @@ Typical insights include:
 </context>
 
 <process>
-**Follow the record-insight workflow** from `@{GPD_INSTALL_DIR}/workflows/record-insight.md`.
-
-The workflow handles all logic including:
-
-1. Checking/creating `GPD/INSIGHTS.md`
-2. Duplicate detection
-3. Determining the correct section (Debugging Patterns, Verification Lessons, Consistency Issues, Execution Deviations)
-4. Appending structured table row with date, phase, category, confidence, description, prevention
-5. Git commit
+Follow the included record-insight workflow exactly.
 </process>

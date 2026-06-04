@@ -1,0 +1,178 @@
+"""Shared strings for model-visible prompt wrappers."""
+
+from __future__ import annotations
+
+from gpd.core.model_visible_sections import (
+    MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE,
+    render_model_visible_note,
+)
+
+__all__ = [
+    "agent_visibility_note",
+    "command_visibility_note",
+    "MODEL_VISIBLE_CLOSED_SCHEMA_PHRASE",
+    "AGENT_ARTIFACT_WRITE_AUTHORITIES",
+    "AGENT_FRONTMATTER_AUTHORITY_POINTER",
+    "INTERNAL_AGENT_BOUNDARY_POINTER",
+    "READ_ONLY_INTERNAL_AGENT_BOUNDARY_POINTER",
+    "AGENT_COMMIT_AUTHORITIES",
+    "AGENT_ROLE_FAMILIES",
+    "AGENT_SHARED_STATE_AUTHORITIES",
+    "AGENT_SURFACES",
+    "COMMAND_POLICY_FRONTMATTER_KEY",
+    "COMMAND_POLICY_PROMPT_WRAPPER_KEY",
+    "VALID_CONTEXT_MODES",
+    "REVIEW_CONTRACT_CONDITIONAL_WHENS",
+    "REVIEW_CONTRACT_FRONTMATTER_KEY",
+    "REVIEW_CONTRACT_MODES",
+    "REVIEW_CONTRACT_PREFLIGHT_CHECKS",
+    "REVIEW_CONTRACT_PROMPT_WRAPPER_KEY",
+    "REVIEW_CONTRACT_REQUIRED_STATES",
+    "REVIEW_CONTRACT_WRAPPER_KEYS",
+    "SKEPTICAL_RIGOR_GUARDRAILS_HEADING",
+    "review_contract_visibility_note",
+    "skeptical_rigor_guardrails_section",
+]
+
+REVIEW_CONTRACT_FRONTMATTER_KEY = "review-contract"
+REVIEW_CONTRACT_PROMPT_WRAPPER_KEY = "review_contract"
+REVIEW_CONTRACT_WRAPPER_KEYS = (
+    REVIEW_CONTRACT_PROMPT_WRAPPER_KEY,
+    REVIEW_CONTRACT_FRONTMATTER_KEY,
+)
+SKEPTICAL_RIGOR_GUARDRAILS_HEADING = "Scientific Rigor Guardrails"
+VALID_CONTEXT_MODES = ("global", "projectless", "project-aware", "project-required")
+AGENT_COMMIT_AUTHORITIES = ("direct", "orchestrator")
+AGENT_SURFACES = ("public", "internal")
+AGENT_ROLE_FAMILIES = ("worker", "analysis", "verification", "review", "coordination")
+AGENT_ARTIFACT_WRITE_AUTHORITIES = ("scoped_write", "read_only")
+AGENT_SHARED_STATE_AUTHORITIES = ("return_only", "direct")
+AGENT_FRONTMATTER_AUTHORITY_POINTER = (
+    "Authority: use the frontmatter-derived Agent Requirements block for commit, surface, artifact, and "
+    "shared-state policy."
+)
+INTERNAL_AGENT_BOUNDARY_POINTER = (
+    "Internal specialist boundary: stay inside assigned scoped artifacts and the return envelope; do not act as "
+    "the default writable implementation agent."
+)
+READ_ONLY_INTERNAL_AGENT_BOUNDARY_POINTER = (
+    "Internal specialist boundary: stay read-only inside assigned scoped artifacts and the return envelope; "
+    "do not act as the default writable implementation agent."
+)
+COMMAND_POLICY_FRONTMATTER_KEY = "command-policy"
+COMMAND_POLICY_PROMPT_WRAPPER_KEY = "command_policy"
+REVIEW_CONTRACT_MODES = ("publication", "review")
+REVIEW_CONTRACT_REQUIRED_STATES = ("phase_executed",)
+REVIEW_CONTRACT_CONDITIONAL_WHENS = (
+    "project-backed manuscript review",
+    "standalone explicit-artifact review",
+    "theorem-bearing claims are present",
+    "theorem-bearing manuscripts are present",
+)
+REVIEW_CONTRACT_PREFLIGHT_CHECKS = (
+    "command_context",
+    "project_state",
+    "knowledge_target",
+    "knowledge_document",
+    "knowledge_review_freshness",
+    "roadmap",
+    "conventions",
+    "research_artifacts",
+    "verification_reports",
+    "manuscript",
+    "artifact_manifest",
+    "bibliography_audit",
+    "bibliography_audit_clean",
+    "compiled_manuscript",
+    "publication_blockers",
+    "review_ledger",
+    "review_ledger_valid",
+    "referee_decision",
+    "referee_decision_valid",
+    "publication_review_outcome",
+    "reproducibility_manifest",
+    "reproducibility_ready",
+    "manuscript_proof_review",
+    "referee_report_source",
+    "phase_lookup",
+    "phase_artifacts",
+    "phase_summaries",
+    "phase_proof_review",
+)
+def _join_disjunction(values: tuple[str, ...]) -> str:
+    return " or ".join(f"`{value}`" for value in values)
+
+
+def agent_visibility_note() -> str:
+    return render_model_visible_note(
+        "Agent YAML rules.",
+        "`tools` is a list of tool names;",
+        "`commit_authority`, `surface`, `role_family`, `artifact_write_authority`, and `shared_state_authority` "
+        "must use the closed agent-authority vocabularies;",
+        "the active YAML values below are authoritative for this agent.",
+    )
+
+
+def command_visibility_note() -> str:
+    return render_model_visible_note(
+        "Command YAML rules.",
+        "Strict booleans only; omit empty optional fields.",
+        f"`{COMMAND_POLICY_PROMPT_WRAPPER_KEY}` is the typed additive command-policy wrapper "
+        f"(frontmatter `{COMMAND_POLICY_FRONTMATTER_KEY}`) with integer `schema_version: 1`.",
+        "Its list fields are string lists, suffix lists use dotted suffixes, and context modes use "
+        f"{_join_disjunction(VALID_CONTEXT_MODES)}.",
+        "When present, typed command policy controls intake, supporting-context routing, and managed outputs.",
+        "`allowed_tools` is a tool-name list.",
+        "`requires` supports only `files`, as a string or string list.",
+        "`agent` must match a built-in canonical agent label exactly.",
+        "`project_reentry_capable` is boolean and may be true only with `context_mode: project-required`.",
+        "Any user-visible completion, checkpoint, blocked return, failed return, retry gate, or stop that expects later "
+        "action must end with `## > Next Up`; include concrete GPD commands and `gpd:suggest-next` for project-backed recovery.",
+    )
+
+
+def review_contract_visibility_note() -> str:
+    return render_model_visible_note(
+        "Review-contract YAML rules.",
+        f"`{REVIEW_CONTRACT_PROMPT_WRAPPER_KEY}` is the wrapper key; `schema_version` must be the integer `1`;",
+        "Omit empty optional fields.",
+        "`review_mode`, `required_state`, `preflight_checks`, `conditional_requirements[].when`, and scope-variant "
+        "preflight fields must use the closed review-contract vocabularies; active YAML values below are authoritative.",
+        "List fields when present: `required_outputs`, `required_evidence`, `blocking_conditions`, "
+        "`preflight_checks`, `stage_artifacts`, `scope_variants`;",
+        "`conditional_requirements[].preflight_checks` and `conditional_requirements[].blocking_preflight_checks` "
+        "are lists of valid preflight-check values when present.",
+        "Each `conditional_requirements[].when` value may appear at most once.",
+        "List fields reject blank entries and duplicates.",
+        "Each conditional requirement needs one non-empty field.",
+        "`scope_variants[].scope`/`.activation` must be non-empty strings.",
+        "`scope_variants[].relaxed_preflight_checks`/`.optional_preflight_checks` are lists of valid "
+        "preflight-check values when present.",
+        "Scope override fields `required_outputs_override`, `required_evidence_override`, "
+        "`blocking_conditions_override` are lists when present.",
+        "`relaxed_preflight_checks` make named checks non-blocking for that scope; `optional_preflight_checks` "
+        "make missing inputs advisory.",
+        "Non-empty scope override lists replace matching top-level lists.",
+        "Each `scope_variants[].scope` may appear at most once.",
+        "Each scope variant needs one non-empty override or preflight field.",
+        "Runtime applies active scope variants additively.",
+    )
+
+
+def skeptical_rigor_guardrails_section() -> str:
+    return (
+        f"## {SKEPTICAL_RIGOR_GUARDRAILS_HEADING}\n\n"
+        "- Use scientific skepticism and critical thinking by default: look for contradictions, missing anchors, overclaims, "
+        "and failure modes before endorsing a result.\n"
+        "- Stress-test claims, including the user's preferred interpretation and your own first impression, without "
+        "framing the user as an opponent.\n"
+        "- Agreement is not evidence. Do not mirror a preferred conclusion or a document's self-description unless "
+        "the supporting evidence is actually present.\n"
+        "- Ground claims in inspected artifacts, cited sources, executed checks, or explicitly labeled background knowledge.\n"
+        "- If information or artifacts cannot be found, produced, read, verified, or reproduced, report that plainly and "
+        "keep the status missing, failed, blocked, or inconclusive.\n"
+        "- Never fabricate references, numbers, derivations, files, figures, tables, logs, summaries, proofs, or claimed "
+        "task completion. Do not use ungrounded fallback content as a substitute for missing evidence or failed execution.\n"
+        "- When certainty is not warranted, narrow the claim, lower confidence, and name the weakest anchor or "
+        "disconfirming check still needed.\n"
+    )

@@ -2,6 +2,8 @@
 
 Resolve model profile once at the start of orchestration, then resolve each agent's tier and optional runtime-specific model override before spawning Task calls.
 
+The default posture should remain `review` plus runtime defaults unless the user explicitly chooses otherwise in `gpd:settings`. Treat explicit runtime-specific tier IDs as an intentional override path, not the default onboarding path. Use `gpd:set-tier-models` when the user wants the narrow direct path for concrete `tier-1`, `tier-2`, and `tier-3` model ids.
+
 Do not scrape `GPD/config.json` directly in workflows. Runtime selection, defaults, and runtime-specific model overrides are owned by the canonical CLI helpers:
 
 - `gpd resolve-tier`
@@ -44,10 +46,10 @@ Model override strings are runtime-native and are not normalized by GPD:
 
 The orchestrator should NOT auto-switch profiles. If the current work suggests a different profile, inform the user and recommend the explicit change:
 
-```
+```text
 Current profile: review
 This phase involves heavy numerical simulation. Consider switching:
-  /gpd:set-profile numerical
+  gpd:set-profile numerical
 ```
 
 ## Usage
@@ -55,4 +57,4 @@ This phase involves heavy numerical simulation. Consider switching:
 1. Resolve once at orchestration start using `gpd resolve-tier` / `gpd resolve-model`
 2. Store the resolved tier/model values for the current orchestration step
 3. Omit the `model` parameter when `gpd resolve-model` prints nothing
-4. If the user wants a different profile, switch it explicitly with `/gpd:set-profile ...`
+4. If the user wants a different profile, switch it explicitly with `gpd:set-profile ...`

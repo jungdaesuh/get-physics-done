@@ -6,23 +6,30 @@ Layer 1 code: stdlib + pathlib + re + pydantic only.
 
 from __future__ import annotations
 
-import json
 import re
-import shlex
 from datetime import UTC, datetime
 from functools import cmp_to_key
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from gpd.contracts import ComparisonVerdict, ContractResults, normalize_contract_results_input
+from gpd.contracts import (
+    ComparisonVerdict,
+    ContractResults,
+    parse_comparison_verdicts_data_strict,
+    parse_contract_results_data_artifact,
+)
+from gpd.core.child_return_application import (
+    RETURN_MALFORMED_BLOCKING_FAILURE_CLASS,
+    ApplyChildReturnFailure,
+    ApplyChildReturnResult,
+    apply_child_return_updates,
+)
 from gpd.core.constants import (
     PHASES_DIR_NAME,
     PLAN_SUFFIX,
     PLANNING_DIR_NAME,
-    REQUIRED_RETURN_FIELDS,
     STANDALONE_PLAN,
-    VALID_RETURN_STATUSES,
     VERIFICATION_SUFFIX,
     ProjectLayout,
 )
@@ -34,6 +41,13 @@ from gpd.core.frontmatter import (
     validate_frontmatter,
 )
 from gpd.core.observability import instrument_gpd_function
+from gpd.core.return_contract import GpdReturnValidationResult, validate_gpd_return_markdown
+from gpd.core.return_repair_classifier import (
+    REPAIRABLE_RETURN_CLASSES,
+    return_failure_class_from_repair_class,
+    return_repair_class_from_validation_error,
+    return_repair_hint,
+)
 from gpd.core.utils import (
     compare_phase_numbers,
     generate_slug,
@@ -43,6 +57,7 @@ from gpd.core.utils import (
 )
 
 __all__ = [
+    "ApplyChildReturnResult",
     "CurrentTimestampResult",
     "DecisionEntry",
     "GenerateSlugResult",
@@ -57,6 +72,7 @@ __all__ = [
     "cmd_current_timestamp",
     "cmd_generate_slug",
     "cmd_history_digest",
+    "cmd_apply_return_updates",
     "cmd_regression_check",
     "cmd_summary_extract",
     "cmd_validate_return",
@@ -138,6 +154,7 @@ class RegressionCheckResult(BaseModel):
     passed: bool
     issues: list[RegressionIssue] = Field(default_factory=list)
     phases_checked: int = 0
+    warning: str | None = None
 
 
 class ValidateReturnResult(BaseModel):
@@ -225,36 +242,59 @@ def _phase_name_from_dir(dir_name: str) -> str:
     return "Unknown"
 
 
-def _parse_decisions(decisions_list: object) -> list[SummaryDecision]:
+def _parse_decisions(decisions_list: object, *, summary_path: str) -> list[SummaryDecision]:
     """Parse key-decisions from frontmatter into structured format."""
-    if not decisions_list or not isinstance(decisions_list, list):
+    if decisions_list is None:
         return []
+    if not isinstance(decisions_list, list):
+        raise ValidationError(f"Invalid key-decisions in {summary_path}: expected a list")
 
     results: list[SummaryDecision] = []
-    for d in decisions_list:
+    for index, d in enumerate(decisions_list):
         if isinstance(d, dict):
             entries = list(d.items())
-            if len(entries) == 1:
-                results.append(
-                    SummaryDecision(
-                        summary=str(entries[0][0]).strip(),
-                        rationale=str(entries[0][1]).strip(),
-                    )
+            if len(entries) != 1:
+                raise ValidationError(
+                    f"Invalid key-decisions in {summary_path}: entry {index} must be a single-entry mapping"
                 )
-            else:
-                results.append(SummaryDecision(summary=json.dumps(d), rationale=None))
+            summary, rationale = entries[0]
+            if not isinstance(summary, str) or not summary.strip():
+                raise ValidationError(
+                    f"Invalid key-decisions in {summary_path}: entry {index} summary must be a non-empty string"
+                )
+            if not isinstance(rationale, str) or not rationale.strip():
+                raise ValidationError(
+                    f"Invalid key-decisions in {summary_path}: entry {index} rationale must be a non-empty string"
+                )
+            results.append(
+                SummaryDecision(
+                    summary=summary.strip(),
+                    rationale=rationale.strip(),
+                )
+            )
+            continue
+
+        if not isinstance(d, str) or not d.strip():
+            raise ValidationError(
+                f"Invalid key-decisions in {summary_path}: entry {index} must be a non-empty string or mapping"
+            )
+        s = d.strip()
+        colon_idx = s.find(":")
+        if colon_idx > 0:
+            summary = s[:colon_idx].strip()
+            rationale = s[colon_idx + 1 :].strip()
+            if not summary or not rationale:
+                raise ValidationError(
+                    f"Invalid key-decisions in {summary_path}: entry {index} must include non-empty summary and rationale"
+                )
+            results.append(
+                SummaryDecision(
+                    summary=summary,
+                    rationale=rationale,
+                )
+            )
         else:
-            s = str(d)
-            colon_idx = s.find(":")
-            if colon_idx > 0:
-                results.append(
-                    SummaryDecision(
-                        summary=s[:colon_idx].strip(),
-                        rationale=s[colon_idx + 1 :].strip(),
-                    )
-                )
-            else:
-                results.append(SummaryDecision(summary=s, rationale=None))
+            results.append(SummaryDecision(summary=s, rationale=None))
     return results
 
 
@@ -271,7 +311,7 @@ def _extract_section(content: str, heading: str) -> str | None:
 
 
 def _normalize_string_list(value: object) -> list[str]:
-    """Normalize a YAML field into a list of strings."""
+    """Best-effort string-list normalization for derived, non-authoritative readers."""
     if value is None:
         return []
     if isinstance(value, str):
@@ -292,43 +332,96 @@ def _normalize_string_list(value: object) -> list[str]:
     return []
 
 
-def _extract_key_files(value: object) -> tuple[list[str], list[str], list[str]]:
+def _require_non_empty_string_list(
+    value: object,
+    *,
+    field_name: str,
+    summary_path: str,
+) -> list[str]:
+    """Return a validated list of non-empty strings or raise."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValidationError(f"Invalid {field_name} in {summary_path}: expected a list of non-empty strings")
+
+    normalized: list[str] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, str) or not item.strip():
+            raise ValidationError(f"Invalid {field_name} in {summary_path}: entry {index} must be a non-empty string")
+        normalized.append(item.strip())
+    return normalized
+
+
+def _extract_key_files(value: object, *, summary_path: str) -> tuple[list[str], list[str], list[str]]:
     """Return flattened, created, and modified file lists from summary frontmatter."""
     if isinstance(value, dict):
-        created = _normalize_string_list(value.get("created"))
-        modified = _normalize_string_list(value.get("modified"))
+        extra_keys = sorted(str(key) for key in value if key not in {"created", "modified"})
+        if extra_keys:
+            raise ValidationError(f"Invalid key-files in {summary_path}: unexpected key(s) {', '.join(extra_keys)}")
+        created = _require_non_empty_string_list(
+            value.get("created"),
+            field_name="key-files.created",
+            summary_path=summary_path,
+        )
+        modified = _require_non_empty_string_list(
+            value.get("modified"),
+            field_name="key-files.modified",
+            summary_path=summary_path,
+        )
         flattened = list(dict.fromkeys(created + modified))
         return flattened, created, modified
+    if value is not None and not isinstance(value, list):
+        raise ValidationError(
+            f"Invalid key-files in {summary_path}: expected a list of non-empty strings or an object with created/modified lists"
+        )
 
-    flattened = _normalize_string_list(value)
+    flattened = _require_non_empty_string_list(value, field_name="key-files", summary_path=summary_path)
     return flattened, flattened, []
+
+
+def _extract_methods_added(frontmatter: dict[str, object], *, summary_path: str) -> list[str]:
+    """Return validated ``methods.added`` entries from summary frontmatter."""
+    methods = frontmatter.get("methods")
+    if methods is None:
+        return []
+    if not isinstance(methods, dict):
+        raise ValidationError(f"Invalid methods in {summary_path}: expected an object")
+    return _require_non_empty_string_list(
+        methods.get("added"),
+        field_name="methods.added",
+        summary_path=summary_path,
+    )
 
 
 def _parse_contract_results(value: object, summary_path: str) -> ContractResults | None:
     """Validate the optional contract-results block in a summary."""
-    if value is None:
+    if value is _MISSING:
         return None
-    if not isinstance(value, dict):
-        raise ValidationError(f"Invalid contract_results in {summary_path}: expected an object")
     try:
-        return ContractResults.model_validate(normalize_contract_results_input(value, strict=True))
+        return parse_contract_results_data_artifact(value)
     except Exception as exc:  # pragma: no cover - pydantic version specifics
         raise ValidationError(f"Invalid contract_results in {summary_path}: {exc}") from exc
 
 
 def _parse_comparison_verdicts(value: object, summary_path: str) -> list[ComparisonVerdict]:
     """Validate the optional comparison-verdict ledger in a summary."""
-    if value is None:
-        return []
-    if not isinstance(value, list):
-        raise ValidationError(f"Invalid comparison_verdicts in {summary_path}: expected a list")
     try:
-        return [ComparisonVerdict.model_validate(item) for item in value]
+        return parse_comparison_verdicts_data_strict(value)
     except Exception as exc:  # pragma: no cover - pydantic version specifics
         raise ValidationError(f"Invalid comparison_verdicts in {summary_path}: {exc}") from exc
 
 
 _BODY_ONE_LINER_RE = re.compile(r"\A---[\s\S]*?---\s*(?:#[^\n]*\n\s*)?\*\*(.+?)\*\*")
+
+
+def _has_dependency_graph_provides(frontmatter: dict[str, object]) -> bool:
+    """Return whether summary frontmatter declares nested provides."""
+
+    dependency_graph = frontmatter.get("dependency-graph")
+    if not isinstance(dependency_graph, dict):
+        return False
+    nested_provides = dependency_graph.get("provides")
+    return nested_provides is not None and nested_provides != ""
 
 
 @instrument_gpd_function("commands.summary_extract")
@@ -359,11 +452,12 @@ def cmd_summary_extract(
         raise ValidationError(f"YAML parse error in {summary_path}: {exc}") from exc
 
     validation = validate_frontmatter(content, "summary", source_path=full_path)
-    if not validation.valid:
-        problems = [*validation.missing, *validation.errors]
-        raise ValidationError(
-            f"Invalid summary frontmatter in {summary_path}: {'; '.join(problems)}"
-        )
+    missing = list(validation.missing)
+    if "provides" in missing and _has_dependency_graph_provides(fm):
+        missing = [field for field in missing if field != "provides"]
+    if missing or validation.errors:
+        problems = [*missing, *validation.errors]
+        raise ValidationError(f"Invalid summary frontmatter in {summary_path}: {'; '.join(problems)}")
 
     # Extract one-liner: frontmatter first, fall back to body bold text
     one_liner = fm.get("one-liner")
@@ -373,9 +467,20 @@ def cmd_summary_extract(
             one_liner = body_match.group(1)
 
     raw_key_files = fm.get("key-files")
-    key_files, key_files_created, key_files_modified = _extract_key_files(raw_key_files)
+    key_files, key_files_created, key_files_modified = _extract_key_files(raw_key_files, summary_path=summary_path)
+    methods_added = _extract_methods_added(fm, summary_path=summary_path)
+    patterns = _require_non_empty_string_list(
+        fm.get("patterns-established"),
+        field_name="patterns-established",
+        summary_path=summary_path,
+    )
+    affects = _require_non_empty_string_list(
+        fm.get("affects"),
+        field_name="affects",
+        summary_path=summary_path,
+    )
     contract_results = _parse_contract_results(
-        fm.get("contract_results"),
+        fm["contract_results"] if "contract_results" in fm else _MISSING,
         summary_path,
     )
     comparison_verdicts = _parse_comparison_verdicts(fm.get("comparison_verdicts"), summary_path)
@@ -386,10 +491,10 @@ def cmd_summary_extract(
         key_files=key_files,
         key_files_created=key_files_created,
         key_files_modified=key_files_modified,
-        methods_added=((fm.get("methods", {}) or {}).get("added", []) if isinstance(fm.get("methods"), dict) else []),
-        patterns=fm.get("patterns-established", []) if isinstance(fm.get("patterns-established"), list) else [],
-        decisions=_parse_decisions(fm.get("key-decisions")),
-        affects=fm.get("affects", []) if isinstance(fm.get("affects"), list) else [],
+        methods_added=methods_added,
+        patterns=patterns,
+        decisions=_parse_decisions(fm.get("key-decisions"), summary_path=summary_path),
+        affects=affects,
         conventions=fm.get("conventions"),
         plan_contract_ref=fm.get("plan_contract_ref") if isinstance(fm.get("plan_contract_ref"), str) else None,
         contract_results=contract_results,
@@ -409,13 +514,24 @@ def cmd_summary_extract(
     return full_result
 
 
-def _merge_list_or_string(target_set: set[str], value: object) -> None:
+def _merge_list_or_string(target_set: set[str], value: object, *, field_name: str, summary_path: str) -> None:
     """Merge a value that may be a list of strings or a single string into a set."""
     if isinstance(value, list):
-        for item in value:
-            target_set.add(str(item))
-    elif isinstance(value, str):
-        target_set.add(value)
+        for index, item in enumerate(value):
+            if not isinstance(item, str) or not item.strip():
+                raise ValidationError(
+                    f"Invalid {field_name} in {summary_path}: entry {index} must be a non-empty string"
+                )
+            target_set.add(item.strip())
+        return
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            raise ValidationError(f"Invalid {field_name} in {summary_path}: expected a non-empty string")
+        target_set.add(stripped)
+        return
+    if value is not None:
+        raise ValidationError(f"Invalid {field_name} in {summary_path}: expected a string or list of non-empty strings")
 
 
 @instrument_gpd_function("commands.history_digest")
@@ -448,10 +564,11 @@ def cmd_history_digest(cwd: Path) -> HistoryDigestResult:
             content = safe_read_file(summary_file)
             if content is None:
                 continue
+            summary_relpath = summary_file.relative_to(cwd).as_posix()
             try:
                 fm, _body = extract_frontmatter(content)
-            except FrontmatterParseError:
-                continue
+            except FrontmatterParseError as exc:
+                raise ValidationError(f"Malformed frontmatter in {summary_relpath}: {exc}") from exc
 
             raw_phase = fm.get("phase", dir_name.split("-")[0])
             phase_match = re.match(r"^(\d+(?:\.\d+)*)", str(raw_phase))
@@ -469,31 +586,46 @@ def cmd_history_digest(cwd: Path) -> HistoryDigestResult:
             # Merge provides
             dep_graph = fm.get("dependency-graph")
             provides = (dep_graph.get("provides") if isinstance(dep_graph, dict) else None) or fm.get("provides")
-            _merge_list_or_string(phase_sets[phase_num]["provides"], provides)
+            _merge_list_or_string(
+                phase_sets[phase_num]["provides"],
+                provides,
+                field_name="provides",
+                summary_path=summary_relpath,
+            )
 
             # Merge affects
             affects = (dep_graph.get("affects") if isinstance(dep_graph, dict) else None) or fm.get("affects")
-            _merge_list_or_string(phase_sets[phase_num]["affects"], affects)
+            _merge_list_or_string(
+                phase_sets[phase_num]["affects"],
+                affects,
+                field_name="affects",
+                summary_path=summary_relpath,
+            )
 
             # Merge patterns
-            _merge_list_or_string(phase_sets[phase_num]["patterns"], fm.get("patterns-established"))
+            _merge_list_or_string(
+                phase_sets[phase_num]["patterns"],
+                fm.get("patterns-established"),
+                field_name="patterns-established",
+                summary_path=summary_relpath,
+            )
 
             # Merge decisions
             key_decisions = fm.get("key-decisions")
-            if isinstance(key_decisions, list):
-                for d in key_decisions:
-                    digest.decisions.append(DecisionEntry(phase=phase_num, decision=str(d)))
-            elif isinstance(key_decisions, str):
-                digest.decisions.append(DecisionEntry(phase=phase_num, decision=key_decisions))
+            for decision in _parse_decisions(key_decisions, summary_path=summary_relpath):
+                text = decision.summary if decision.rationale is None else f"{decision.summary}: {decision.rationale}"
+                digest.decisions.append(DecisionEntry(phase=phase_num, decision=text))
 
             # Merge methods
             methods = fm.get("methods")
-            methods_added = methods.get("added") if isinstance(methods, dict) else None
-            if isinstance(methods_added, list):
-                for t in methods_added:
-                    methods_set.add(str(t) if not isinstance(t, str) else t)
-            elif isinstance(methods_added, str):
-                methods_set.add(methods_added)
+            if methods is not None and not isinstance(methods, dict):
+                raise ValidationError(f"Invalid methods in {summary_relpath}: expected an object")
+            methods_added = _require_non_empty_string_list(
+                methods.get("added") if isinstance(methods, dict) else None,
+                field_name="methods.added",
+                summary_path=summary_relpath,
+            )
+            methods_set.update(methods_added)
 
     # Convert sets to lists
     for p, sets in phase_sets.items():
@@ -544,7 +676,9 @@ def cmd_regression_check(cwd: Path, *, phase: str | None = None, quick: bool = F
             key=cmp_to_key(lambda a, b: compare_phase_numbers(a.name, b.name)),
         )
     except FileNotFoundError:
-        return RegressionCheckResult(passed=True, issues=[], phases_checked=0)
+        return RegressionCheckResult(
+            passed=True, issues=[], phases_checked=0, warning="No completed phases found to check"
+        )
 
     layout = ProjectLayout(cwd)
     completed_dirs: list[Path] = []
@@ -556,10 +690,14 @@ def cmd_regression_check(cwd: Path, *, phase: str | None = None, quick: bool = F
             completed_dirs.append(d)
 
     if not completed_dirs:
-        return RegressionCheckResult(passed=True, issues=[], phases_checked=0)
+        return RegressionCheckResult(
+            passed=True, issues=[], phases_checked=0, warning="No completed phases found to check"
+        )
     completed_dirs = [d for d in completed_dirs if _matches_phase_scope(d.name, phase)]
     if not completed_dirs:
-        return RegressionCheckResult(passed=True, issues=[], phases_checked=0)
+        return RegressionCheckResult(
+            passed=True, issues=[], phases_checked=0, warning="No completed phases found to check"
+        )
 
     if quick and len(completed_dirs) > 2:
         completed_dirs = completed_dirs[-2:]
@@ -673,84 +811,6 @@ def cmd_regression_check(cwd: Path, *, phase: str | None = None, quick: bool = F
     return RegressionCheckResult(passed=passed, issues=issues, phases_checked=len(completed_dirs))
 
 
-_GPD_RETURN_BLOCK_RE = re.compile(r"```ya?ml\s*\n(gpd_return:\s*\n[\s\S]*?)```")
-_GPD_RETURN_FIELD_RE = re.compile(r"^\s{2,4}(\w+):\s*(.+)")
-_GPD_RETURN_LIST_START_RE = re.compile(r"^\s{2,4}(\w+):\s*$")
-_GPD_RETURN_LIST_ITEM_RE = re.compile(r"^\s{4,}-\s*(.+)")
-
-
-def _strip_wrapping_quotes(value: str) -> str:
-    stripped = value.strip()
-    if len(stripped) >= 2 and stripped[0] == stripped[-1] and stripped[0] in {'"', "'"}:
-        return stripped[1:-1]
-    return stripped
-
-
-def _parse_inline_yaml_list(value: str) -> list[str]:
-    stripped = value.strip()
-    if not (stripped.startswith("[") and stripped.endswith("]")):
-        return []
-    inner = stripped[1:-1].strip()
-    if not inner:
-        return []
-
-    lexer = shlex.shlex(inner, posix=True)
-    lexer.whitespace = ","
-    lexer.whitespace_split = True
-    lexer.commenters = ""
-    return [_strip_wrapping_quotes(token) for token in lexer if _strip_wrapping_quotes(token)]
-
-
-def _parse_gpd_return_fields(yaml_block: str) -> dict[str, object]:
-    fields: dict[str, object] = {}
-    active_list_key: str | None = None
-
-    for line in yaml_block.split("\n"):
-        if not line.strip() or line.strip() == "gpd_return:":
-            if not line.strip():
-                active_list_key = None
-            continue
-
-        list_start = _GPD_RETURN_LIST_START_RE.match(line)
-        if list_start:
-            active_list_key = list_start.group(1).strip()
-            fields[active_list_key] = []
-            continue
-
-        kv = _GPD_RETURN_FIELD_RE.match(line)
-        if kv:
-            active_list_key = None
-            key = kv.group(1).strip()
-            raw_value = kv.group(2).strip()
-            if raw_value.startswith("[") and raw_value.endswith("]"):
-                fields[key] = _parse_inline_yaml_list(raw_value)
-            else:
-                fields[key] = _strip_wrapping_quotes(raw_value)
-            continue
-
-        if active_list_key is not None:
-            list_item = _GPD_RETURN_LIST_ITEM_RE.match(line)
-            if list_item:
-                value = _strip_wrapping_quotes(list_item.group(1).strip())
-                if value:
-                    current = fields.get(active_list_key)
-                    if isinstance(current, list):
-                        current.append(value)
-                continue
-            if line.strip():
-                active_list_key = None
-
-    return fields
-
-
-def _field_present(value: object) -> bool:
-    if value is None:
-        return False
-    if isinstance(value, str):
-        return bool(value.strip())
-    return True
-
-
 @instrument_gpd_function("commands.validate_return")
 def cmd_validate_return(file_path: Path) -> ValidateReturnResult:
     """Validate a gpd_return YAML block in a file.
@@ -764,68 +824,89 @@ def cmd_validate_return(file_path: Path) -> ValidateReturnResult:
     if content is None:
         raise ValidationError(f"File not found: {file_path}")
 
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    return_match = _GPD_RETURN_BLOCK_RE.search(content)
-    if not return_match:
-        return ValidateReturnResult(
-            passed=False,
-            errors=["No gpd_return YAML block found"],
-            warnings=warnings,
-        )
-
-    yaml_block = return_match.group(1)
-    fields = _parse_gpd_return_fields(yaml_block)
-
-    # Check required fields
-    for field in REQUIRED_RETURN_FIELDS:
-        if not _field_present(fields.get(field)):
-            errors.append(f"Missing required field: {field}")
-
-    # Normalize status for comparison (strip whitespace, lowercase)
-    raw_status = fields.get("status", "")
-    status_lower = raw_status.strip().lower() if isinstance(raw_status, str) else ""
-
-    # Validate status value
-    if raw_status and status_lower not in VALID_RETURN_STATUSES:
-        errors.append(
-            f"Invalid status '{raw_status}'. Must be one of: {', '.join(sorted(VALID_RETURN_STATUSES))}"
-        )
-
-    # Validate task counts are numbers
-    for count_field in ("tasks_completed", "tasks_total"):
-        val = fields.get(count_field)
-        if isinstance(val, str):
-            try:
-                int(val)
-            except ValueError:
-                errors.append(f"{count_field} is not a number: '{val}'")
-
-    # Warn if completed but tasks_completed < tasks_total
-    if (
-        status_lower == "completed"
-        and isinstance(fields.get("tasks_completed"), str)
-        and isinstance(fields.get("tasks_total"), str)
-    ):
-        try:
-            done = int(str(fields["tasks_completed"]))
-            total = int(str(fields["tasks_total"]))
-            if done < total:
-                warnings.append(f"Status is 'completed' but tasks_completed ({done}) < tasks_total ({total})")
-        except ValueError:
-            pass
-
-    # Check optional but recommended fields
-    for field in ("duration_seconds",):
-        if not fields.get(field):
-            warnings.append(f"Recommended field missing: {field}")
-
-    passed = len(errors) == 0
+    validation = validate_gpd_return_markdown(content)
     return ValidateReturnResult(
-        passed=passed,
+        passed=validation.passed,
+        errors=validation.errors,
+        warnings=validation.warnings,
+        fields=validation.fields,
+        warning_count=validation.warning_count,
+    )
+
+
+@instrument_gpd_function("commands.apply_return_updates")
+def cmd_apply_return_updates(
+    cwd: Path,
+    file_path: Path,
+    *,
+    checkpoint_resume_file: str | Path | None = None,
+) -> ApplyChildReturnResult:
+    """Validate and apply the durable subset of one ``gpd_return`` envelope."""
+    content = safe_read_file(file_path)
+    if content is None:
+        raise ValidationError(f"File not found: {file_path}")
+
+    validation = validate_gpd_return_markdown(content)
+    if not validation.passed or validation.envelope is None:
+        return _return_validation_failure_result(validation, content)
+
+    result = apply_child_return_updates(cwd, validation.envelope, checkpoint_resume_file=checkpoint_resume_file)
+    if validation.warnings:
+        result.warnings.extend(warning for warning in validation.warnings if warning not in result.warnings)
+    return result
+
+
+def _return_validation_failure_result(
+    validation: GpdReturnValidationResult,
+    content: str,
+) -> ApplyChildReturnResult:
+    failures = [_apply_failure_from_return_validation_error(error, content=content) for error in validation.errors]
+    errors = list(validation.errors)
+    warnings = list(validation.warnings)
+    if not failures and errors:
+        failures = [
+            ApplyChildReturnFailure(
+                failure_class=RETURN_MALFORMED_BLOCKING_FAILURE_CLASS,
+                code=RETURN_MALFORMED_BLOCKING_FAILURE_CLASS,
+                message=error,
+                repairable=False,
+                repair_hint=return_repair_hint("field_shape_error"),
+            )
+            for error in errors
+        ]
+    failure_classes = _failure_classes_from_apply_failures(failures)
+    return ApplyChildReturnResult(
+        passed=False,
+        status="failed",
         errors=errors,
         warnings=warnings,
-        fields=fields,
-        warning_count=len(warnings),
+        primary_failure_class=failure_classes[0] if failure_classes else None,
+        failure_classes=failure_classes,
+        failures=failures,
     )
+
+
+def _apply_failure_from_return_validation_error(
+    error: str,
+    *,
+    content: str,
+) -> ApplyChildReturnFailure:
+    repair_class = return_repair_class_from_validation_error(error, content=content)
+    return ApplyChildReturnFailure(
+        failure_class=return_failure_class_from_repair_class(repair_class),
+        code=repair_class,
+        message=error,
+        repairable=repair_class in REPAIRABLE_RETURN_CLASSES,
+        repair_hint=return_repair_hint(repair_class),
+    )
+
+
+def _failure_classes_from_apply_failures(failures: list[ApplyChildReturnFailure]) -> list[str]:
+    failure_classes: list[str] = []
+    for failure in failures:
+        if failure.failure_class not in failure_classes:
+            failure_classes.append(failure.failure_class)
+    return failure_classes
+
+
+_MISSING = object()

@@ -112,26 +112,26 @@ Convergence: |δE| = 2.3e-6 → 1.1e-8 → 4.7e-11  ✓ (tol: 1e-8)
 
 ---
 
-## Next Up Block
+## Canonical Next Up Block
 
 Always at end of major completions.
 
 ```
 ───────────────────────────────────────────────────────────────
 
-## ▶ Next Up
+## > Next Up
 
 **{Identifier}: {Name}** — {one-line description}
 
 `{copy-paste command}`
 
-<sub>`/clear` first → fresh context window</sub>
+<sub>Start a fresh context window, then run the command.</sub>
 
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:alternative-1` — description
-- `/gpd:alternative-2` — description
+- `gpd:alternative-1` — description
+- `gpd:alternative-2` — description
 
 ───────────────────────────────────────────────────────────────
 ```

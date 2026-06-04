@@ -15,7 +15,7 @@ Parse the command arguments:
 - First argument: integer phase number to insert after
 - Remaining arguments: phase description
 
-Example: `/gpd:insert-phase 72 Regularize UV divergence in self-energy`
+Example: `gpd:insert-phase 72 Regularize UV divergence in self-energy`
 -> after = 72
 -> description = "Regularize UV divergence in self-energy"
 
@@ -23,8 +23,8 @@ If arguments missing:
 
 ```
 ERROR: Both phase number and description required
-Usage: /gpd:insert-phase <after> <description>
-Example: /gpd:insert-phase 72 Regularize UV divergence in self-energy
+Usage: gpd:insert-phase <after> <description>
+Example: gpd:insert-phase 72 Regularize UV divergence in self-energy
 ```
 
 Exit.
@@ -36,10 +36,10 @@ Validate first argument is an integer.
 Load phase operation context:
 
 ```bash
-INIT=$(gpd init phase-op "${after_phase}")
+INIT=$(gpd --raw init phase-op "${after_phase}")
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -107,13 +107,13 @@ Project state updated: GPD/STATE.md
 
 ---
 
-## Next Up
+## > Next Up
 
 **Phase {decimal_phase}: {description}** -- urgent insertion
 
-`/gpd:plan-phase {decimal_phase}`
+`gpd:plan-phase {decimal_phase}`
 
-<sub>`/clear` first -> fresh context window</sub>
+<sub>Start a fresh context window</sub>
 
 ---
 
@@ -130,11 +130,11 @@ Project state updated: GPD/STATE.md
 
 <anti_patterns>
 
-- Don't use this for planned work at end of milestone (use /gpd:add-phase)
+- Don't use this for planned work at end of milestone (use gpd:add-phase)
 - Don't insert before Phase 1 (decimal 0.1 makes no sense)
 - Don't renumber existing phases
 - Don't modify the target phase content
-- Don't create plans yet (that's /gpd:plan-phase)
+- Don't create plans yet (that's gpd:plan-phase)
 - Don't commit changes (user decides when to commit)
 
 </anti_patterns>

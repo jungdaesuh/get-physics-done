@@ -22,6 +22,35 @@ SUPPORTED_FORMATS: set[str] = {"pdf", "png", "jpg", "jpeg", "svg", "tiff", "tif"
 PASSTHROUGH_FORMATS: set[str] = {"pdf", "png", "jpg", "jpeg"}
 
 
+def _cleanup_failed_output(path: Path) -> None:
+    if path.exists():
+        path.unlink()
+
+
+def _missing_optional_module(exc: ImportError, module_name: str) -> bool:
+    missing_name = getattr(exc, "name", None)
+    if missing_name == module_name:
+        return True
+    return f"No module named '{module_name}'" in str(exc)
+
+
+def _describe_inkscape_failure(
+    exc: FileNotFoundError | subprocess.CalledProcessError | subprocess.TimeoutExpired,
+) -> str:
+    if isinstance(exc, FileNotFoundError):
+        return f"Inkscape fallback failed: {exc}"
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"Inkscape fallback timed out after {exc.timeout}s"
+    details = [f"Inkscape fallback failed with exit code {exc.returncode}"]
+    stderr = (exc.stderr or "").strip() if isinstance(exc.stderr, str) else ""
+    stdout = (exc.stdout or "").strip() if isinstance(exc.stdout, str) else ""
+    if stderr:
+        details.append(f"stderr: {stderr}")
+    elif stdout:
+        details.append(f"stdout: {stdout}")
+    return "; ".join(details)
+
+
 def detect_format(path: Path) -> str:
     """Return the lowercase file extension.
 
@@ -48,6 +77,12 @@ def _unique_dest(output_dir: Path, source: Path) -> Path:
     return dest
 
 
+def _path_is_within_directory(path: Path, directory: Path) -> bool:
+    resolved_path = path.resolve(strict=False)
+    resolved_directory = directory.resolve(strict=False)
+    return resolved_path == resolved_directory or resolved_path.is_relative_to(resolved_directory)
+
+
 def normalize_figure(source: Path, output_dir: Path) -> Path:
     """Normalize a figure to a pdflatex-compatible format.
 
@@ -63,7 +98,7 @@ def normalize_figure(source: Path, output_dir: Path) -> Path:
         dest = _unique_dest(output_dir, source)
         if source.resolve() == dest.resolve():
             return dest
-        shutil.copy2(source, dest)
+        _copy_with_cleanup(source, dest)
         return dest
 
     if fmt in ("svg",):
@@ -77,16 +112,25 @@ def normalize_figure(source: Path, output_dir: Path) -> Path:
         dest = _unique_dest(output_dir, source)
         if source.resolve() == dest.resolve():
             return dest
-        shutil.copy2(source, dest)
+        _copy_with_cleanup(source, dest)
         logger.info("EPS file copied; epstopdf will handle conversion during compilation: %s", source.name)
         return dest
 
     raise ValueError(f"No conversion path for format: {fmt}")
 
 
+def _copy_with_cleanup(source: Path, dest: Path) -> None:
+    try:
+        shutil.copy2(source, dest)
+    except Exception:
+        _cleanup_failed_output(dest)
+        raise
+
+
 def _convert_svg(source: Path, output_dir: Path) -> Path:
     """Convert SVG to PDF using cairosvg or inkscape."""
     dest = _unique_dest(output_dir, Path(f"{source.stem}.pdf"))
+    cairosvg_error: Exception | None = None
 
     # Try cairosvg first
     try:
@@ -94,11 +138,15 @@ def _convert_svg(source: Path, output_dir: Path) -> Path:
 
         cairosvg.svg2pdf(url=str(source), write_to=str(dest))
         return dest
-    except ImportError:
-        pass
-    except Exception:
-        if dest.exists():
-            dest.unlink()
+    except ImportError as exc:
+        if _missing_optional_module(exc, "cairosvg"):
+            pass
+        else:
+            cairosvg_error = exc
+            _cleanup_failed_output(dest)
+    except Exception as exc:
+        cairosvg_error = exc
+        _cleanup_failed_output(dest)
 
     # Fall back to inkscape
     try:
@@ -110,10 +158,20 @@ def _convert_svg(source: Path, output_dir: Path) -> Path:
             check=True,
         )
         return dest
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-
-    raise RuntimeError(f"SVG conversion requires cairosvg (pip install cairosvg) or inkscape. Cannot convert: {source}")
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        _cleanup_failed_output(dest)
+        inkscape_detail = _describe_inkscape_failure(exc)
+        if cairosvg_error is not None:
+            raise RuntimeError(
+                "SVG conversion failed after CairoSVG raised "
+                f"{type(cairosvg_error).__name__}: {cairosvg_error}. "
+                f"{inkscape_detail}. "
+                f"Cannot convert: {source}"
+            ) from cairosvg_error
+        raise RuntimeError(
+            "SVG conversion requires cairosvg (pip install cairosvg) or inkscape. "
+            f"{inkscape_detail}. Cannot convert: {source}"
+        ) from exc
 
 
 def _convert_tiff(source: Path, output_dir: Path) -> Path:
@@ -124,8 +182,12 @@ def _convert_tiff(source: Path, output_dir: Path) -> Path:
         raise RuntimeError(f"TIFF conversion requires Pillow (pip install Pillow). Cannot convert: {source}") from None
 
     dest = _unique_dest(output_dir, Path(f"{source.stem}.png"))
-    with Image.open(source) as img:
-        img.save(dest, "PNG")
+    try:
+        with Image.open(source) as img:
+            img.save(dest, "PNG")
+    except Exception:
+        _cleanup_failed_output(dest)
+        raise
     return dest
 
 
@@ -200,6 +262,9 @@ def _prepare_figures_with_sources(
             normalized_path = normalize_figure(fig.path, output_dir)
         except (OSError, RuntimeError, ValueError) as exc:
             errors.append(f"Figure preparation failed for {fig.path}: {exc}")
+            continue
+        if not _path_is_within_directory(normalized_path, output_dir):
+            errors.append(f"Figure preparation failed for {fig.path}: normalized output escaped {output_dir}")
             continue
 
         passes, msg = check_figure_resolution(normalized_path, journal, double_column=fig.double_column)

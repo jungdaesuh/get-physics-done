@@ -1,5 +1,5 @@
 <purpose>
-Create `.continue-here.md` handoff file to preserve complete research state across sessions. Enables seamless resumption with full context restoration, including derivation progress, parameter values, intermediate results, and theoretical assumptions.
+Create the canonical `.continue-here.md` continuation handoff artifact for `gpd:resume-work`, `gpd resume`, and `gpd resume --recent`. It is a handoff surface, not the durable authority.
 </purpose>
 
 <required_reading>
@@ -20,20 +20,12 @@ If no active phase detected, ask user which phase they're pausing work on.
 </step>
 
 <step name="gather">
-**Collect complete research state for handoff:**
+**Collect complete research state for the continuation handoff artifact:**
 
-1. **Current position**: Which phase, which plan, which task
-2. **Derivation state**: Where in the calculation or derivation are we? What equations have been established, what remains to be shown?
-3. **Parameter values**: All parameter values, coupling constants, cutoffs, or numerical settings currently in use
-4. **Intermediate results**: Partial results, expressions derived so far, numerical outputs obtained
-5. **Approximations active**: Which approximations or truncations are in effect, with their justifications
-6. **Work completed**: What got done this session (derivations finished, code written, plots generated, checks passed)
-7. **Work remaining**: What's left in current plan/phase
-8. **Decisions made**: Key decisions and rationale (sign conventions chosen, gauge fixed, method selected)
-9. **Open questions**: Physics questions that arose during the session and remain unresolved
-10. **Blockers/issues**: Anything stuck (divergence encountered, numerical instability, missing input data)
-11. **Mental context**: The theoretical approach, next steps, "vibe" of where this is going
-12. **Files modified**: What's changed but not committed (scripts, notebooks, LaTeX, data files)
+- Current phase, plan, task, and what remains.
+- Derivation state: established equations, parameter values, intermediate results, active approximations, and what still must be shown.
+- Session delta: completed work, modified files, decisions made, open questions, blockers, and the next theoretical approach.
+- Result continuity: if a canonical derived result was just persisted, capture its `result_id` as the active `last_result_id` rerun anchor. Treat an explicit `--last-result-id` override as a manual repair path when the inherited continuity anchor needs correction.
 
 Ask user for clarifications if needed via conversational questions.
 </step>
@@ -41,19 +33,16 @@ Ask user for clarifications if needed via conversational questions.
 <step name="extract_persistent_state">
 **Extract and append persistent derivation state to `GPD/DERIVATION-STATE.md`:**
 
-Before writing the ephemeral CONTINUE-HERE file, extract all equations, conventions,
-and results from the current session and append them to the cumulative derivation
-state file. This file is append-only and never deleted -- it is the permanent record
-that prevents lossy compression across context resets.
+Before writing the canonical continue-here handoff, append this session's equations, conventions, and results to the append-only cumulative derivation state file.
 
 1. **Collect from the current session:**
 
    - Every equation derived (LaTeX form, units, validity range, derivation method)
    - Every convention choice made or confirmed (metric, Fourier, normalization, regularization)
-   - Every intermediate result added to state.json (with result IDs)
+   - Every intermediate result added to state.json (with result IDs), plus the canonical `last_result_id` rerun anchor when this session produced a persisted derivation result
    - Every approximation invoked (name, validity regime, how checked)
 
-2. **Append to `GPD/DERIVATION-STATE.md`** (create if it doesn't exist):
+2. **Ensure `GPD/DERIVATION-STATE.md` exists**, then draft the session block separately.
 
 ```bash
 # Get timestamp and phase context
@@ -71,10 +60,11 @@ lossy compression across context resets.
 
 HEADER
 fi
+```
 
-# Append this session's persistent state
-cat >> GPD/DERIVATION-STATE.md << EOF
+Draft this session block as text first. Replace every placeholder with actual session content before appending it to `GPD/DERIVATION-STATE.md`; do not run or persist this template as-is:
 
+```text
 ---
 
 ## Session: ${timestamp} | Phase: ${phase_dir}
@@ -90,24 +80,19 @@ cat >> GPD/DERIVATION-STATE.md << EOF
 
 ### Approximations Used
 [Fill: approximations invoked, validity conditions, how checked]
-
-EOF
 ```
 
-3. **Fill in the appended section** with actual content from the current session before proceeding.
+3. **Append only the filled section** with actual content from the current session before proceeding.
    Do NOT leave the placeholders -- replace `[Fill: ...]` with real content.
 
 4. **Tag each entry** with the current phase and plan context so the history is traceable.
 
 5. **Prune stale entries after appending (cap enforcement):**
 
-   After appending the new session block, check total size and prune if over limit.
-   This ensures the file stays bounded even without a resume-work read cycle.
+   After appending the new session block, check total size and prune if over limit so the file stays bounded without a resume-work read cycle.
 
    **IMPORTANT: Atomic read-modify-write through .tmp to prevent race conditions.**
-   The pruning operation reads the file, transforms it, writes to a .tmp file, validates
-   the .tmp file, then atomically replaces the original. If ANY step fails, the original
-   is preserved.
+   Read, transform, write a .tmp file, validate it, then atomically replace the original. If any step fails, preserve the original.
 
    ```bash
    # Count session blocks
@@ -116,8 +101,11 @@ EOF
    if [ "$SESSION_COUNT" -gt 5 ]; then
      echo "DERIVATION-STATE.md has ${SESSION_COUNT} session blocks (cap: 5). Pruning oldest..."
 
-     # Atomic read-modify-write: write to .tmp, validate, then replace
-     TMP_FILE="GPD/DERIVATION-STATE.md.tmp.$$"
+     # Atomic read-modify-write: write to same-directory temp, validate, then rename
+     TMP_FILE=$(mktemp GPD/DERIVATION-STATE.md.tmp.XXXXXX) || {
+       echo "WARNING: Failed to create DERIVATION-STATE.md temp file. Keeping original."
+       exit 1
+     }
      trap "rm -f '$TMP_FILE'" EXIT
 
      # Keep only the 5 most recent session blocks
@@ -142,10 +130,11 @@ EOF
        echo "WARNING: Pruned file missing required header. Keeping original."
        rm -f "$TMP_FILE"
      else
-       # Atomic replace: cp to preserve original on failure, then rm tmp
-       cp "$TMP_FILE" GPD/DERIVATION-STATE.md && \
-         rm -f "$TMP_FILE" || \
+       # Same-directory rename is atomic on the project filesystem.
+       if ! mv -f "$TMP_FILE" GPD/DERIVATION-STATE.md; then
          echo "WARNING: Failed to replace DERIVATION-STATE.md. Original preserved."
+         rm -f "$TMP_FILE"
+       fi
      fi
      trap - EXIT
    fi
@@ -165,83 +154,30 @@ gpd commit "wip: append derivation state from session" --files GPD/DERIVATION-ST
 </step>
 
 <step name="write">
-**Write handoff to `GPD/phases/{phase_slug}/.continue-here.md`** (where `{phase_slug}` is the detected phase directory name from the `detect` step, e.g., `03-dispersion`):
+**Write the canonical continuation handoff artifact to `GPD/phases/{phase_slug}/.continue-here.md`** (where `{phase_slug}` is the detected phase directory name from the `detect` step, e.g., `03-dispersion`).
 
-```markdown
----
-phase: {phase_slug}
-task: 3
-total_tasks: 7
-status: in_progress
-last_updated: [timestamp from current-timestamp]
----
+Use the shared template at `{GPD_INSTALL_DIR}/templates/continue-here.md` as the authoritative structure. Do not invent alternate tag names when writing the handoff. The canonical file should keep:
 
-<current_state>
-[Where exactly are we? Immediate context -- which equation, which step of the derivation, which numerical experiment]
-</current_state>
+- YAML frontmatter: `phase`, `task`, `total_tasks`, `status`, `last_updated`
+- `<current_state>` for the immediate physics situation
+- `<completed_work>` for completed and partially completed tasks
+- `<remaining_work>` for what is still left
+- `<decisions_made>` for physics or method choices that must not be silently re-debated
+- `<intermediate_results>` for equations, values, outputs, and convention snapshots needed on return
+- If a canonical derived result was persisted this session, call out its `result_id` as `last_result_id` so reruns can target the same registry entry directly.
+- `<blockers>` for active blockers and physics impact
+- `<context>` for the reasoning chain and overall approach
+- `<next_action>` for the exact first thing to do on return
+- `<persistent_state>` for the subset that must be appended to `GPD/DERIVATION-STATE.md`
 
-<derivation_state>
-[Current position in the theoretical calculation. What has been established (key equations, identities proven, limits checked). What remains to be derived or verified.]
-</derivation_state>
+The `.continue-here.md` file and canonical continuation payload are handoff surfaces only. `state.json.continuation.handoff` is the durable handoff authority. If the pause produces a resumable bounded stop, persist the matching `execution_segment` into `continuation.bounded_segment`; that persisted field is the bounded authority for later resume logic. Do not treat the markdown handoff file or derived execution head as the durable authority.
 
-<parameter_values>
-[All parameter values, coupling constants, cutoffs, grid sizes, convergence thresholds currently in use. Include units.]
+Fold older ad hoc notions such as separate `parameter_values`, `approximations_active`, or `open_questions` into the canonical sections above instead of creating extra top-level tags. For example:
 
-- [parameter]: [value] ([units]) -- [why this value]
-  </parameter_values>
+- parameter values and approximation regimes belong inside `<intermediate_results>` and `<context>`
+- unresolved questions belong inside `<context>` or `<blockers>`, whichever better reflects whether they block execution
 
-<intermediate_results>
-[Partial results obtained so far. Key expressions, numerical outputs, plots generated. Include enough detail to resume without re-deriving.]
-
-- [result]: [value or expression] -- [how obtained, which script/notebook]
-  </intermediate_results>
-
-<approximations_active>
-[Which approximations or truncations are in effect and their justifications]
-
-- [approximation]: [justification] -- [validity regime]
-  </approximations_active>
-
-<completed_work>
-
-- Task 1: [name] - Done
-- Task 2: [name] - Done
-- Task 3: [name] - In progress, [what's done]
-  </completed_work>
-
-<remaining_work>
-
-- Task 3: [what's left]
-- Task 4: Not started
-- Task 5: Not started
-  </remaining_work>
-
-<decisions_made>
-
-- Decided to use [method/convention] because [physics reason]
-- Chose [approach] over [alternative] because [reason]
-  </decisions_made>
-
-<open_questions>
-
-- [Physics question that arose and remains unresolved]
-- [Discrepancy noticed but not yet investigated]
-  </open_questions>
-
-<blockers>
-- [Blocker 1]: [status/workaround]
-</blockers>
-
-<context>
-[Mental state, theoretical intuition, the plan -- what were you thinking about the physics, where is this heading]
-</context>
-
-<next_action>
-Start with: [specific first action when resuming -- e.g., "continue expanding Eq. (12) to second order in the coupling", "run convergence test with N=128", "check Ward identity for the vertex function"]
-</next_action>
-```
-
-Be specific enough for a fresh AI session to understand immediately and pick up the physics without re-reading everything from scratch.
+Be specific enough that a fresh AI session can resume from the canonical handoff without reconstructing the derivation from scratch.
 
 Use `current-timestamp` for last_updated field. You can use init todos (which provides timestamps) or call directly:
 
@@ -255,13 +191,29 @@ timestamp=$(gpd --raw timestamp full)
 **Update STATE.md with pause context:**
 
 ```bash
-# Record session continuity so resume-work knows where we stopped
-gpd state record-session \
-  --stopped-at "Paused at task [X]/[Y] in phase [{phase_slug}]" \
-  --resume-file "GPD/phases/[{phase_slug}]/.continue-here.md"
+: "${phase_slug:?set detected phase directory before recording session}"
+: "${task_index:?set current task number before recording session}"
+: "${task_total:?set total task count before recording session}"
+resume_file="GPD/phases/${phase_slug}/.continue-here.md"
+last_result_id=""               # set only when manually overriding or repairing the carried anchor
+
+# Record one continuation pointer for runtime resume-work, gpd resume, and gpd resume --recent.
+record_session_args=(
+  --stopped-at "Paused at task ${task_index}/${task_total} in phase ${phase_slug}"
+  --resume-file "$resume_file"
+)
+if [ -n "$last_result_id" ]; then
+  record_session_args+=(--last-result-id "$last_result_id")
+fi
+gpd state record-session "${record_session_args[@]}"
 if [ $? -ne 0 ]; then echo "WARNING: state record-session failed — resume info may be lost"; fi
 
-# Set status to Paused so resume-work detects it
+# If the active bounded-segment continuity already carries a canonical
+# last_result_id, omit --last-result-id and let the automatic continuity path
+# supply it. Pass --last-result-id only when manually overriding or repairing
+# the carried anchor.
+
+# Mark Paused for resume-work; bounded continuation is managed separately.
 gpd state patch --Status "Paused"
 if [ $? -ne 0 ]; then echo "WARNING: state patch failed — status not marked as Paused"; fi
 ```
@@ -270,10 +222,14 @@ if [ $? -ne 0 ]; then echo "WARNING: state patch failed — status not marked as
 
 <step name="commit">
 ```bash
+: "${phase_slug:?set detected phase directory before commit}"
+: "${task_index:?set current task number before commit}"
+: "${task_total:?set total task count before commit}"
+
 PRE_CHECK=$(gpd pre-commit-check --files GPD/phases/*/.continue-here.md GPD/STATE.md GPD/state.json 2>&1) || true
 echo "$PRE_CHECK"
 
-gpd commit "wip: [phase-name] paused at task [X]/[Y]" --files GPD/phases/*/.continue-here.md GPD/STATE.md GPD/state.json
+gpd commit "wip: ${phase_slug} paused at task ${task_index}/${task_total}" --files GPD/phases/*/.continue-here.md GPD/STATE.md GPD/state.json
 ```
 
 </step>
@@ -281,6 +237,11 @@ gpd commit "wip: [phase-name] paused at task [X]/[Y]" --files GPD/phases/*/.cont
 <step name="confirm">
 ```
 Handoff created: GPD/phases/[{phase_slug}]/.continue-here.md
+
+This is the canonical recorded handoff artifact for the current phase. `gpd:resume-work`
+and the local `gpd resume` recovery surface should now point to the same continuation file.
+If the user is not sure which repo to reopen, `gpd resume --recent` should be
+the first discovery step before the per-project resume flow.
 
 Current state:
 
@@ -290,7 +251,9 @@ Current state:
 - Derivation state: [brief summary of where the calculation stands]
 - Committed as WIP
 
-To resume: /gpd:resume-work
+To return in the runtime: gpd:resume-work
+To inspect local recovery summary: gpd resume
+To rediscover the project first: gpd resume --recent
 
 ```
 </step>
@@ -298,14 +261,15 @@ To resume: /gpd:resume-work
 </process>
 
 <success_criteria>
-- [ ] Persistent derivation state appended to `GPD/DERIVATION-STATE.md` (equations, conventions, results, approximations from this session)
+- [ ] Persistent derivation state appended to `GPD/DERIVATION-STATE.md`
 - [ ] DERIVATION-STATE.md committed separately before writing CONTINUE-HERE
-- [ ] .continue-here.md created in correct phase directory
-- [ ] All sections filled with specific content, especially derivation_state, parameter_values, intermediate_results, and approximations_active
-- [ ] The `<derivation_state>` and `<intermediate_results>` sections in .continue-here.md are filled (documenting what was appended to DERIVATION-STATE.md)
+- [ ] Canonical `.continue-here.md` created in correct phase directory
+- [ ] Canonical section names from the shared template are preserved
+- [ ] All canonical sections are filled with specific content, especially `<current_state>`, `<completed_work>`, `<remaining_work>`, `<intermediate_results>`, `<context>`, and `<next_action>`
+- [ ] The `<persistent_state>` and `<intermediate_results>` sections in `.continue-here.md` are filled (documenting what was appended to DERIVATION-STATE.md)
 - [ ] Enough physics context preserved that a fresh session can resume without re-deriving
-- [ ] STATE.md session continuity updated with pause point and resume file path
+- [ ] STATE.md session continuity updated as a handoff pointer to the pause point and resume file path
 - [ ] STATE.md status set to "Paused"
 - [ ] Committed as WIP (including STATE.md and state.json)
-- [ ] User knows location and how to resume
+- [ ] User knows the handoff location and the return path via `gpd:resume-work` / `gpd resume` / `gpd resume --recent`
 </success_criteria>

@@ -206,10 +206,61 @@ class TestLoadStateJsonFallback:
         assert result["position"]["current_phase"] == "01"
         assert result["position"]["status"] == "Executing"
 
-    def test_tier3_falls_back_to_state_md_without_overwriting_unreadable_state_json(
-        self, tmp_path: Path
-    ) -> None:
-        """Unreadable state.json should remain untouched when STATE.md is used as fallback."""
+    def test_stale_bak_older_than_state_md_does_not_resurrect_old_state(self, tmp_path: Path) -> None:
+        """A stale backup from an old crash window should not outrank newer STATE.md."""
+        cwd = _make_planning(tmp_path)
+        layout = ProjectLayout(cwd)
+        current_state = default_state_dict()
+        current_state["position"]["current_phase"] = "05"
+        current_state["position"]["status"] = "Executing"
+        old_backup = default_state_dict()
+        old_backup["position"]["current_phase"] = "01"
+        old_backup["position"]["status"] = "Planning"
+
+        save_state_json(cwd, current_state)
+        layout.state_json_backup.write_text(json.dumps(old_backup, indent=2) + "\n", encoding="utf-8")
+        layout.state_md.write_text(generate_state_markdown(current_state), encoding="utf-8")
+        os.utime(layout.state_json_backup, ns=(1_000_000_000, 1_000_000_000))
+        os.utime(layout.state_md, ns=(2_000_000_000, 2_000_000_000))
+        layout.state_json.write_text("{corrupt", encoding="utf-8")
+
+        result = load_state_json(cwd)
+
+        assert result is not None
+        assert result["position"]["current_phase"] == "05"
+        restored = json.loads(layout.state_json.read_text(encoding="utf-8"))
+        assert restored["position"]["current_phase"] == "05"
+
+    def test_symlinked_bak_is_ignored_and_not_followed(self, tmp_path: Path) -> None:
+        """A symlinked backup must not be read as a recovery source."""
+        cwd = _make_planning(tmp_path)
+        layout = ProjectLayout(cwd)
+        current_state = default_state_dict()
+        current_state["position"]["current_phase"] = "05"
+        current_state["position"]["status"] = "Executing"
+        external_backup_state = default_state_dict()
+        external_backup_state["position"]["current_phase"] = "09"
+        external_backup = tmp_path / "external-state.json.bak"
+
+        save_state_json(cwd, current_state)
+        external_backup.write_text(json.dumps(external_backup_state, indent=2) + "\n", encoding="utf-8")
+        layout.state_json_backup.unlink()
+        try:
+            layout.state_json_backup.symlink_to(external_backup)
+        except OSError as exc:
+            pytest.skip(f"symlink creation unavailable: {exc}")
+        layout.state_md.write_text(generate_state_markdown(current_state), encoding="utf-8")
+        layout.state_json.write_text("{corrupt", encoding="utf-8")
+
+        result = load_state_json(cwd)
+
+        assert result is not None
+        assert result["position"]["current_phase"] == "05"
+        assert json.loads(external_backup.read_text(encoding="utf-8"))["position"]["current_phase"] == "09"
+        assert not layout.state_json_backup.is_symlink()
+
+    def test_tier3_repairs_unreadable_state_json_from_state_md(self, tmp_path: Path) -> None:
+        """Unreadable state.json should be repaired from STATE.md instead of remaining corrupt."""
         cwd = _make_planning(tmp_path)
         layout = ProjectLayout(cwd)
         layout.state_json.write_text("CORRUPT", encoding="utf-8")
@@ -219,7 +270,9 @@ class TestLoadStateJsonFallback:
 
         assert result is not None
         assert result["position"]["current_phase"] == "01"
-        assert layout.state_json.read_text(encoding="utf-8") == "CORRUPT"
+        repaired = json.loads(layout.state_json.read_text(encoding="utf-8"))
+        assert repaired["position"]["current_phase"] == "01"
+        assert repaired["position"]["status"] == "Executing"
 
     def test_returns_none_when_no_state_exists(self, tmp_path: Path) -> None:
         """When no state files exist at all, return None (not raise)."""
@@ -276,7 +329,8 @@ class TestEnsureStateSchema:
     def test_none_returns_defaults(self) -> None:
         result = ensure_state_schema(None)
         assert "position" in result
-        assert "session" in result
+        assert "continuation" in result
+        assert "session" not in result
 
     def test_empty_dict_returns_defaults(self) -> None:
         result = ensure_state_schema({})
@@ -296,14 +350,17 @@ class TestEnsureStateSchema:
 
     def test_nested_bad_types_progressive_removal(self) -> None:
         """Nested validation errors trigger progressive key removal."""
-        result = ensure_state_schema({
-            "position": {"current_phase": "01"},
-            "session": {"last_date": 12345},  # wrong type (int vs str)
-        })
+        result = ensure_state_schema(
+            {
+                "position": {"current_phase": "01"},
+                "session": {"last_date": 12345},  # wrong type (int vs str)
+            }
+        )
         # Should still have valid position data
         assert result["position"]["current_phase"] == "01"
-        # Session should be either corrected or defaulted
-        assert "session" in result
+        # Internal session aliases are stripped; continuation is the canonical handoff surface.
+        assert "session" not in result
+        assert "continuation" in result
 
 
 class TestStateValidateRecovery:
@@ -392,6 +449,53 @@ class TestRecoverIntent:
         assert not intent.exists()
         assert not json_tmp.exists()
 
+    def test_invalid_intent_external_paths_only_remove_marker(self, tmp_path: Path) -> None:
+        """Invalid intent paths must not promote or unlink files outside GPD/."""
+        cwd = _make_planning(tmp_path)
+        layout = ProjectLayout(cwd)
+        baseline = default_state_dict()
+        baseline["position"]["current_phase"] = "01"
+        save_state_json(cwd, baseline)
+        external_dir = tmp_path / "outside"
+        external_dir.mkdir()
+        external_json = external_dir / "state.json.tmp.12345"
+        external_md = external_dir / "STATE.md.tmp.12345"
+        external_json.write_text(json.dumps({"position": {"current_phase": "99"}}), encoding="utf-8")
+        external_md.write_text("# External State\n", encoding="utf-8")
+        layout.state_intent.write_text(f"{external_json}\n{external_md}\n", encoding="utf-8")
+
+        result = load_state_json(cwd)
+
+        assert result is not None
+        assert result["position"]["current_phase"] == "01"
+        assert not layout.state_intent.exists()
+        assert external_json.exists()
+        assert external_md.exists()
+
+    def test_recovery_refreshes_backup_when_temps_already_promoted(self, tmp_path: Path) -> None:
+        """If both temp files were promoted before a crash, consume intent and refresh .bak."""
+        cwd = _make_planning(tmp_path)
+        layout = ProjectLayout(cwd)
+        stale_state = default_state_dict()
+        stale_state["position"]["current_phase"] = "01"
+        recovered_state = default_state_dict()
+        recovered_state["position"]["current_phase"] = "05"
+        recovered_state["position"]["status"] = "Executing"
+        save_state_json(cwd, stale_state)
+        layout.state_json.write_text(json.dumps(recovered_state, indent=2) + "\n", encoding="utf-8")
+        layout.state_md.write_text(generate_state_markdown(recovered_state), encoding="utf-8")
+        json_tmp = layout.state_json.with_suffix(".json.tmp.99997")
+        md_tmp = layout.state_md.with_suffix(".md.tmp.99997")
+        layout.state_intent.write_text(f"{json_tmp}\n{md_tmp}\n", encoding="utf-8")
+
+        result = load_state_json(cwd)
+
+        backup = json.loads(layout.state_json_backup.read_text(encoding="utf-8"))
+        assert result is not None
+        assert result["position"]["current_phase"] == "05"
+        assert backup["position"]["current_phase"] == "05"
+        assert not layout.state_intent.exists()
+
     def test_no_intent_file_is_noop(self, tmp_path: Path) -> None:
         """When no intent file exists, recovery is a no-op."""
         cwd = _make_planning(tmp_path)
@@ -466,9 +570,7 @@ class TestSyncStateJsonCorrupt:
         # Write valid bak
         bak_state = default_state_dict()
         bak_state["position"]["current_phase"] = "04"
-        layout.state_json.with_suffix(".json.bak").write_text(
-            json.dumps(bak_state, indent=2), encoding="utf-8"
-        )
+        layout.state_json.with_suffix(".json.bak").write_text(json.dumps(bak_state, indent=2), encoding="utf-8")
 
         result = sync_state_json(cwd, MINIMAL_STATE_MD)
         assert result is not None
@@ -497,6 +599,11 @@ class TestFrontmatterErrorHandling:
     def test_malformed_yaml_raises(self) -> None:
         content = "---\n: : : bad yaml [[\n---\n\nBody"
         with pytest.raises(FrontmatterParseError):
+            extract_frontmatter(content)
+
+    def test_duplicate_keys_raise(self) -> None:
+        content = "---\ntitle: First\ntitle: Second\n---\n\nBody"
+        with pytest.raises(FrontmatterParseError, match="duplicate key"):
             extract_frontmatter(content)
 
     def test_non_dict_yaml_raises(self) -> None:
@@ -568,8 +675,10 @@ class TestValidateFrontmatter:
             "  metric: (+,-,-,-)\n"
             "  coordinates: Cartesian\n"
             "contract:\n"
+            "  schema_version: 1\n"
             "  scope:\n"
             "    question: What benchmark must this plan recover?\n"
+            "    in_scope: [test scope]\n"
             "  context_intake:\n"
             "    must_read_refs: [ref-main]\n"
             "  claims:\n"
@@ -616,6 +725,11 @@ class TestValidateFrontmatter:
         """Malformed YAML in validate propagates as FrontmatterParseError."""
         content = "---\n: : bad\n---\n\nBody"
         with pytest.raises(FrontmatterParseError):
+            validate_frontmatter(content, "plan")
+
+    def test_duplicate_keys_in_validate_raise(self) -> None:
+        content = "---\ntitle: First\ntitle: Second\n---\n\nBody"
+        with pytest.raises(FrontmatterParseError, match="duplicate key"):
             validate_frontmatter(content, "plan")
 
 
@@ -677,6 +791,7 @@ class TestConfigErrorHandling:
         config_path.write_text("{}", encoding="utf-8")
         config = load_config(cwd)
         assert config == GPDProjectConfig()
+
 
 # ===================================================================
 # health.py: check_* functions graceful degradation
@@ -747,15 +862,12 @@ class TestSafeParseFunctions:
         """Reading a directory returns None (not raise)."""
         assert safe_read_file(tmp_path) is None
 
-    def test_safe_read_file_permission_error(self, tmp_path: Path) -> None:
+    def test_safe_read_file_permission_error(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Reading a file with permission error returns None."""
         f = tmp_path / "noperm.txt"
-        f.write_text("content")
-        f.chmod(0o000)
-        try:
-            assert safe_read_file(f) is None
-        finally:
-            f.chmod(0o644)
+        f.write_text("content", encoding="utf-8")
+        monkeypatch.setattr("pathlib.Path.read_text", lambda *a, **kw: (_ for _ in ()).throw(PermissionError("denied")))
+        assert safe_read_file(f) is None
 
 
 # ===================================================================

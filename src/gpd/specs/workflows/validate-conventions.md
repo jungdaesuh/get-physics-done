@@ -1,36 +1,40 @@
 <purpose>
-Check convention consistency across all completed phases with a scan-only audit. Detects sign errors, notation drift, metric signature mismatches, and convention lock violations. Critical for catching errors that propagate silently across phases — a wrong sign convention in Phase 2 invalidates everything built on it.
+Thin wrapper around `gpd-consistency-checker` for convention validation.
+
+This workflow resolves the requested scope, delegates the physics policy to the checker, and accepts success only after the checker return plus expected consistency report artifact pass the local gate. The checker owns the convention logic; this workflow gates scope, artifact presence, and post-return routing.
 </purpose>
 
 <required_reading>
 Read all files referenced by the invoking prompt's execution_context before starting.
 </required_reading>
 
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
 <process>
 
-<step name="init" priority="first">
-**Load project conventions and state:**
+<step name="initialize" priority="first">
+Load project context and scope:
 
 ```bash
-INIT=$(gpd init progress --include state,roadmap,config)
+PHASE_ARG="${ARGUMENTS:-}"
+if [ -n "${PHASE_ARG}" ]; then
+  INIT=$(gpd --raw init phase-op --include state,roadmap,config "${PHASE_ARG}")
+else
+  INIT=$(gpd --raw init progress --include state,roadmap,config)
+fi
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
-Extract: `state_exists`, `roadmap_exists`, `phases`, `current_phase`.
+Parse JSON for: `state_exists`, `roadmap_exists`, `phases`, `current_phase`, `derived_convention_lock`, and when phase-scoped `phase_found`, `phase_dir`, `phase_number`.
 
-**Read mode settings:**
+Read mode settings:
 
 ```bash
-AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
+AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default supervised 2>/dev/null || echo "supervised")
 ```
-
-**Mode-aware behavior:**
-- `autonomy=supervised`: Present each convention conflict for user resolution before applying fixes.
-- `autonomy=balanced` (default): Auto-fix trivial conflicts and clear lock-consistency issues. Pause for ambiguous conflicts requiring physics judgment.
-- `autonomy=yolo`: Auto-fix all conflicts using most recent convention as authoritative.
 
 Run centralized context preflight before continuing:
 
@@ -42,321 +46,164 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-**If `state_exists` is false:**
+If `state_exists` is false:
 
 ```
-No project state found. Run /gpd:new-project first.
+No project state found. Run gpd:new-project first.
 ```
 
 Exit.
 
-**Load convention lock from state.json:**
+Resolve scope immediately after preflight:
+
+- If `$PHASE_ARG` is set, require `phase_found: true` from `init phase-op` and derive a single-phase scope from `phase_dir`.
+- If `$PHASE_ARG` is empty, scan all completed phases from `gpd --raw roadmap analyze`.
+- If the requested phase cannot be resolved, fail closed with `ERROR: Phase not found: ${PHASE_ARG}`.
+
+Capture the selected phase directory and roadmap view for the downstream scan:
+
+```bash
+ROADMAP=$(gpd --raw roadmap analyze)
+```
+
+Load the convention ledger and the canonical vocabulary:
 
 ```bash
 CONVENTIONS=$(gpd convention list)
+# Canonical snake_case machine labels + human display names. Pass this to the
+# consistency-checker so its structured output stays on the authoritative
+# vocabulary and does not invent ad-hoc keys like "source_status".
+CONVENTION_VOCABULARY=$(gpd --raw convention vocabulary 2>/dev/null || echo "{}")
 ```
 
-Parse JSON for all locked convention fields and their values. The convention lock is the project-level source of truth.
+Read `GPD/CONVENTIONS.md` when present so the checker can compare the human-readable convention record against the structured lock. If the file is missing, continue with the structured lock and report the missing artifact as a limitation rather than inventing a fallback policy.
+</step>
 
-**Load CONVENTIONS.md if it exists:**
+<step name="delegate_checker">
+Spawn `gpd-consistency-checker` once and let it own convention policy.
+
+Use the requested scope to choose checker mode:
+
+- `PHASE_ARG` present -> `rapid`
+- no phase argument -> `full`
+
+For the checker prompt, provide only the scope, expected artifact path, and the required project files. Do not restate the checker's severity taxonomy or convention policy here.
+
+Derive the routed scope explicitly:
 
 ```bash
-cat GPD/CONVENTIONS.md 2>/dev/null
+if [ -n "${PHASE_ARG}" ]; then
+  CHECKER_MODE="rapid"
+  CHECK_SCOPE="phase ${PHASE_ARG}"
+  EXPECTED_ARTIFACT="GPD/phases/${PHASE_DIR}/CONSISTENCY-CHECK.md"
+else
+  CHECKER_MODE="full"
+  CHECK_SCOPE="all completed phases"
+  EXPECTED_ARTIFACT="GPD/CONSISTENCY-CHECK.md"
+fi
 ```
 
-CONVENTIONS.md is the human-readable convention reference. Convention lock (in state.json) is the machine-readable enforced version.
-</step>
+Expected artifact:
 
-<step name="check_convention_lock_drift">
-**Compare convention lock against CONVENTIONS.md:**
+- phase-scoped run: `GPD/phases/${PHASE_DIR}/CONSISTENCY-CHECK.md`
+- project-wide run: `GPD/CONSISTENCY-CHECK.md`
 
-For each field in the convention lock:
-
-1. Find the corresponding entry in CONVENTIONS.md
-2. Compare values
-
-| Field | Convention Lock | CONVENTIONS.md | Status |
-|-------|----------------|----------------|--------|
-| metric_signature | (-,+,+,+) | (-,+,+,+) | OK |
-| fourier_convention | physics | mathematical | DRIFT |
-
-**DRIFT** means the documents disagree. This is a CRITICAL issue — one must be wrong.
-
-For each drift:
-
-```
-CRITICAL: Convention drift detected
-
-Field: {field}
-Convention lock (state.json): {lock_value}
-CONVENTIONS.md: {conventions_value}
-
-The convention lock is authoritative. If CONVENTIONS.md is correct,
-update the lock: gpd convention set {field} "{value}"
-```
-</step>
-
-<step name="scan_phase_conventions">
-**Scan all completed phases for convention declarations:**
+If `PHASE_ARG` is set, capture `PHASE_DIR` from the scoped init payload:
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+PHASE_DIR=$(echo "$INIT" | gpd json get .phase_dir --default "")
 ```
 
-For each phase with `disk_status: "complete"` or `disk_status: "partial"`:
+Use the selected scope to gather summary artifacts:
 
 ```bash
-# Extract conventions from summary-artifact frontmatter
-for SUMMARY in GPD/phases/${PHASE_DIR}/*SUMMARY.md; do
-  gpd summary-extract "$SUMMARY" --field conventions --field affects
-done
+if [ -n "${PHASE_ARG}" ]; then
+  for SUMMARY in "${PHASE_DIR}"/*SUMMARY.md; do
+    gpd --raw summary-extract "$SUMMARY" --field conventions --field affects
+  done
+else
+  for SUMMARY in GPD/phases/*/*SUMMARY.md; do
+    gpd --raw summary-extract "$SUMMARY" --field conventions --field affects
+  done
+fi
 ```
 
-Build a convention map:
-
-```
-phase_conventions = {
-  "Phase 1": { metric_signature: "(-,+,+,+)", fourier: "physics", ... },
-  "Phase 2": { metric_signature: "(-,+,+,+)", hbar: "1", ... },
-  "Phase 3": { metric_signature: "(+,-,-,-)", ... },  // MISMATCH
-}
-```
-</step>
-
-<step name="cross_reference">
-**Cross-reference: do all phase conventions match the project convention lock?**
-
-For each phase and each convention field declared:
-
-1. Look up the field in the convention lock
-2. Compare values
-
-Build a findings list with severity levels:
-
-**CRITICAL (sign-affecting, metric, units):**
-- Metric signature mismatch (`(-,+,+,+)` vs `(+,-,-,-)`)
-- Sign convention mismatch (e.g., `e^{-ikx}` vs `e^{+ikx}` Fourier)
-- Unit system mismatch (natural vs SI vs Gaussian)
-- Factors of `2*pi` in Fourier convention
-- Time-ordering sign convention
-- Coupling constant sign
-
-**WARNING (notation inconsistency, non-propagating):**
-- Variable naming drift (same quantity, different symbol)
-- Index placement conventions (up vs down)
-- Normalization convention differences
-- Coordinate labeling differences
-
-**INFO (cosmetic, no physics impact):**
-- Formatting differences in convention declaration
-- Redundant convention re-declarations matching the lock
-</step>
-
-<step name="check_unlocked_conventions">
-**Identify conventions used across phases but NOT locked:**
-
-Some conventions may appear in phase summaries but never got added to the convention lock. These are vulnerable to drift.
-
-For each convention field found in any phase summary that is NOT in the convention lock:
-
-```
-WARNING: Unlocked convention used across phases
-
-Field: {field}
-Used in: Phase {X}, Phase {Y}
-Values: {X_value}, {Y_value}
-
-This convention is not locked. If phases agree, lock it:
-  gpd convention set {field} "{value}"
-
-If phases disagree, this is a potential error source.
-```
-</step>
-
-<step name="spawn_consistency_checker">
-**For thorough validation, spawn gpd-consistency-checker in rapid mode:**
+Runtime delegation rule: this is a one-shot handoff. Follow the included delegation note; the checker returns instead of waiting for input, and this wrapper handles the local route after return.
 
 ```bash
-CONSISTENCY_MODEL=$(gpd resolve-model gpd-consistency-checker)
+CHECKER_MODEL=$(gpd resolve-model gpd-consistency-checker)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
 
 ```
 task(
   subagent_type="gpd-consistency-checker",
-  model="{consistency_model}",
+  model="{CHECKER_MODEL}",
   readonly=false,
   prompt="First, read {GPD_AGENTS_DIR}/gpd-consistency-checker.md for your role and instructions.
 
-    <mode>rapid</mode>
-    <scope>all-phases</scope>
+<mode>{CHECKER_MODE}</mode>
+<scope>{CHECK_SCOPE}</scope>
+<expected_artifacts>
+- {EXPECTED_ARTIFACT}
+</expected_artifacts>
 
-    Validate convention consistency across the entire project.
-    Read conventions from state.json via: gpd convention list
-    Read all summary artifacts (`SUMMARY.md` and `*-SUMMARY.md`) from all completed phases.
-    file_read: GPD/STATE.md, GPD/state.json, GPD/CONVENTIONS.md
-
-    Focus on:
-    1. Sign conventions propagating correctly across phase boundaries
-    2. Metric signature consistency in all tensor expressions
-    3. Fourier transform convention (factors of 2*pi) consistency
-    4. Unit system consistency (natural units, hbar=1, c=1 implications)
-    5. Normalization conventions for wavefunctions, propagators, amplitudes
-
-    Return consistency_status with detailed issue list.
-  ",
-  description="Validate conventions across all phases"
+Validate convention consistency for the requested scope.
+Read the structured init payload, the current convention lock, GPD/STATE.md, GPD/state.json, GPD/CONVENTIONS.md, and the relevant SUMMARY artifacts.
+Write the report to the expected artifact path and return the canonical gpd_return envelope.",
+  description="Validate conventions for {CHECK_SCOPE}"
 )
 ```
 
-**If the consistency checker agent fails to spawn or returns an error:** Proceed without automated consistency checking. Note in the validation report that cross-phase consistency verification was skipped. The convention lock fields and CONVENTIONS.md can still be inspected manually. The user should run `/gpd:validate-conventions` again or inspect conventions manually.
+If the checker returns `gpd_return.status: completed`, accept success only after verifying that:
 
-Parse return for `consistency_status`: CONSISTENT, WARNING, or INCONSISTENT.
+1. The expected artifact exists on disk.
+2. The same path appears in `gpd_return.files_written`.
+
+If either check fails, treat the handoff as incomplete and do not accept success.
+</step>
+
+<step name="route_return">
+Route only on the canonical `gpd_return.status`:
+
+Other status literals for this route map: `gpd_return.status: checkpoint`, `gpd_return.status: blocked`, and `gpd_return.status: failed`.
+
+- `completed`: the checker finished for the selected scope; verify the expected artifact and `files_written`, then surface advisory items from `gpd_return.issues` without reinterpreting the status text.
+- `checkpoint`: the checker needs user input; present options, checkpoint, and return. End with `## > Next Up`: primary `gpd:resume-work`, plus `gpd:validate-conventions` and `gpd:suggest-next`.
+- `blocked` / `failed`: the checker could not complete; surface `gpd_return.issues`, keep the run fail-closed, and end with `## > Next Up`: primary `gpd:validate-conventions`, plus `gpd:resume-work`, `gpd convention set <key> <value>` when a lock repair is known, and `gpd:suggest-next`.
+
+Do not route on checker-local text markers or headings. Those are presentation only; use the typed return route above.
+
+If the checker's `next_actions` call for notation repair, spawn `gpd-notation-coordinator` with the checker report and the same scope. Keep that handoff thin: the coordinator owns the repair policy, not this workflow.
+
+Verify that `GPD/CONVENTIONS.md` exists and that `gpd convention list` reflects the resolved fields before accepting the update. Convention artifact and lock re-verified after notation resolution before success is accepted.
 </step>
 
 <step name="report">
-**Present convention consistency report:**
+Present a concise convention report:
 
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- GPD > CONVENTION VALIDATION REPORT
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- scope scanned
+- expected artifact path
+- returned status value
+- any advisory issues or blocker issues
+- whether the artifact gate passed
 
-**Phases scanned:** {count}
-**Convention lock fields:** {count}
-**Status:** {CONSISTENT / ISSUES FOUND}
+Before accepting any repaired result from the notation coordinator, re-check that `GPD/CONVENTIONS.md` exists and that `gpd convention list` reflects the resolved fields.
 
-### Convention Lock vs CONVENTIONS.md
-
-| Field | Lock | Doc | Status |
-|-------|------|-----|--------|
-| metric_signature | (-,+,+,+) | (-,+,+,+) | OK |
-| fourier_convention | physics | physics | OK |
-
-### Phase-by-Phase Consistency
-
-| Phase | Field | Expected | Actual | Severity |
-|-------|-------|----------|--------|----------|
-| 3 | metric_signature | (-,+,+,+) | (+,-,-,-) | CRITICAL |
-| 5 | fourier | physics | mathematical | CRITICAL |
-
-### Unlocked Conventions
-
-| Field | Phases | Values | Risk |
-|-------|--------|--------|------|
-| hbar_convention | 2, 4, 6 | all "1" | Low (consistent) |
-| coupling_def | 3, 5 | "g^2/4pi", "g" | HIGH (inconsistent) |
-
-### Summary
-
-- CRITICAL: {count} (sign-affecting mismatches — must fix)
-- WARNING: {count} (notation inconsistencies — should fix)
-- INFO: {count} (cosmetic — can ignore)
-```
-
-**If CRITICAL issues found:**
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-CRITICAL convention violations detected. Results in affected phases
-may be incorrect.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-**Spawn gpd-notation-coordinator to resolve conflicts:**
-
-```bash
-NOTATION_MODEL=$(gpd resolve-model gpd-notation-coordinator)
-```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
-
-```
-task(
-  subagent_type="gpd-notation-coordinator",
-  model="{notation_model}",
-  readonly=false,
-  prompt="First, read {GPD_AGENTS_DIR}/gpd-notation-coordinator.md for your role and instructions.
-
-<task>
-Resolve convention conflicts detected by validation.
-</task>
-
-<conflicts>
-{structured_issues_from_consistency_checker}
-</conflicts>
-
-<project_context>
-file_read: GPD/CONVENTIONS.md, GPD/STATE.md, GPD/state.json
-file_read affected phase summary artifacts.
-</project_context>
-
-<instructions>
-1. For each CRITICAL conflict, determine which convention is correct
-2. Generate conversion tables for affected quantities
-3. Update CONVENTIONS.md with resolved conventions
-4. Lock resolved conventions via gpd convention set
-5. Return CONVENTION UPDATE with list of affected phases that need re-execution
-</instructions>
-",
-  description="Resolve convention conflicts"
-)
-```
-
-**If the notation coordinator agent fails to spawn or returns an error:** Report the failure. The CRITICAL convention conflicts still need resolution. Offer: 1) Retry notation coordinator, 2) Resolve conflicts manually by editing CONVENTIONS.md and running `gpd convention set` for each field, 3) Abort and leave conflicts unresolved (not recommended — downstream phases will inherit inconsistencies).
-
-**Handle notation-coordinator return:**
-
-- **`CONVENTION UPDATE`:** Display resolved conventions and affected phases. Commit updated CONVENTIONS.md.
-- **`CONVENTION CONFLICT`:** Conflicts require user decision. Present options and wait.
-
-**After resolution, recommend follow-up actions:**
-
-```
-Recommended actions:
-1. /gpd:regression-check {affected_phases} -- re-scan affected phases
-2. /gpd:debug -- investigate specific discrepancies
-3. Re-execute affected plans with corrected conventions
-```
-
-**If WARNING issues only:**
-
-```
-No critical issues. {count} warnings found — review and fix at your discretion.
-
-Lock consistent conventions:
-  gpd convention set {field} "{value}"
-```
-
-**If CONSISTENT:**
-
-```
-All conventions consistent across {count} phases. No issues found.
-```
+If the checker completed and the artifact gate passed, return the updated report to the user.
 </step>
 
 </process>
 
-<failure_handling>
-
-- **No convention lock:** Report that no conventions are locked. Suggest running `/gpd:execute-phase` which locks conventions before parallel execution.
-- **No summary artifacts:** Cannot validate — no phase data to check. Report and exit.
-- **Consistency checker agent fails:** Fall back to the static analysis from steps 2-4 (convention lock drift + phase scan + cross-reference). Report that deep consistency check was skipped.
-- **CONVENTIONS.md missing:** Skip the drift check (step 2). Rely on convention lock in state.json as sole authority.
-
-</failure_handling>
-
 <success_criteria>
 
-- [ ] Convention lock loaded from state.json
-- [ ] CONVENTIONS.md compared against lock (if exists)
-- [ ] All completed phase summary artifacts scanned for convention fields
-- [ ] Cross-reference performed: each phase convention vs project lock
-- [ ] Unlocked but used conventions identified
-- [ ] gpd-consistency-checker spawned for deep validation
-- [ ] Issues classified by severity (CRITICAL / WARNING / INFO)
-- [ ] gpd-notation-coordinator spawned for CRITICAL issues (convention conflict resolution)
-- [ ] Report presented with actionable next steps
-- [ ] Critical issues flagged for immediate attention
+- [ ] Project context loaded and command-context validation run
+- [ ] Optional phase scope is resolved or fails closed
+- [ ] Convention ledger loaded from `gpd convention list`
+- [ ] Checker prompt stays thin and delegates policy to `gpd-consistency-checker`
+- [ ] Expected `CONSISTENCY-CHECK.md` artifact is verified before success is accepted
+- [ ] Routing uses the typed return route
+- [ ] Routing ignores checker prose, headings, and local markers
+- [ ] Notation repair remains delegated to `gpd-notation-coordinator` when requested by the checker
+- [ ] Report presented with the selected scope and artifact gate result
+
 </success_criteria>
