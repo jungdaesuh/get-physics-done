@@ -32,7 +32,7 @@ Use the workflow-owned stable markers as the extraction boundaries for fallback 
 - `<!-- gpd-help:command-index:start -->` / `<!-- gpd-help:command-index:end -->`
 - `<!-- gpd-help:detailed-command-reference:start -->` / `<!-- gpd-help:detailed-command-reference:end -->`
 
-Persona-builder fallback inventory while the command-owned generated help surface is being wired:
+Research Persona fallback inventory while the command-owned generated help surface is being wired:
 
 <!-- gpd-help:research-persona-builder-command-index:start -->
 ### Tangents, memory, and exports
@@ -46,7 +46,7 @@ Persona-builder fallback inventory while the command-owned generated help surfac
 **`gpd:build-persona [focus|--from-current-project|--interview-only]`**
 Build a private research persona patch from explicit interview and consented local evidence.
 Usage: `gpd:build-persona --interview-only`; `gpd:build-persona --from-current-project "math/code balance and citation style"`
-Notes: Emits a candidate ResearchPersonaPatch only; apply it separately with `gpd research-persona apply-patch`. Interviewing and local project scans require explicit user consent. Prompt capsules must use privacy projection and must not expose `private_local`, `project_private`, or `never_prompt` facts. The same persona substrate supports Researcher Doppelganger, Expertise-Aware Explanations, and the Scientific Taste Model without giving those features raw profile access.
+Notes: Emits a candidate ResearchPersonaPatch only; apply it separately with `gpd research-persona apply-patch`. Interviewing, source ingestion, local project scans, paper/BibTeX imports, repository scans, manual patch review, and user-statement capture require explicit user consent for the exact category and source. The local CLI review route is `gpd research-persona validate`, `gpd research-persona diff`, explicit approval, then `gpd research-persona apply-patch`; accepted patches record local history and `forget` records tombstones for auditability. Prompt capsules must use privacy projection through `gpd research-persona export-capsule` and must not expose `private_local`, `project_private`, or `never_prompt` facts. The same persona substrate supports Researcher Doppelganger (`gpd research-persona doppelganger`), Expertise-Aware Explanations (`gpd research-persona explain-plan`), and the Scientific Taste Model (`gpd research-persona taste-check`) without giving those features full private profile access or silent memory authority.
 <!-- gpd-help:research-persona-builder-detailed-command-reference:end -->
 
 Return marker contents only; never print the HTML marker comments themselves. Visible headings inside marker ranges are output labels only.

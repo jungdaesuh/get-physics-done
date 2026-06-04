@@ -25,6 +25,21 @@ _RUNTIME_SURFACE_FILES = (
     REPO_ROOT / "src" / "gpd" / "core" / "public_surface_contract.json",
     REPO_ROOT / "src" / "gpd" / "core" / "public_surface_contract_schema.json",
 )
+_APPROVED_RESEARCH_PERSONA_RUNTIME_PATHS = {
+    COMMANDS_DIR / "build-persona.md",
+    COMMANDS_DIR / "help.md",
+    AGENTS_DIR / "gpd-persona-builder.md",
+    AGENTS_DIR / "gpd-researcher-doppelganger.md",
+    AGENTS_DIR / "gpd-expertise-explainer.md",
+    AGENTS_DIR / "gpd-scientific-taste.md",
+    WORKFLOWS_DIR / "build-persona.md",
+    WORKFLOWS_DIR / "build-persona-stage-manifest.json",
+    WORKFLOWS_DIR / "build-persona" / "persona-intake.md",
+    WORKFLOWS_DIR / "build-persona" / "source-ingestion.md",
+    WORKFLOWS_DIR / "build-persona" / "persona-synthesis.md",
+    WORKFLOWS_DIR / "build-persona" / "approval-and-apply.md",
+    REPO_ROOT / "src" / "gpd" / "specs" / "references" / "research-persona-applications.md",
+}
 
 _PROJECT_GPD_FORBIDDEN_LOAD_PATHS = (
     "research-persona",
@@ -86,17 +101,19 @@ def _iter_text_atoms(value: object, *, path: str = "$") -> list[tuple[str, str]]
     return atoms
 
 
-def test_research_persona_adds_no_runtime_markdown_registry_or_frontmatter_assumptions() -> None:
+def test_research_persona_runtime_mentions_are_limited_to_approved_local_surfaces() -> None:
     hits: list[str] = []
     for path in _runtime_integration_files():
+        if path in _APPROVED_RESEARCH_PERSONA_RUNTIME_PATHS:
+            continue
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if _is_research_persona_term(line):
                 relative = path.relative_to(REPO_ROOT).as_posix()
                 hits.append(f"{relative}:{line_number}: {line.strip()}")
 
     assert not hits, (
-        "Research Persona may have a local CLI group, but must not integrate into runtime markdown, "
-        "registry, frontmatter, workflow manifests, or public surface contracts:\n" + "\n".join(hits)
+        "Research Persona runtime mentions must stay inside the approved local persona builder, "
+        "capsule application, and help surfaces:\n" + "\n".join(hits)
     )
 
 

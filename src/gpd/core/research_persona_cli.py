@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
+import inspect
+import json
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
+from typing import Protocol, runtime_checkable
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -30,23 +36,73 @@ from gpd.core.research_persona import (
     save_research_persona,
     validate_research_persona,
 )
+from gpd.core.research_persona_audit import audit_research_persona_profile
 
 __all__ = [
+    "build_audit_payload",
     "build_apply_patch_payload",
+    "build_doppelganger_payload",
     "build_diff_payload",
+    "build_explain_plan_payload",
     "build_export_capsule_payload",
     "build_forget_payload",
+    "build_ingest_source_payload",
     "build_show_payload",
+    "build_taste_check_payload",
     "build_validate_payload",
     "parse_research_persona_patch_data_strict",
+    "research_persona_audit_payload",
     "research_persona_apply_patch_payload",
+    "research_persona_doppelganger_payload",
     "research_persona_diff_payload",
+    "research_persona_explain_plan_payload",
     "research_persona_export_capsule_payload",
     "research_persona_forget_fact_payload",
+    "research_persona_ingest_source_payload",
     "research_persona_show_payload",
+    "research_persona_taste_check_payload",
     "research_persona_validate_payload",
     "summarize_research_persona_diff",
 ]
+
+_INGESTION_MODULE = "gpd.core.research_persona_ingestion"
+_APPLICATIONS_MODULE = "gpd.core.research_persona_applications"
+_INGESTION_PAYLOAD_FUNCTIONS = (
+    "build_research_persona_ingestion_payload",
+    "build_research_persona_patch_from_sources",
+    "build_research_persona_source_patch_payload",
+    "build_research_persona_source_patch",
+)
+_DOPPELGANGER_PAYLOAD_FUNCTIONS = (
+    "build_researcher_doppelganger_payload",
+    "build_doppelganger_brief",
+    "build_research_persona_doppelganger_payload",
+)
+_EXPLAIN_PLAN_PAYLOAD_FUNCTIONS = (
+    "build_expertise_explanation_plan_payload",
+    "build_expertise_explanation_plan",
+    "build_research_persona_explain_plan_payload",
+)
+_TASTE_CHECK_PAYLOAD_FUNCTIONS = (
+    "build_scientific_taste_check_payload",
+    "build_scientific_taste_assessment",
+    "build_research_persona_taste_check_payload",
+)
+_SOURCE_KIND_ALIASES = {
+    "bib": "bibtex_import",
+    "bibtex": "bibtex_import",
+    "paper": "paper_import",
+    "publication": "paper_import",
+    "project": "project_scan",
+    "repo": "repo_scan",
+    "repository": "repo_scan",
+    "user": "user_statement",
+}
+
+
+@runtime_checkable
+class _ModelDumpable(Protocol):
+    def model_dump(self, *, mode: str) -> object: ...
 
 
 def _utc_now() -> str:
@@ -100,6 +156,230 @@ def _input_path_payload(input_path: str | None, *, cwd: Path | None = None) -> t
     if not target.is_absolute() and cwd is not None:
         target = cwd / target
     return str(target), target.exists()
+
+
+def _resolve_cli_output_path(output_path: str | None, *, cwd: Path | None = None) -> Path | None:
+    if output_path is None:
+        return None
+    if output_path == "-":
+        raise ResearchPersonaError("output path must be a file path, not stdin")
+    target = Path(output_path).expanduser()
+    if not target.is_absolute() and cwd is not None:
+        target = cwd / target
+    return target
+
+
+def _write_json_artifact(path: Path, payload: object) -> Path:
+    if path.exists() and path.is_dir():
+        raise ResearchPersonaError(f"output path is a directory: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n", encoding="utf-8")
+    return path
+
+
+def _jsonable_value(value: object) -> object:
+    if isinstance(value, _ModelDumpable):
+        return value.model_dump(mode="json")
+    if isinstance(value, Mapping):
+        return {str(key): _jsonable_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable_value(item) for item in value]
+    return value
+
+
+def _jsonable_mapping(value: object, *, context: str) -> dict[str, object]:
+    data = _jsonable_value(value)
+    if not isinstance(data, dict):
+        raise ResearchPersonaError(f"{context} must return a JSON object")
+    return data
+
+
+def _import_persona_extension(module_name: str) -> ModuleType:
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name == module_name:
+            raise ResearchPersonaError(
+                f"research persona support module is unavailable: missing {module_name}"
+            ) from exc
+        raise
+
+
+def _call_with_supported_kwargs(handler: Callable[..., object], /, **kwargs: object) -> object:
+    try:
+        signature = inspect.signature(handler)
+    except (TypeError, ValueError):
+        return handler(**kwargs)
+
+    parameters = signature.parameters
+    accepts_kwargs = any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
+    if accepts_kwargs:
+        return handler(**kwargs)
+
+    supported_kwargs = {key: value for key, value in kwargs.items() if key in parameters and value is not None}
+    return handler(**supported_kwargs)
+
+
+def _call_persona_extension(module_name: str, function_names: tuple[str, ...], /, **kwargs: object) -> object:
+    module = _import_persona_extension(module_name)
+    for function_name in function_names:
+        handler = getattr(module, function_name, None)
+        if callable(handler):
+            return _call_with_supported_kwargs(handler, **kwargs)
+    joined = ", ".join(function_names)
+    raise ResearchPersonaError(f"research persona support module {module_name} is missing one of: {joined}")
+
+
+def _normalize_patch_payload(patch_data: object) -> dict[str, object]:
+    patch = parse_research_persona_patch_data_strict(_jsonable_value(patch_data))
+    return patch.model_dump(mode="json")
+
+
+def _extract_candidate_patch(payload: dict[str, object]) -> dict[str, object]:
+    raw_patch = payload.get("patch")
+    if raw_patch is None:
+        raw_patch = payload.get("candidate_patch")
+    if raw_patch is None and "schema_version" in payload and "operations" in payload:
+        raw_patch = payload
+    if raw_patch is None:
+        raise ResearchPersonaError("ingestion payload must include a candidate research persona patch")
+    return _normalize_patch_payload(raw_patch)
+
+
+def _source_kind_counts(patch: dict[str, object]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    source_kind = patch.get("source_kind")
+    if isinstance(source_kind, str):
+        counts[source_kind] = counts.get(source_kind, 0) + 1
+    evidence = patch.get("evidence")
+    if isinstance(evidence, list):
+        for item in evidence:
+            if not isinstance(item, dict):
+                continue
+            item_source_kind = item.get("source_kind")
+            if isinstance(item_source_kind, str):
+                counts[item_source_kind] = counts.get(item_source_kind, 0) + 1
+    return counts
+
+
+def _default_evidence_summary(patch: dict[str, object]) -> dict[str, object]:
+    operations = patch.get("operations")
+    tombstones = patch.get("tombstones")
+    evidence = patch.get("evidence")
+    return {
+        "operation_count": len(operations) if isinstance(operations, list) else 0,
+        "tombstone_count": len(tombstones) if isinstance(tombstones, list) else 0,
+        "evidence_count": len(evidence) if isinstance(evidence, list) else 0,
+        "source_kind_counts": _source_kind_counts(patch),
+    }
+
+
+def _review_route(*, output_path: str | None = None) -> dict[str, object]:
+    patch_target = output_path or "<candidate-patch.json>"
+    return {
+        "kind": "candidate_patch",
+        "approval_required": True,
+        "diff_command": f"gpd research-persona diff {patch_target}",
+        "apply_command": f"gpd research-persona apply-patch {patch_target}",
+    }
+
+
+def _capsule_descriptor(capsule: dict[str, object]) -> dict[str, object]:
+    counts: dict[str, int] = {}
+    for field_name in (
+        "facts",
+        "axes",
+        "standing_preferences",
+        "negative_preferences",
+        "tools",
+        "research_areas",
+        "expertise",
+        "workstyle",
+        "scientific_taste",
+    ):
+        value = capsule.get(field_name)
+        counts[field_name] = len(value) if isinstance(value, list) else 0
+    return {
+        "source": "research_persona_capsule",
+        "role": capsule.get("role"),
+        "purpose": capsule.get("purpose"),
+        "counts": counts,
+    }
+
+
+def _ensure_positive_int(value: int, *, name: str) -> int:
+    if value < 1:
+        raise ResearchPersonaError(f"{name} must be at least 1")
+    return value
+
+
+def _source_documents_from_input(source_document: object, *, privacy_default: str) -> list[object]:
+    if isinstance(source_document, Mapping):
+        for key in ("sources", "documents"):
+            documents = source_document.get(key)
+            if not isinstance(documents, list):
+                continue
+            return [_source_document_with_privacy(document, privacy_default=privacy_default) for document in documents]
+        return [_source_document_with_privacy(source_document, privacy_default=privacy_default)]
+    if isinstance(source_document, list):
+        return [
+            _source_document_with_privacy(document, privacy_default=privacy_default) for document in source_document
+        ]
+    raise ResearchPersonaError("source JSON must be an object, a list of source objects, or an object with documents")
+
+
+def _source_document_with_privacy(document: object, *, privacy_default: str) -> object:
+    if not isinstance(document, Mapping):
+        return document
+    normalized = dict(document)
+    if normalized.get("source_kind") is None and normalized.get("kind") is not None:
+        raw_kind = str(normalized["kind"]).strip().casefold()
+        normalized["source_kind"] = _SOURCE_KIND_ALIASES.get(raw_kind, raw_kind)
+    normalized.pop("kind", None)
+    if normalized.get("text") is None and normalized.get("summary") is not None:
+        normalized["text"] = normalized["summary"]
+    normalized.pop("summary", None)
+    if normalized.get("privacy") is None and privacy_default != "private_local":
+        normalized["privacy"] = privacy_default
+    return normalized
+
+
+def _compact_cli_text(value: object, *, limit: int = 240) -> str | None:
+    if value is None:
+        return None
+    text = " ".join(str(value).split())
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "..."
+
+
+def _document_summary(document: object, *, fallback: str | None = None) -> str | None:
+    if isinstance(document, Mapping):
+        for key in (
+            "topic",
+            "question",
+            "project_summary",
+            "summary",
+            "title",
+            "claim",
+            "description",
+            "task",
+        ):
+            text = _compact_cli_text(document.get(key))
+            if text:
+                return text
+        steps = document.get("steps")
+        if isinstance(steps, list):
+            text = _compact_cli_text("; ".join(str(item) for item in steps[:3]))
+            if text:
+                return text
+    if isinstance(document, list):
+        text = _compact_cli_text("; ".join(str(item) for item in document[:3]))
+        if text:
+            return text
+    return _compact_cli_text(fallback)
 
 
 def _persona_counts(persona: ResearchPersona) -> dict[str, int]:
@@ -450,6 +730,219 @@ def research_persona_export_capsule_payload(
     return capsule.model_dump(mode="json")
 
 
+def research_persona_audit_payload(
+    data: object,
+    *,
+    path: str | Path | None = None,
+    exists: bool | None = None,
+    now: str | None = None,
+    stale_after_days: int = 180,
+    include_info: bool = True,
+) -> dict[str, object]:
+    """Return a strict read-only research persona audit payload."""
+
+    report = audit_research_persona_profile(
+        data,
+        now=now,
+        stale_after_days=stale_after_days,
+        include_info=include_info,
+    )
+    payload = report.model_dump(mode="json")
+    if path is not None:
+        payload["path"] = str(path)
+    if exists is not None:
+        payload["exists"] = exists
+    payload["review_route"] = _review_route()
+    return payload
+
+
+def research_persona_ingest_source_payload(
+    source_document: object,
+    *,
+    cwd: Path | None = None,
+    source_path: str | None = None,
+    output_path: str | None = None,
+    dry_run: bool = False,
+    privacy_default: str = "private_local",
+) -> dict[str, object]:
+    """Build a candidate persona patch from explicit source data without touching the persona store."""
+
+    sources = _source_documents_from_input(source_document, privacy_default=privacy_default)
+    core_result = _call_persona_extension(
+        _INGESTION_MODULE,
+        _INGESTION_PAYLOAD_FUNCTIONS,
+        sources=sources,
+        source_document=source_document,
+        document=source_document,
+        source_path=source_path,
+        cwd=cwd,
+        privacy_default=privacy_default,
+        privacy_defaults={
+            "fact_privacy": privacy_default,
+            "source_document_privacy": "private_local",
+            "requires_user_review": True,
+        },
+    )
+    payload = _jsonable_mapping(core_result, context="research persona ingestion")
+    core_returned_patch = payload.get("patch") is None and payload.get("candidate_patch") is None
+    core_returned_patch = core_returned_patch and "schema_version" in payload and "operations" in payload
+    patch = _extract_candidate_patch(payload)
+    if core_returned_patch:
+        payload = {}
+    payload["patch"] = patch
+    payload.pop("candidate_patch", None)
+    payload.setdefault("evidence_summary", _default_evidence_summary(patch))
+    payload.setdefault(
+        "privacy_defaults",
+        {
+            "fact_privacy": privacy_default,
+            "source_document_privacy": "private_local",
+            "requires_user_review": True,
+        },
+    )
+
+    target = _resolve_cli_output_path(output_path, cwd=cwd)
+    output_written = False
+    if target is not None and not dry_run:
+        _write_json_artifact(target, patch)
+        output_written = True
+    output_path_text = str(target) if target is not None else None
+    payload["review_route"] = _review_route(output_path=output_path_text)
+    payload["source"] = {"path": source_path, "explicit_document": True}
+    payload["dry_run"] = dry_run
+    payload["writes_persona_storage"] = False
+    payload["output"] = {
+        "path": output_path_text,
+        "written": output_written,
+        "artifact_kind": "candidate_patch",
+    }
+    return payload
+
+
+def _research_persona_application_payload(
+    *,
+    application: str,
+    capsule_role: str,
+    function_names: tuple[str, ...],
+    data_root: Path | None = None,
+    task: str | None = None,
+    plan_document: object | None = None,
+    candidate_document: object | None = None,
+    focus: str | None = None,
+    audience: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    max_items = _ensure_positive_int(max_items, name="max_items")
+    capsule = research_persona_export_capsule_payload(role=capsule_role, data_root=data_root)
+    capsule_model = ResearchPersonaCapsule.model_validate(capsule)
+    project_summary = _document_summary(plan_document) or _document_summary(candidate_document) or focus
+    topic = _compact_cli_text(task) or _compact_cli_text(focus) or project_summary or "research work"
+    question = _compact_cli_text(task) or _document_summary(plan_document) or "How should this plan be explained?"
+    taste_summary = (
+        _document_summary(candidate_document)
+        or _compact_cli_text(task)
+        or _compact_cli_text(focus)
+        or "candidate research direction"
+    )
+    core_result = _call_persona_extension(
+        _APPLICATIONS_MODULE,
+        function_names,
+        persona_or_capsule=capsule_model,
+        capsule=capsule,
+        persona_capsule=capsule,
+        task=task,
+        topic=topic,
+        question=question,
+        project_summary=taste_summary if application == "taste_check" else project_summary,
+        plan=plan_document,
+        plan_document=plan_document,
+        candidate=candidate_document,
+        candidate_document=candidate_document,
+        focus=focus,
+        audience=audience,
+        max_items=max_items,
+    )
+    payload = _jsonable_mapping(core_result, context=f"research persona {application}")
+    payload.setdefault("application", application)
+    payload.setdefault("mode", "advisory_preview")
+    payload.setdefault("prompt_safe", True)
+    payload.setdefault("raw_profile_exposed", False)
+    payload.setdefault("persona_capsule", _capsule_descriptor(capsule))
+    payload.setdefault("inputs", {})
+    if isinstance(payload["inputs"], dict):
+        payload["inputs"].setdefault("task", task)
+        payload["inputs"].setdefault("has_plan_document", plan_document is not None)
+        payload["inputs"].setdefault("has_candidate_document", candidate_document is not None)
+        payload["inputs"].setdefault("focus", focus)
+        payload["inputs"].setdefault("audience", audience)
+        payload["inputs"].setdefault("max_items", max_items)
+    return payload
+
+
+def research_persona_doppelganger_payload(
+    *,
+    data_root: Path | None = None,
+    task: str | None = None,
+    focus: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    """Return a prompt-safe Researcher Doppelganger advisory preview."""
+
+    return _research_persona_application_payload(
+        application="doppelganger",
+        capsule_role="doppelganger",
+        function_names=_DOPPELGANGER_PAYLOAD_FUNCTIONS,
+        data_root=data_root,
+        task=task,
+        focus=focus,
+        max_items=max_items,
+    )
+
+
+def research_persona_explain_plan_payload(
+    *,
+    data_root: Path | None = None,
+    plan_document: object | None = None,
+    task: str | None = None,
+    audience: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    """Return a prompt-safe Expertise-Aware Explanations plan preview."""
+
+    return _research_persona_application_payload(
+        application="explain_plan",
+        capsule_role="explainer",
+        function_names=_EXPLAIN_PLAN_PAYLOAD_FUNCTIONS,
+        data_root=data_root,
+        task=task,
+        plan_document=plan_document,
+        audience=audience,
+        max_items=max_items,
+    )
+
+
+def research_persona_taste_check_payload(
+    *,
+    data_root: Path | None = None,
+    candidate_document: object | None = None,
+    task: str | None = None,
+    focus: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    """Return a prompt-safe Scientific Taste Model advisory preview."""
+
+    return _research_persona_application_payload(
+        application="taste_check",
+        capsule_role="taste",
+        function_names=_TASTE_CHECK_PAYLOAD_FUNCTIONS,
+        data_root=data_root,
+        task=task,
+        candidate_document=candidate_document,
+        focus=focus,
+        max_items=max_items,
+    )
+
+
 def build_show_payload(*, cwd: Path | None = None, projection: str = "local") -> dict[str, object]:
     """CLI wrapper for the stored-profile show command."""
 
@@ -474,6 +967,46 @@ def build_validate_payload(
         persona.model_dump(mode="json"),
         path=str(stored_path),
         exists=stored_path.exists(),
+    )
+
+
+def build_audit_payload(
+    *,
+    cwd: Path | None = None,
+    document: object | None = None,
+    input_path: str | None = None,
+    now: str | None = None,
+    stale_after_days: int = 180,
+    include_info: bool = True,
+) -> dict[str, object]:
+    """CLI wrapper for read-only stored-profile or input-document audit."""
+
+    path_text, exists = _input_path_payload(input_path, cwd=cwd)
+    if document is not None:
+        return research_persona_audit_payload(
+            document,
+            path=path_text,
+            exists=exists,
+            now=now,
+            stale_after_days=stale_after_days,
+            include_info=include_info,
+        )
+
+    stored_path = research_persona_path()
+    if stored_path.exists():
+        try:
+            stored_document: object = json.loads(stored_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            stored_document = {"schema_version": None, "facts": [{"id": "profile-json", "value": str(exc)}]}
+    else:
+        stored_document = ResearchPersona().model_dump(mode="json")
+    return research_persona_audit_payload(
+        stored_document,
+        path=str(stored_path),
+        exists=stored_path.exists(),
+        now=now,
+        stale_after_days=stale_after_days,
+        include_info=include_info,
     )
 
 
@@ -531,3 +1064,88 @@ def build_export_capsule_payload(*, cwd: Path | None = None, role: str) -> dict[
     """CLI wrapper for a prompt-safe role capsule."""
 
     return research_persona_export_capsule_payload(role=role)
+
+
+def build_ingest_source_payload(
+    *,
+    cwd: Path | None = None,
+    source_document: object,
+    source_path: str | None = None,
+    output_path: str | None = None,
+    dry_run: bool = False,
+    privacy_default: str = "private_local",
+) -> dict[str, object]:
+    """CLI wrapper for source ingestion candidate-patch generation."""
+
+    payload = research_persona_ingest_source_payload(
+        source_document,
+        cwd=cwd,
+        source_path=source_path,
+        output_path=output_path,
+        dry_run=dry_run,
+        privacy_default=privacy_default,
+    )
+    path_text, exists = _input_path_payload(source_path, cwd=cwd)
+    payload["source_path"] = path_text
+    payload["source_exists"] = exists
+    return payload
+
+
+def build_doppelganger_payload(
+    *,
+    cwd: Path | None = None,
+    task: str | None = None,
+    focus: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    """CLI wrapper for the Researcher Doppelganger preview."""
+
+    return research_persona_doppelganger_payload(task=task, focus=focus, max_items=max_items)
+
+
+def build_explain_plan_payload(
+    *,
+    cwd: Path | None = None,
+    plan_document: object | None = None,
+    plan_path: str | None = None,
+    task: str | None = None,
+    audience: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    """CLI wrapper for the expertise-aware explanation preview."""
+
+    payload = research_persona_explain_plan_payload(
+        plan_document=plan_document,
+        task=task,
+        audience=audience,
+        max_items=max_items,
+    )
+    path_text, exists = _input_path_payload(plan_path, cwd=cwd)
+    if path_text is not None:
+        payload["plan_path"] = path_text
+        payload["plan_exists"] = exists
+    return payload
+
+
+def build_taste_check_payload(
+    *,
+    cwd: Path | None = None,
+    candidate_document: object | None = None,
+    candidate_path: str | None = None,
+    task: str | None = None,
+    focus: str | None = None,
+    max_items: int = 8,
+) -> dict[str, object]:
+    """CLI wrapper for the scientific taste advisory preview."""
+
+    payload = research_persona_taste_check_payload(
+        candidate_document=candidate_document,
+        task=task,
+        focus=focus,
+        max_items=max_items,
+    )
+    path_text, exists = _input_path_payload(candidate_path, cwd=cwd)
+    if path_text is not None:
+        payload["candidate_path"] = path_text
+        payload["candidate_exists"] = exists
+    return payload

@@ -28,6 +28,7 @@
       ],
       "must_not_eager_load": [
         "workflows/build-persona.md",
+        "workflows/build-persona/source-ingestion.md",
         "workflows/build-persona/persona-synthesis.md",
         "workflows/build-persona/approval-and-apply.md"
       ],
@@ -36,17 +37,59 @@
         "persona evidence intake plan"
       ],
       "next_stages": [
-        "persona_synthesis"
+        "source_ingestion"
       ],
       "checkpoints": [
-        "explicit consent recorded before interview or scan",
+        "explicit consent recorded before interview or source read",
         "raw private profile is not injected into prompt context",
         "candidate patch path selected"
       ]
     },
     {
-      "id": "persona_synthesis",
+      "id": "source_ingestion",
       "order": 2,
+      "purpose": "convert explicitly approved source handles into candidate persona patches",
+      "mode_paths": [
+        "workflows/build-persona/source-ingestion.md"
+      ],
+      "required_init_fields": [],
+      "loaded_authorities": [
+        "workflows/build-persona/source-ingestion.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/build-persona.md",
+        "workflows/build-persona/persona-synthesis.md",
+        "workflows/build-persona/approval-and-apply.md"
+      ],
+      "allowed_tools": [
+        "ask_user",
+        "file_read",
+        "file_write",
+        "find_files",
+        "search_files",
+        "shell"
+      ],
+      "writes_allowed": [
+        "GPD/persona/source-candidate-patch.json",
+        "GPD/persona/source-ingestion-summary.md"
+      ],
+      "produced_state": [
+        "source ingestion patch",
+        "source privacy and confidence notes",
+        "source schema warnings"
+      ],
+      "next_stages": [
+        "persona_synthesis"
+      ],
+      "checkpoints": [
+        "exact source category and path or text approved before read",
+        "gpd research-persona ingest-source used for source-derived candidates",
+        "candidate artifacts only; no persona storage mutation"
+      ]
+    },
+    {
+      "id": "persona_synthesis",
+      "order": 3,
       "purpose": "delegate patch-only persona synthesis and validate the candidate patch",
       "mode_paths": [
         "workflows/build-persona/persona-synthesis.md"
@@ -57,6 +100,7 @@
       ],
       "must_not_eager_load": [
         "workflows/build-persona.md",
+        "workflows/build-persona/source-ingestion.md",
         "workflows/build-persona/approval-and-apply.md"
       ],
       "writes_allowed": [
@@ -72,13 +116,13 @@
       ],
       "checkpoints": [
         "builder returns patch proposal only",
-        "candidate patch validates with local CLI diff",
+        "candidate patch validates and diffs with local CLI",
         "never_prompt material remains out of prompt-facing summaries"
       ]
     },
     {
       "id": "approval_and_apply",
-      "order": 3,
+      "order": 4,
       "purpose": "present diff, require explicit approval, and route any mutation through the local CLI",
       "mode_paths": [
         "workflows/build-persona/approval-and-apply.md"
@@ -92,13 +136,16 @@
       ],
       "produced_state": [
         "approval decision",
-        "post-approval validation status"
+        "post-approval validation status",
+        "prompt-safe capsule and application preview guidance"
       ],
       "next_stages": [],
       "checkpoints": [
         "diff reviewed before apply",
         "explicit user approval collected before mutation",
-        "application uses gpd research-persona apply-patch only"
+        "application uses gpd research-persona apply-patch only",
+        "post-apply guidance exports prompt-safe capsules only",
+        "Researcher Doppelganger, Expertise-Aware Explanation, and Scientific Taste previews remain advisory and non-mutating"
       ]
     }
   ]
