@@ -17,6 +17,20 @@
 - Workflow `.md` files under `src/gpd/specs/workflows/` install automatically (`install_utils.py:2812-2844`, `GPD_CONTENT_DIRS`); no manifest registration required for v1 (no staged init).
 - Phase layout: `GPD/phases/NN-name/NN-VERIFICATION.md` (per ProjectLayout).
 
+**Minimal demoable slice and demo floor:** Tasks 1-4 + the Task 6 smoke test
+are the minimal demoable slice (gate plumbing provably reaches `achieved` and
+`budget_stopped` with a real receipt); Task 5 makes it installable as a runtime
+command. The cost ledger on the dev machine is empty (`~/.gpd/cost/usage.jsonl`
+absent — codex telemetry has never recorded there), so treat the USD receipt as
+**unverified stretch**: the phase-cap receipt is the demo floor, and the USD
+path must be smoke-checked on codex before being promised on stage.
+
+**Phase-cap semantics (intentional):** `--max-phases N` permits exactly N
+phases. The gate returns `wrap_up` when `phases_completed == N - 1`, meaning
+"execute exactly one final consolidation phase (verify, close threads — no new
+exploratory work), after which the gate stops." It returns `stop` at
+`phases_completed >= N`.
+
 **Working rules for every task:**
 - Run commands from the repo root (the worktree).
 - Inside Claude Code, always run pytest as `env -u FORCE_COLOR uv run pytest ...` — the harness injects `FORCE_COLOR=3`, which breaks rich-output string assertions.
@@ -61,6 +75,7 @@ def _valid_payload(**overrides) -> dict:
         "max_phases": 6,
         "baseline_spent_usd": 0.0,
         "phases_completed": 0,
+        "strict_criteria": True,
         "status": "active",
     }
     payload.update(overrides)
@@ -196,6 +211,11 @@ class GoalContract(BaseModel):
     max_phases: int | None = Field(default=None, gt=0)
     baseline_spent_usd: float | None = Field(default=None, ge=0)
     phases_completed: int = Field(default=0, ge=0)
+    # strict_criteria=True (default): only per-claim_ref verified outcomes can
+    # achieve the goal. False: when every completed phase's verification passed
+    # overall, still-pending criteria count as pass (demo-robustness fallback
+    # for claim-id threading flakiness; failed criteria still block).
+    strict_criteria: bool = True
     status: Literal["active", "achieved", "budget_stopped", "blocked"] = "active"
     created: str | None = None
     updated: str | None = None
@@ -397,6 +417,35 @@ def test_criteria_partial_or_not_attempted_is_pending() -> None:
     assert {c.id: c.outcome for c in result.criteria} == {"GC-1": "pending", "GC-2": "pending"}
 
 
+# ── Non-strict fallback (demo robustness for claim-id threading) ─────────────
+
+def test_non_strict_pending_criteria_pass_when_all_phases_passed() -> None:
+    contract = _contract(strict_criteria=False, phases_completed=2)
+    result = evaluate_goal_criteria(
+        contract, claim_outcomes={"goal-gc-1": "passed"}, all_phases_passed=True
+    )
+    assert result.achieved is True
+    assert {c.id: c.outcome for c in result.criteria} == {"GC-1": "pass", "GC-2": "pass"}
+
+
+def test_non_strict_failed_criterion_still_blocks() -> None:
+    contract = _contract(strict_criteria=False, phases_completed=2)
+    result = evaluate_goal_criteria(
+        contract, claim_outcomes={"goal-gc-1": "failed"}, all_phases_passed=True
+    )
+    assert result.achieved is False
+    assert {c.id: c.outcome for c in result.criteria}["GC-1"] == "fail"
+
+
+def test_non_strict_requires_completed_phases_and_all_passed() -> None:
+    contract = _contract(strict_criteria=False, phases_completed=0)
+    result = evaluate_goal_criteria(contract, claim_outcomes={}, all_phases_passed=True)
+    assert result.achieved is False
+    strict = _contract(phases_completed=2)  # strict default ignores the fallback
+    result = evaluate_goal_criteria(strict, claim_outcomes={}, all_phases_passed=True)
+    assert result.achieved is False
+
+
 # ── Combined summary ─────────────────────────────────────────────────────────
 
 def test_goal_gate_summary_combines_caps_and_criteria() -> None:
@@ -544,7 +593,12 @@ def _usd_decision(
 
 
 def _phase_decision(contract: GoalContract) -> BudgetDecision | None:
-    """Phase cap decision, or None when no phase cap is set."""
+    """Phase cap decision, or None when no phase cap is set.
+
+    ``max_phases = N`` permits exactly N phases: ``wrap_up`` at N-1 completed
+    means "execute exactly one final consolidation phase", after which the
+    counter reaches N and the gate stops.
+    """
     if contract.max_phases is None:
         return None
     if contract.phases_completed >= contract.max_phases:
@@ -585,6 +639,7 @@ def evaluate_goal_criteria(
     contract: GoalContract,
     *,
     claim_outcomes: dict[str, str],
+    all_phases_passed: bool = False,
 ) -> GoalCriteriaResult:
     """Map aggregated plan-contract claim statuses onto the success criteria.
 
@@ -592,11 +647,21 @@ def evaluate_goal_criteria(
     status (``passed``/``partial``/``failed``/``blocked``/``not_attempted``).
     Criteria whose claim id is absent are ``pending``. The goal is achieved
     only when every criterion's outcome is ``pass``.
+
+    Non-strict fallback: when ``contract.strict_criteria`` is False, at least
+    one phase has completed, and ``all_phases_passed`` is True (every phase
+    verification passed overall), ``pending`` criteria are upgraded to
+    ``pass``. ``fail`` outcomes always block, in both modes.
     """
+    use_fallback = (
+        not contract.strict_criteria and all_phases_passed and contract.phases_completed >= 1
+    )
     outcomes: list[CriterionOutcome] = []
     for criterion in contract.success_criteria:
         status = claim_outcomes.get(criterion.claim_ref)
         outcome = _CLAIM_STATUS_TO_OUTCOME.get(status or "", "pending")
+        if outcome == "pending" and use_fallback:
+            outcome = "pass"
         outcomes.append(
             CriterionOutcome(id=criterion.id, claim_ref=criterion.claim_ref, outcome=outcome)
         )
@@ -609,6 +674,7 @@ def goal_gate_summary(
     *,
     spent_usd: float | None,
     claim_outcomes: dict[str, str],
+    all_phases_passed: bool = False,
     near_fraction: float = DEFAULT_NEAR_BUDGET_FRACTION,
 ) -> GoalGateSummary:
     """Combined gate verdict used by ``gpd goal gate`` and ``gpd goal status``."""
@@ -617,7 +683,9 @@ def goal_gate_summary(
     remaining: float | None = None
     if usd_enforceable:
         remaining = round(max(0.0, contract.budget_usd - run_spent), 6)
-    criteria_result = evaluate_goal_criteria(contract, claim_outcomes=claim_outcomes)
+    criteria_result = evaluate_goal_criteria(
+        contract, claim_outcomes=claim_outcomes, all_phases_passed=all_phases_passed
+    )
     return GoalGateSummary(
         budget_decision=budget_gate_decision(
             contract, spent_usd=spent_usd, near_fraction=near_fraction
@@ -728,6 +796,22 @@ def test_ignores_malformed_frontmatter_instead_of_raising(tmp_path: Path) -> Non
         "---\n: not yaml :\n---\n", encoding="utf-8"
     )
     assert collect_claim_outcomes(tmp_path) == {}
+
+
+def test_collects_phase_statuses(tmp_path: Path) -> None:
+    from gpd.core.goal_evidence import collect_phase_statuses
+
+    _write_verification(tmp_path, "01-derivation", "goal-gc-1", "passed")
+    _write_verification(tmp_path, "02-limits", "goal-gc-2", "failed")
+    statuses = collect_phase_statuses(tmp_path)
+    # top-level frontmatter status of each VERIFICATION.md (template uses "passed")
+    assert statuses == {"01-derivation": "passed", "02-limits": "passed"}
+
+
+def test_phase_statuses_empty_for_missing_phases_dir(tmp_path: Path) -> None:
+    from gpd.core.goal_evidence import collect_phase_statuses
+
+    assert collect_phase_statuses(tmp_path) == {}
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -754,20 +838,27 @@ from pathlib import Path
 
 from gpd.core.frontmatter import extract_frontmatter
 
-__all__ = ["collect_claim_outcomes"]
+__all__ = ["collect_claim_outcomes", "collect_phase_statuses"]
 
 
-def collect_claim_outcomes(project_root: Path) -> dict[str, str]:
-    """Map claim id -> latest contract_results claim status across phases."""
+def _iter_verification_meta(project_root: Path):
+    """Yield (phase_dir_name, frontmatter_meta) for each parseable VERIFICATION.md."""
     phases_dir = project_root / "GPD" / "phases"
     if not phases_dir.is_dir():
-        return {}
-    outcomes: dict[str, str] = {}
+        return
     for verification_path in sorted(phases_dir.glob("*/*-VERIFICATION.md")):
         try:
             meta, _body = extract_frontmatter(verification_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
+        if isinstance(meta, dict):
+            yield verification_path.parent.name, meta
+
+
+def collect_claim_outcomes(project_root: Path) -> dict[str, str]:
+    """Map claim id -> latest contract_results claim status across phases."""
+    outcomes: dict[str, str] = {}
+    for _phase_name, meta in _iter_verification_meta(project_root):
         contract_results = meta.get("contract_results")
         if not isinstance(contract_results, dict):
             continue
@@ -781,6 +872,16 @@ def collect_claim_outcomes(project_root: Path) -> dict[str, str]:
             if isinstance(status, str) and status:
                 outcomes[str(claim_id)] = status
     return outcomes
+
+
+def collect_phase_statuses(project_root: Path) -> dict[str, str]:
+    """Map phase directory name -> top-level VERIFICATION.md frontmatter status."""
+    statuses: dict[str, str] = {}
+    for phase_name, meta in _iter_verification_meta(project_root):
+        status = meta.get("status")
+        if isinstance(status, str) and status:
+            statuses[phase_name] = status
+    return statuses
 ```
 
 Note: if `extract_frontmatter` raises a different exception type for malformed
@@ -938,7 +1039,7 @@ app.add_typer(goal_app, name="goal")
 def _goal_gate_payload() -> dict:
     from gpd.core.costs import build_cost_summary
     from gpd.core.goal_contract import GoalContract, validate_goal_contract_payload
-    from gpd.core.goal_evidence import collect_claim_outcomes
+    from gpd.core.goal_evidence import collect_claim_outcomes, collect_phase_statuses
     from gpd.core.goal_gate import GoalGateError, goal_gate_summary
     from gpd.core.state import state_load
 
@@ -956,8 +1057,17 @@ def _goal_gate_payload() -> dict:
     contract = GoalContract.model_validate(payload)
     spent_usd = build_cost_summary(cwd, last_sessions=0).project.cost_usd
     claim_outcomes = collect_claim_outcomes(cwd)
+    phase_statuses = collect_phase_statuses(cwd)
+    all_phases_passed = bool(phase_statuses) and all(
+        status == "passed" for status in phase_statuses.values()
+    )
     try:
-        summary = goal_gate_summary(contract, spent_usd=spent_usd, claim_outcomes=claim_outcomes)
+        summary = goal_gate_summary(
+            contract,
+            spent_usd=spent_usd,
+            claim_outcomes=claim_outcomes,
+            all_phases_passed=all_phases_passed,
+        )
     except GoalGateError as exc:
         _error(str(exc))
     return summary.model_dump(mode="json")
@@ -1194,8 +1304,9 @@ Repeat until a terminal state:
      continue an ungated run.
    - `achieved: true` -> go to step 4 (achieved).
    - `budget_decision: stop` -> go to step 5 (budget stop).
-   - `budget_decision: wrap_up` -> do not open new phases; bring current work
-     to a verified, checkpointable state, then re-run the gate.
+   - `budget_decision: wrap_up` -> execute exactly one final consolidation
+     phase in step 2 (verify and close existing threads decisively; no new
+     exploratory work). `--max-phases N` therefore permits exactly N phases.
    - `budget_decision: continue` -> proceed to step 2.
    - Record: `gpd observe event goal budget_gate --status ok --data '<gate payload>'`.
 2. **Phase iteration.** Execute exactly one phase through the standard
@@ -1258,7 +1369,148 @@ git commit -m "feat: add gpd:goal command descriptor and goal run workflow"
 
 ---
 
-### Task 6: Changelog, full suite, and PR
+### Task 6: End-to-end gate-plumbing smoke test
+
+**Files:**
+- Test: `tests/core/test_goal_smoke.py`
+
+This is the demo floor: prove, hermetically, that the full plumbing — state
+contract → cost summary → claim aggregation → gate → receipt — reaches both
+`achieved` and the budget-stop decision on a toy project, with no LLM involved.
+
+- [ ] **Step 1: Write the smoke test**
+
+Create `tests/core/test_goal_smoke.py`:
+
+```python
+"""End-to-end gate-plumbing smoke: toy project from goal start to achieved.
+
+Simulates exactly what the goal workflow does between agent turns: seed the
+contract, complete phases (verifier writes contract_results), increment the
+counter, and shell the gate. No LLM, no network.
+"""
+
+import json
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+from gpd.cli import app
+
+runner = CliRunner()
+
+_VERIFICATION = """---
+phase: {phase}
+verified: 2026-06-04T12:00:00Z
+status: passed
+contract_results:
+  claims:
+    {claim_id}:
+      status: passed
+      summary: Claim independently verified.
+---
+
+# Verification Report
+"""
+
+
+def _seed_project(project_root: Path, *, max_phases: int) -> None:
+    gpd_dir = project_root / "GPD"
+    gpd_dir.mkdir(parents=True)
+    contract = {
+        "schema_version": 1,
+        "statement": "Toy goal: verify two claims",
+        "success_criteria": [
+            {"id": "GC-1", "description": "first claim", "claim_ref": "goal-gc-1", "expected": "pass"},
+            {"id": "GC-2", "description": "second claim", "claim_ref": "goal-gc-2", "expected": "pass"},
+        ],
+        "budget_usd": None,
+        "max_phases": max_phases,
+        "baseline_spent_usd": None,
+        "phases_completed": 0,
+        "status": "active",
+    }
+    (gpd_dir / "state.json").write_text(json.dumps({"goal_contract": contract}), encoding="utf-8")
+
+
+def _complete_phase(project_root: Path, number: str, name: str, claim_id: str) -> None:
+    phase_dir = project_root / "GPD" / "phases" / f"{number}-{name}"
+    phase_dir.mkdir(parents=True)
+    (phase_dir / f"{number}-VERIFICATION.md").write_text(
+        _VERIFICATION.format(phase=f"{number}-{name}", claim_id=claim_id), encoding="utf-8"
+    )
+    # The workflow increments phases_completed after each verified phase.
+    state_path = project_root / "GPD" / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["goal_contract"]["phases_completed"] += 1
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+
+def _gate(project_root: Path) -> dict:
+    result = runner.invoke(app, ["--raw", "--cwd", str(project_root), "goal", "gate"])
+    assert result.exit_code == 0, result.output
+    return json.loads(result.output)
+
+
+def test_toy_goal_run_reaches_achieved_within_phase_cap(tmp_path: Path) -> None:
+    _seed_project(tmp_path, max_phases=3)
+
+    gate = _gate(tmp_path)
+    assert gate["budget_decision"] == "continue"
+    assert gate["achieved"] is False  # nothing verified yet
+
+    _complete_phase(tmp_path, "01", "first", "goal-gc-1")
+    gate = _gate(tmp_path)
+    assert gate["achieved"] is False  # GC-2 still pending
+    assert gate["budget_decision"] == "continue"
+
+    _complete_phase(tmp_path, "02", "second", "goal-gc-2")
+    gate = _gate(tmp_path)
+    assert gate["achieved"] is True  # verifier-recorded claims, not self-claims
+    assert {c["id"]: c["outcome"] for c in gate["criteria"]} == {"GC-1": "pass", "GC-2": "pass"}
+
+
+def test_toy_goal_run_budget_stops_at_phase_cap(tmp_path: Path) -> None:
+    _seed_project(tmp_path, max_phases=2)
+    _complete_phase(tmp_path, "01", "first", "goal-gc-1")
+    assert _gate(tmp_path)["budget_decision"] == "wrap_up"  # one final phase allowed
+    _complete_phase(tmp_path, "02", "second", "unrelated-claim")
+    gate = _gate(tmp_path)
+    assert gate["budget_decision"] == "stop"
+    assert gate["achieved"] is False  # GC-2 never verified; stop wins, no rubber stamp
+
+
+def test_receipt_renders_for_humans(tmp_path: Path) -> None:
+    _seed_project(tmp_path, max_phases=3)
+    _complete_phase(tmp_path, "01", "first", "goal-gc-1")
+    result = runner.invoke(app, ["--cwd", str(tmp_path), "goal", "status"])
+    assert result.exit_code == 0, result.output
+    assert "GC-1" in result.output
+    assert "GC-2" in result.output
+```
+
+Note: run with `env -u FORCE_COLOR` like everything else; the human receipt
+assertion checks only criterion ids (single tokens rich won't split with ANSI
+codes mid-word in table cells — if ANSI still interferes, assert on the
+`--raw` payload instead and keep a minimal "exit_code == 0" check for the
+human rendering). If minimal `state.json` seeding trips integrity checks in
+`state_load`, reuse the scaffold helper adopted in Task 4's tests.
+
+- [ ] **Step 2: Run the smoke test**
+
+Run: `env -u FORCE_COLOR uv run pytest tests/core/test_goal_smoke.py -n 0 -v`
+Expected: 3 passed
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/core/test_goal_smoke.py
+git commit -m "test: add end-to-end gate-plumbing smoke for gpd:goal"
+```
+
+---
+
+### Task 7: Changelog, full suite, and PR
 
 **Files:**
 - Modify: `CHANGELOG.md` (add under `## vNEXT`)
