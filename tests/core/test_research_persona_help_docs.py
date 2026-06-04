@@ -12,7 +12,10 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 README_PATH = REPO_ROOT / "README.md"
 HELP_WRAPPER_PATH = REPO_ROOT / "src" / "gpd" / "commands" / "help.md"
 CLI_PATH = REPO_ROOT / "src" / "gpd" / "cli.py"
-TMP_ROOT = REPO_ROOT / "tmp"
+BUILD_PERSONA_WORKFLOW_PATH = REPO_ROOT / "src" / "gpd" / "specs" / "workflows" / "build-persona.md"
+PERSONA_APPLICATIONS_REFERENCE_PATH = (
+    REPO_ROOT / "src" / "gpd" / "specs" / "references" / "research" / "research-persona-applications.md"
+)
 
 
 def _read(path: Path) -> str:
@@ -109,16 +112,24 @@ def test_research_persona_docs_explain_capsule_applications_without_profile_prom
     assert _non_negated_prompt_profile_lines(docs) == []
 
 
-def test_research_persona_final_reports_cover_complete_system_and_deferred_verification() -> None:
-    final_report = _read(TMP_ROOT / "phase-08-research-persona-system-report.md")
-    batch_report = _read(TMP_ROOT / "phase-04-05-batch-report.md")
-    combined = normalize_text("\n\n".join((final_report, batch_report)))
+def test_research_persona_tracked_docs_cover_complete_system_and_review_flow() -> None:
+    combined = normalize_text(
+        "\n\n".join(
+            (
+                _read(README_PATH),
+                _read(HELP_WRAPPER_PATH),
+                _read(CLI_PATH),
+                _read(BUILD_PERSONA_WORKFLOW_PATH),
+                _read(PERSONA_APPLICATIONS_REFERENCE_PATH),
+            )
+        )
+    )
 
     assert_prompt_contracts(
         combined,
         *semantic_concept(
-            "research persona final phase inventory",
-            required=("Phase 1", "Phase 2", "Phase 3", "Phase 4", "Phase 5", "Phase 8"),
+            "research persona tracked system inventory",
+            required=("Research Persona", "build-persona", "ingest-source", "export-capsule", "apply-patch"),
             match=MatchMode.CASEFOLD_NORMALIZED,
         ),
         *semantic_concept(
@@ -127,8 +138,8 @@ def test_research_persona_final_reports_cover_complete_system_and_deferred_verif
             match=MatchMode.CASEFOLD_NORMALIZED,
         ),
         *semantic_concept(
-            "research persona final verification handoff",
-            required=("final verification", "main agent"),
+            "research persona explicit review flow",
+            required=("validate", "diff", "explicit approval", "candidate patch"),
             match=MatchMode.CASEFOLD_NORMALIZED,
         ),
     )

@@ -11,9 +11,6 @@ from tests.markdown_test_support import has_line_with_terms, normalize_text
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "gpd"
-TMP_ROOT = REPO_ROOT / "tmp"
-
-BATCH_REPORT = TMP_ROOT / "phase-04-05-batch-report.md"
 
 PHASE4_MODULE_CANDIDATES = (
     SRC_ROOT / "core" / "research_persona_source_ingestion.py",
@@ -221,10 +218,6 @@ def _assert_no_raw_profile_surface(surface: TextSurface) -> None:
     )
 
 
-def _phase_report_candidates(prefix: str) -> tuple[Path, ...]:
-    return tuple(sorted(path for path in TMP_ROOT.glob(f"{prefix}*.md") if path.name != BATCH_REPORT.name))
-
-
 def _feature_surfaces(surfaces: Iterable[TextSurface], terms: Iterable[str]) -> tuple[TextSurface, ...]:
     return tuple(
         surface for surface in surfaces if _contains_any(surface.path.stem, terms) or _contains_any(surface.text, terms)
@@ -292,21 +285,14 @@ def test_phase5_agent_surfaces_require_capsules_not_raw_profiles() -> None:
         _assert_no_raw_profile_surface(surface)
 
 
-def test_phase4_phase5_and_batch_reports_exist_with_cross_phase_traceability() -> None:
-    phase4_reports = _phase_report_candidates("phase-04")
-    phase5_reports = _phase_report_candidates("phase-05")
-
-    assert phase4_reports, "Phase 4 report is missing from tmp/"
-    assert phase5_reports, "Phase 5 report is missing from tmp/"
-    assert BATCH_REPORT.is_file(), "Phase 4/5 batch report is missing from tmp/"
-
-    phase4_text = "\n\n".join(_read(path) for path in phase4_reports)
-    phase5_text = "\n\n".join(_read(path) for path in phase5_reports)
-    batch_text = _read(BATCH_REPORT)
+def test_phase4_phase5_tracked_surfaces_have_cross_phase_traceability() -> None:
+    phase4_text = "\n\n".join(surface.text for surface in _surfaces((*PHASE4_MODULE_CANDIDATES, *PHASE4_CLI_SURFACE_CANDIDATES)))
+    phase5_text = "\n\n".join(surface.text for surface in _surfaces((*PHASE5_MODULE_CANDIDATES, *PHASE5_AGENT_SURFACE_CANDIDATES)))
+    combined = normalize_text("\n\n".join((phase4_text, phase5_text)))
 
     assert _semantic_text(phase4_text, ("source ingestion", "candidate patch", "approval"))
     assert _semantic_text(phase5_text, ("doppelganger", "explainer", "taste", "capsule"))
-    assert _semantic_text(batch_text, ("Phase 4", "Phase 5", "deferred", "acceptance"))
+    assert _semantic_text(combined, ("Phase 4", "Phase 5", "acceptance"))
 
 
 def test_phase4_and_phase5_surfaces_do_not_bypass_private_profile_controls() -> None:

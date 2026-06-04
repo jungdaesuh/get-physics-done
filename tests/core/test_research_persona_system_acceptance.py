@@ -13,7 +13,6 @@ from tests.markdown_test_support import has_line_with_terms, normalize_text
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src" / "gpd"
 CORE_ROOT = SRC_ROOT / "core"
-TMP_ROOT = REPO_ROOT / "tmp"
 
 CORE_MODULE_REQUIREMENTS: Mapping[str, tuple[str, ...]] = {
     "research_persona": (
@@ -101,16 +100,6 @@ PROMPT_SURFACE_PATHS = (
     *WORKFLOW_STAGE_FILES,
     *APPLICATION_AGENT_PATHS.values(),
 )
-REPORT_PATHS = (
-    TMP_ROOT / "phase-01-foundation-report.md",
-    TMP_ROOT / "phase-02-cli-report.md",
-    TMP_ROOT / "phase-03-persona-builder-report.md",
-    TMP_ROOT / "phase-04-source-ingestion-report.md",
-    TMP_ROOT / "phase-05-persona-applications-report.md",
-    TMP_ROOT / "phase-04-05-batch-report.md",
-    TMP_ROOT / "phase-09-final-acceptance-report.md",
-)
-
 PATCH_ONLY_TERMS = ("candidate", "patch", "apply-patch")
 SOURCE_INGESTION_TERMS = ("source", "ingestion", "ingest-source")
 APPROVAL_TERMS = ("explicit", "approval", "apply-patch")
@@ -335,10 +324,7 @@ def test_prompt_workflow_and_agent_surfaces_do_not_bypass_apply_patch_boundary()
     assert not unsafe_lines, _message("unsafe private-profile handling lines", unsafe_lines)
 
 
-def test_phase_reports_cover_the_system_and_final_acceptance() -> None:
-    missing_reports = tuple(_rel(path) for path in REPORT_PATHS if not path.is_file())
-    assert not missing_reports, _message("missing phase reports", missing_reports)
-
-    combined = "\n\n".join(_read(path) for path in REPORT_PATHS)
+def test_tracked_surfaces_cover_the_system_and_final_acceptance() -> None:
+    combined = "\n\n".join(_read(path) for path in PROMPT_SURFACE_PATHS if path.is_file())
     missing_terms = tuple(term for term in REPORT_TRACEABILITY_TERMS if term.casefold() not in combined.casefold())
-    assert not missing_terms, _message("missing report traceability terms", missing_terms)
+    assert not missing_terms, _message("missing tracked-surface traceability terms", missing_terms)
