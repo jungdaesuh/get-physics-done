@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
+
 from gpd.core.research_persona import (
     ResearchPersona,
     ResearchPersonaAxis,
@@ -8,7 +10,6 @@ from gpd.core.research_persona import (
     ResearchPersonaFact,
     parse_research_persona_data_strict,
 )
-from pydantic import ValidationError
 
 TOP_LEVEL_LIST_FIELDS = (
     "facts",

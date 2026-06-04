@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
+
 from gpd.core.research_persona import (
     ResearchPersona,
     ResearchPersonaError,
@@ -17,7 +19,6 @@ from gpd.core.research_persona import (
     apply_research_persona_patch,
     research_persona_root,
 )
-from pydantic import ValidationError
 
 
 def _read_jsonl(path: Path) -> list[dict[str, object]]:

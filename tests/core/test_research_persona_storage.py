@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 
 import pytest
+
+from gpd.core.profile import profile_path
 from gpd.core.research_persona import (
     ResearchPersona,
     ResearchPersonaError,
@@ -12,8 +14,6 @@ from gpd.core.research_persona import (
     research_persona_root,
     save_research_persona,
 )
-
-from gpd.core.profile import profile_path
 
 _PERSONA_LIST_FIELDS = (
     "facts",
