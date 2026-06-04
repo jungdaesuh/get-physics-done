@@ -32,6 +32,23 @@ Use the workflow-owned stable markers as the extraction boundaries for fallback 
 - `<!-- gpd-help:command-index:start -->` / `<!-- gpd-help:command-index:end -->`
 - `<!-- gpd-help:detailed-command-reference:start -->` / `<!-- gpd-help:detailed-command-reference:end -->`
 
+Persona-builder fallback inventory while the command-owned generated help surface is being wired:
+
+<!-- gpd-help:research-persona-builder-command-index:start -->
+### Tangents, memory, and exports
+
+- `gpd:build-persona [focus|--from-current-project|--interview-only]` - Draft a private research-persona patch for explicit review
+<!-- gpd-help:research-persona-builder-command-index:end -->
+
+<!-- gpd-help:research-persona-builder-detailed-command-reference:start -->
+### Tangents, memory, and exports
+
+**`gpd:build-persona [focus|--from-current-project|--interview-only]`**
+Build a private research persona patch from explicit interview and consented local evidence.
+Usage: `gpd:build-persona --interview-only`; `gpd:build-persona --from-current-project "math/code balance and citation style"`
+Notes: Emits a candidate ResearchPersonaPatch only; apply it separately with `gpd research-persona apply-patch`. Interviewing and local project scans require explicit user consent. Prompt capsules must use privacy projection and must not expose `private_local`, `project_private`, or `never_prompt` facts. The same persona substrate supports Researcher Doppelganger, Expertise-Aware Explanations, and the Scientific Taste Model without giving those features raw profile access.
+<!-- gpd-help:research-persona-builder-detailed-command-reference:end -->
+
 Return marker contents only; never print the HTML marker comments themselves. Visible headings inside marker ranges are output labels only.
 
 Runtime command-surface note: refer to the command that invoked this wrapper as "this help command"; do not print adapter-specific examples.
