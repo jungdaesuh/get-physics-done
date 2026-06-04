@@ -5,6 +5,15 @@ argument-hint: "<text to add as context>"
 context_mode: global
 allowed-tools:
   - file_read
+help:
+  group: Tangents, memory, and exports
+  order: 505
+  compact_description: Add paste-friendly context, notes, or background inline
+  display_signature: gpd:btw <text to add as context>
+  examples:
+    - gpd:btw The coupling constant must be positive for stability
+  notes:
+    - Accepts inline text of any length via $ARGUMENTS; writes no files and modifies no project state.
 ---
 
 <!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
