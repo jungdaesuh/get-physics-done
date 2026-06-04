@@ -310,6 +310,7 @@ GPD_MCP_SERVER_KEYS = frozenset(_BUILTIN_SERVERS.keys())
 
 def _resolve_env(value: str) -> str:
     """Resolve ${VAR:-default} patterns in a string."""
+
     def _replace(match: re.Match[str]) -> str:
         var_name = match.group(1)
         default = match.group(2)
@@ -327,18 +328,21 @@ def _is_module_available(module_name: str, *, python_path: str | None = None) ->
     """Check if a Python module is importable in a specific interpreter."""
     interpreter = python_path or sys.executable
     try:
-        return subprocess.run(
-            [
-                interpreter,
-                "-c",
-                "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec(sys.argv[1]) is not None else 1)",
-                module_name,
-            ],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=_OPTIONAL_MODULE_CHECK_TIMEOUT_SECONDS,
-        ).returncode == 0
+        return (
+            subprocess.run(
+                [
+                    interpreter,
+                    "-c",
+                    "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec(sys.argv[1]) is not None else 1)",
+                    module_name,
+                ],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=_OPTIONAL_MODULE_CHECK_TIMEOUT_SECONDS,
+            ).returncode
+            == 0
+        )
     except (FileNotFoundError, ModuleNotFoundError, OSError, ValueError, subprocess.TimeoutExpired):
         return False
 

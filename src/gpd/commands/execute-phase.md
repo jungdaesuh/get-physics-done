@@ -40,19 +40,3 @@ Phase: $ARGUMENTS
 Read the included bootstrap authority first. Later stage loading and field
 access are manifest-owned by the staged workflow.
 </process>
-
-<mayfly_maintenance>
-**After completing all phase work** — update the Mayfly research notebook so
-the next session starts informed. Call these gpd-mayfly tools (project_dir=$CWD):
-
-1. `gpd_mayfly:read_session_log` — check for unprocessed sessions.
-2. For each significant finding: `gpd_mayfly:upsert_knowledge(topic, content)`.
-   Read the existing entry first; preserve prior bullets; add `→ session NNN` links.
-3. `gpd_mayfly:update_frontier` — overwrite FRONTIER.md with updated current best,
-   directions, hypotheses, dead ends. Every direction links to a knowledge entry.
-4. `gpd_mayfly:append_journal_row` — outcome + summary + knowledge_updated slugs.
-5. `gpd_mayfly:write_session_notes` — raw notes (approach, result, what worked/failed).
-6. If new topics or status changes: `gpd_mayfly:update_map`.
-
-Skip silently if gpd-mayfly tools are unavailable.
-</mayfly_maintenance>

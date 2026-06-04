@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Claude Code Stop hook — automatic Mayfly session capture.
+"""Stop hook — automatic Mayfly session capture.
 
-Fires after each Claude response. When a GPD project with an initialized
+Fires after each agent response. When a GPD project with an initialized
 Mayfly notebook is detected and a GPD command has been executed since the
 last capture, appends a raw session record to GPD/mayfly/session-log.jsonl.
 
@@ -19,7 +19,6 @@ import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-
 
 # Max entries to read from the lineage ledger when scanning for new commands.
 _LINEAGE_SCAN_LINES = 200
@@ -163,14 +162,9 @@ def main() -> int:
     if not isinstance(payload, dict):
         payload = {}
 
-    # Extract cwd. Claude Code Stop hook provides this directly or via
+    # Extract cwd. The runtime Stop hook provides this directly or via
     # workspace info. Fall back to the process working directory.
-    cwd_str = (
-        payload.get("cwd")
-        or payload.get("workspace_root")
-        or payload.get("project_root")
-        or os.getcwd()
-    )
+    cwd_str = payload.get("cwd") or payload.get("workspace_root") or payload.get("project_root") or os.getcwd()
     if not cwd_str:
         return 0
 

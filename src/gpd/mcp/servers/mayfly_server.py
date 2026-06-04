@@ -25,7 +25,7 @@ from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import WithJsonSchema
 
-from gpd.core.constants import MAYFLY_DIR_NAME, ProjectLayout
+from gpd.core.constants import ProjectLayout
 from gpd.core.utils import atomic_write, safe_read_file
 from gpd.mcp.servers import (
     ABSOLUTE_PROJECT_DIR_SCHEMA,
@@ -176,9 +176,7 @@ def bootstrap_mayfly(project_dir: AbsoluteProjectDirInput) -> dict:
         "|---:|---|---|---|---|\n",
     )
 
-    return stable_mcp_response(
-        {"initialized": True, "message": f"Mayfly notebook initialized at {mayfly.as_posix()}"}
-    )
+    return stable_mcp_response({"initialized": True, "message": f"Mayfly notebook initialized at {mayfly.as_posix()}"})
 
 
 # ---------------------------------------------------------------------------
@@ -235,10 +233,7 @@ def list_knowledge(project_dir: AbsoluteProjectDirInput) -> dict:
     knowledge_dir = ProjectLayout(cwd).mayfly_knowledge_dir
     if not knowledge_dir.exists():
         return stable_mcp_response({"topics": []})
-    slugs = sorted(
-        p.stem for p in knowledge_dir.glob("*.md")
-        if p.stem.upper() not in _RESERVED_KNOWLEDGE_NAMES
-    )
+    slugs = sorted(p.stem for p in knowledge_dir.glob("*.md") if p.stem.upper() not in _RESERVED_KNOWLEDGE_NAMES)
     return stable_mcp_response({"topics": slugs})
 
 
@@ -577,6 +572,7 @@ def append_journal_row(
 
     # Build the new row
     step_str = f"{step:03d}"
+
     # Sanitize fields for Markdown table: replace pipes
     def _clean(s: str) -> str:
         return s.replace("|", "\\|").strip()
@@ -584,7 +580,9 @@ def append_journal_row(
     if metric:
         new_row = f"| {step_str} | {_clean(metric)} | {_clean(outcome)} | {_clean(summary)} | {_clean(knowledge_updated)} | {_clean(files)} |\n"
     else:
-        new_row = f"| {step_str} | {_clean(outcome)} | {_clean(summary)} | {_clean(knowledge_updated)} | {_clean(files)} |\n"
+        new_row = (
+            f"| {step_str} | {_clean(outcome)} | {_clean(summary)} | {_clean(knowledge_updated)} | {_clean(files)} |\n"
+        )
 
     # Read existing journal; upsert row for this step (replace if exists)
     existing = safe_read_file(journal) or ""
