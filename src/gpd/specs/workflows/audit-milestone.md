@@ -13,30 +13,29 @@ Read all files referenced by the invoking prompt's execution_context before star
 ## 0. Initialize Milestone Context
 
 ```bash
-INIT=$(gpd init milestone-op)
+INIT=$(gpd --raw init milestone-op)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
-Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`, `project_exists`, `project_contract`, `project_contract_load_info`, `project_contract_validation`, `active_reference_context`.
+Extract from init JSON: `milestone_version`, `milestone_name`, `phase_count`, `completed_phases`, `commit_docs`, `project_exists`, `project_contract`, `project_contract_gate`, `project_contract_load_info`, `project_contract_validation`, `active_reference_context`.
 
-Keep `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` visible while auditing:
+Keep `project_contract`, `project_contract_load_info`, `project_contract_validation`, and `active_reference_context` visible while auditing.
+`{GPD_INSTALL_DIR}/references/orchestration/contract-authority-gate.md`
 
-- Treat `project_contract` as authoritative only when `project_contract_load_info` is clean and `project_contract_validation` passes.
-- If that contract gate is blocked, keep the contract visible as context but record contract repair as a blocker in the audit instead of silently substituting prose-only scope.
-- If contract repair is still pending, do not mark the milestone `passed` and do not trust mock peer-review publishability judgments as approval to submit.
+Apply the shared contract authority gate: `project_contract` is approved milestone scope only when `project_contract_gate.authoritative` is true. If repair is pending, record it as an audit blocker, do not substitute prose-only scope, do not mark the milestone `passed`, and do not treat mock peer-review publishability judgments as approval to submit.
 
 **Read mode settings:**
 
 ```bash
-AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default balanced 2>/dev/null || echo "balanced")
+AUTONOMY=$(gpd --raw config get autonomy 2>/dev/null | gpd json get .value --default supervised 2>/dev/null || echo "supervised")
 ```
 
 **Mode-aware behavior:**
-- `autonomy=supervised`: Pause after each audit criterion for user discussion of gaps.
-- `autonomy=balanced` (default): Complete the full audit and generate a gap-closure plan when needed. Pause only if critical gaps or milestone-scope questions need user judgment.
+- `autonomy=supervised` (default): Pause after each audit criterion for user discussion of gaps.
+- `autonomy=balanced`: Complete the full audit and generate a gap-closure plan when needed. Pause only if critical gaps or milestone-scope questions need user judgment.
 - `autonomy=yolo`: Complete audit, auto-approve milestone if > 80% criteria met.
 
 Run centralized context preflight before continuing:
@@ -55,7 +54,7 @@ fi
 ERROR: No active milestone found.
 
 A milestone audit requires a project with phases.
-Run /gpd:new-project first, then complete phases before auditing.
+Run gpd:new-project first, then complete phases before auditing.
 ```
 
 Exit.
@@ -80,13 +79,13 @@ gpd phase list
 
 ## 2. Read All Phase Verifications
 
-For each phase directory, read the canonical `*-VERIFICATION.md` artifact:
+Use the canonical phase helpers instead of raw phase-path globbing:
 
 ```bash
-cat GPD/phases/01-*/*-VERIFICATION.md
-cat GPD/phases/02-*/*-VERIFICATION.md
-# etc.
+gpd phase list
 ```
+
+For each phase in the milestone, use the runtime-installed command surface `gpd:show-phase <phase-number>` to surface the canonical `*-VERIFICATION.md` artifact and its verification status, then read the artifact itself only when you need blocker-level detail. Do not `find_files` `GPD/phases/*/*-VERIFICATION.md` by hand.
 
 From each `*-VERIFICATION.md`, extract:
 
@@ -101,7 +100,9 @@ If a phase is missing `*-VERIFICATION.md`, flag it as "unverified phase" -- this
 ## 3. Spawn Consistency Checker
 
 With phase context collected:
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+@{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
+
+> Apply the canonical runtime delegation convention already loaded above.
 
 ```
 task(
@@ -127,7 +128,7 @@ Verify:
 )
 ```
 
-**If the consistency checker agent fails to spawn or returns an error:** Proceed without cross-phase consistency checks. Note in the audit report that consistency verification was skipped. The phase-level checks (step 2) still provide individual phase validation. The user should run `/gpd:validate-conventions` separately after the audit.
+**If the consistency checker agent fails to spawn or returns an error:** Proceed without cross-phase consistency checks. Note in the audit report that consistency verification was skipped. The phase-level checks (step 2) still provide individual phase validation. The user should run `gpd:validate-conventions` separately after the audit.
 
 ## 4. Collect Results
 
@@ -192,15 +193,7 @@ If `project_contract_load_info.status` starts with `blocked` or `project_contrac
 **Check config or ask user:**
 
 ```bash
-REFEREE_ENABLED=$(python3 -c "
-import json, pathlib
-try:
-    c = json.loads(pathlib.Path('GPD/config.json').read_text())
-    v = c.get('referee_review')
-    print('unset' if v is None else str(v).lower())
-except Exception:
-    print('unset')
-")
+REFEREE_ENABLED=$(gpd --raw config get referee_review 2>/dev/null | gpd json get .value --default unset 2>/dev/null || echo "unset")
 ```
 
 - If `true`: proceed with referee review
@@ -214,7 +207,7 @@ Resolve referee model:
 ```bash
 REFEREE_MODEL=$(gpd resolve-model gpd-referee)
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+Apply the canonical runtime delegation convention already loaded above.
 
 ```
 task(
@@ -252,15 +245,15 @@ Evaluate across all 10 dimensions:
 9. Presentation quality -- organization, figures
 10. Publishability -- overall assessment
 
-Treat `project_contract` as approved milestone scope only when `project_contract_load_info` is clean and `project_contract_validation` passes. If the contract gate is blocked, keep it visible as context but call out the blocker explicitly instead of relying on it as approved scope.
+Use `project_contract` as approved milestone scope only when `project_contract_gate.authoritative` is true; if blocked, keep it as diagnostic context and call out the gate blocker.
 
 Write `GPD/v{milestone_version}-MILESTONE-REFEREE-REPORT.md` and the matching `GPD/v{milestone_version}-MILESTONE-REFEREE-REPORT.tex` companion.
 
-Return REVIEW COMPLETE with recommendation and issue counts."
+Return `gpd_return.status: completed` with recommendation and issue counts."
 )
 ```
 
-**If the referee agent fails to spawn or returns an error:** Proceed without mock peer review — note in the audit report that peer review was skipped. The audit is still valid based on consistency checks and phase-level verification. The user should run `/gpd:verify-work` separately after the audit.
+**If the referee agent fails to spawn or returns an error:** Proceed without mock peer review — note in the audit report that peer review was skipped. The audit is still valid based on consistency checks and phase-level verification. The user should run `gpd:verify-work` separately after the audit.
 
 **After referee report:**
 
@@ -311,9 +304,9 @@ All requirements covered. Cross-phase consistency verified. Research is complete
 
 **Complete milestone** -- archive and tag
 
-/gpd:complete-milestone {version}
+gpd:complete-milestone {version}
 
-<sub>/clear first -> fresh context window</sub>
+<sub>Start a fresh context window</sub>
 
 ---
 
@@ -351,16 +344,16 @@ All requirements covered. Cross-phase consistency verified. Research is complete
 
 **Plan gap closure** -- create phases to complete research
 
-/gpd:plan-milestone-gaps
+gpd:plan-milestone-gaps
 
-<sub>/clear first -> fresh context window</sub>
+<sub>Start a fresh context window</sub>
 
 ---
 
 **Also available:**
 
 - cat GPD/v{version}-MILESTONE-AUDIT.md -- see full report
-- /gpd:complete-milestone {version} -- proceed anyway (accept open questions)
+- gpd:complete-milestone {version} -- proceed anyway (accept open questions)
 
 ---
 
@@ -391,13 +384,13 @@ All requirements met. No critical blockers. Accumulated open questions need revi
 
 **A. Complete milestone** -- accept open questions, track in research log
 
-/gpd:complete-milestone {version}
+gpd:complete-milestone {version}
 
 **B. Plan additional analysis** -- address open questions before completing
 
-/gpd:plan-milestone-gaps
+gpd:plan-milestone-gaps
 
-<sub>/clear first -> fresh context window</sub>
+<sub>Start a fresh context window</sub>
 
 ---
 

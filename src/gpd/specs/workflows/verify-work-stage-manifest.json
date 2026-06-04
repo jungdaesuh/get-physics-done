@@ -1,0 +1,387 @@
+{
+  "schema_version": 1,
+  "workflow_id": "verify-work",
+  "required_init_field_groups": {
+    "phase_target_base": [
+      "planner_model",
+      "checker_model",
+      "verifier_model",
+      "autonomy",
+      "research_mode",
+      "project_root",
+      "phase_found",
+      "phase_dir",
+      "phase_dir_abs",
+      "phase_number",
+      "phase_name",
+      "has_verification",
+      "has_validation",
+      "active_verification_sessions",
+      "verification_report_path",
+      "verification_report_status",
+      "verification_session_status",
+      "verification_report_status_payload",
+      "phase_proof_review_status"
+    ],
+    "inventory_phase_target_context": [
+      "project_root",
+      "phase_found",
+      "phase_dir_abs",
+      "phase_number",
+      "phase_proof_review_status"
+    ],
+    "contract_gate_status": [
+      "project_contract_load_info",
+      "project_contract_validation",
+      "project_contract_gate"
+    ],
+    "reference_handle_context": [
+      "effective_reference_intake",
+      "citation_source_files",
+      "citation_source_warnings",
+      "active_references"
+    ],
+    "protocol_bundle_handles": [
+      "selected_protocol_bundle_ids",
+      "protocol_bundle_count",
+      "protocol_bundle_load_manifest",
+      "protocol_bundle_verifier_extensions"
+    ],
+    "gap_repair_targeted_reference_context": [
+      "contract_intake",
+      "effective_reference_intake",
+      "selected_protocol_bundle_ids",
+      "protocol_bundle_load_manifest",
+      "protocol_bundle_verifier_extensions",
+      "reference_artifact_files"
+    ]
+  },
+  "authority_groups": {
+    "verify_proof_redteam_deep_deferrals": [
+      "references/verification/core/proof-redteam-protocol.md",
+      "templates/proof-redteam-schema.md",
+      "references/verification/core/verification-core.md",
+      "references/verification/meta/verification-independence.md",
+      "references/protocols/error-propagation-protocol.md",
+      "references/shared/canonical-schema-discipline.md",
+      "templates/research-verification.md",
+      "templates/verification-report.md",
+      "templates/contract-results-schema.md"
+    ],
+    "verify_schema_report_deferrals": [
+      "references/protocols/error-propagation-protocol.md",
+      "references/shared/canonical-schema-discipline.md",
+      "templates/research-verification.md",
+      "templates/verification-report.md",
+      "templates/contract-results-schema.md"
+    ],
+    "verify_report_template_deferrals": [
+      "templates/research-verification.md",
+      "templates/verification-report.md",
+      "templates/contract-results-schema.md",
+      "templates/planner-subagent-prompt.md"
+    ]
+  },
+  "stage_defaults": {
+    "required_init_field_groups": [
+      "phase_target_base",
+      "contract_gate_status"
+    ],
+    "conditional_authorities": [],
+    "must_not_eager_load_groups": [
+      "verify_proof_redteam_deep_deferrals"
+    ],
+    "allowed_tools": [
+      "ask_user",
+      "file_read",
+      "find_files",
+      "search_files",
+      "shell",
+      "task"
+    ],
+    "writes_allowed": []
+  },
+  "stages": [
+    {
+      "id": "session_router",
+      "order": 1,
+      "purpose": "session discovery, check selection, and fail-closed preflight routing",
+      "mode_paths": [
+        "workflows/verify-work/session-router.md"
+      ],
+      "required_init_field_groups": [
+        "contract_gate_status"
+      ],
+      "required_init_fields": [
+        "project_root",
+        "phase_found",
+        "phase_dir_abs",
+        "active_verification_sessions",
+        "verification_report_status_payload",
+        "phase_proof_review_status",
+        "platform"
+      ],
+      "loaded_authorities": [
+        "workflows/verify-work/session-router.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/verify-work.md",
+        "workflows/verify-work/phase-bootstrap.md",
+        "workflows/verify-work/inventory-build.md",
+        "workflows/verify-work/interactive-validation.md",
+        "workflows/verify-work/gap-repair.md",
+        "references/verification/core/proof-redteam-workflow-gate.md"
+      ],
+      "produced_state": [
+        "session routing state",
+        "verification preflight state"
+      ],
+      "next_stages": [
+        "phase_bootstrap"
+      ],
+      "checkpoints": [
+        "active session check completed",
+        "review preflight completed",
+        "contract gate remains visible"
+      ]
+    },
+    {
+      "id": "phase_bootstrap",
+      "order": 2,
+      "purpose": "proof gate resolution and bootstrap-only verification setup",
+      "mode_paths": [
+        "workflows/verify-work/phase-bootstrap.md"
+      ],
+      "required_init_fields": [
+        "platform",
+        "proof_redteam_finalizer_bridge"
+      ],
+      "loaded_authorities": [
+        "workflows/verify-work/phase-bootstrap.md",
+        "references/verification/core/proof-redteam-workflow-gate.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/verify-work.md",
+        "workflows/verify-work/session-router.md",
+        "workflows/verify-work/inventory-build.md",
+        "workflows/verify-work/interactive-validation.md",
+        "workflows/verify-work/gap-repair.md"
+      ],
+      "produced_state": [
+        "proof gate state",
+        "bootstrap verification state"
+      ],
+      "next_stages": [
+        "inventory_build"
+      ],
+      "checkpoints": [
+        "proof-readiness context loaded; classify proof-bearing status from inspected proof metadata",
+        "bootstrap gate remains fail-closed"
+      ]
+    },
+    {
+      "id": "inventory_build",
+      "order": 3,
+      "purpose": "delegated verifier handoff, anchor context loading, and report sync",
+      "mode_paths": [
+        "workflows/verify-work/inventory-build.md"
+      ],
+      "required_init_field_groups": [
+        "inventory_phase_target_context",
+        "contract_gate_status",
+        "reference_handle_context",
+        "protocol_bundle_handles"
+      ],
+      "required_init_fields": [
+        "contract_intake",
+        "convention_lock",
+        "convention_lock_count",
+        "derived_convention_lock",
+        "derived_convention_lock_count",
+        "verification_report_finalizer_bridge",
+        "verification_report_skeleton_bridge"
+      ],
+      "loaded_authorities": [
+        "workflows/verify-work/inventory-build.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "full_independence_policy_check",
+          "authorities": [
+            "references/verification/meta/verification-independence.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/verify-work.md",
+        "workflows/verify-work/interactive-validation.md",
+        "workflows/verify-work/gap-repair.md",
+        "references/verification/core/verification-core.md",
+        "references/verification/meta/verification-independence.md",
+        "references/shared/canonical-schema-discipline.md",
+        "references/protocols/error-propagation-protocol.md"
+      ],
+      "must_not_eager_load_groups": [
+        "verify_report_template_deferrals"
+      ],
+      "allowed_tools": [
+        "ask_user",
+        "file_read",
+        "find_files",
+        "search_files",
+        "shell",
+        "task",
+        "mcp__gpd_verification__get_bundle_checklist",
+        "mcp__gpd_verification__suggest_contract_checks",
+        "mcp__gpd_verification__run_contract_check"
+      ],
+      "produced_state": [
+        "delegated verification state",
+        "anchor context",
+        "handoff routing state"
+      ],
+      "next_stages": [
+        "interactive_validation"
+      ],
+      "checkpoints": [
+        "verifier delegation completed",
+        "handoff remains fail-closed",
+        "anchor obligations explicit"
+      ]
+    },
+    {
+      "id": "interactive_validation",
+      "order": 4,
+      "purpose": "writer-stage session overlay and researcher response capture",
+      "mode_paths": [
+        "workflows/verify-work/interactive-validation.md"
+      ],
+      "required_init_fields": [
+        "contract_intake",
+        "reference_artifact_files"
+      ],
+      "loaded_authorities": [
+        "workflows/verify-work/interactive-validation.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "session_overlay_write_or_repair",
+          "authorities": [
+            "templates/research-verification.md",
+            "templates/verification-report.md",
+            "templates/contract-results-schema.md",
+            "references/shared/canonical-schema-discipline.md"
+          ]
+        },
+        {
+          "when": "custom_verifier_continuation",
+          "authorities": [
+            "templates/verification-report.md",
+            "templates/contract-results-schema.md",
+            "references/shared/canonical-schema-discipline.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/verify-work.md",
+        "workflows/verify-work/gap-repair.md",
+        "references/protocols/error-propagation-protocol.md",
+        "references/verification/core/verification-core.md",
+        "references/verification/meta/verification-independence.md",
+        "references/shared/canonical-schema-discipline.md"
+      ],
+      "must_not_eager_load_groups": [
+        "verify_report_template_deferrals"
+      ],
+      "allowed_tools": [
+        "ask_user",
+        "file_read",
+        "file_edit",
+        "file_write",
+        "find_files",
+        "search_files",
+        "shell",
+        "task"
+      ],
+      "writes_allowed": [
+        "GPD/phases/XX-name/XX-VERIFICATION.md"
+      ],
+      "produced_state": [
+        "verification report draft",
+        "validation results",
+        "session continuation state"
+      ],
+      "next_stages": [
+        "gap_repair"
+      ],
+      "checkpoints": [
+        "verification file can be written",
+        "writer-stage schema deferral barrier is visible",
+        "check results remain contract-backed"
+      ]
+    },
+    {
+      "id": "gap_repair",
+      "order": 5,
+      "purpose": "diagnosis, gap planning, and verified closeout after failed checks",
+      "mode_paths": [
+        "workflows/verify-work/gap-repair.md"
+      ],
+      "required_init_field_groups": [
+        "phase_target_base",
+        "contract_gate_status",
+        "gap_repair_targeted_reference_context"
+      ],
+      "loaded_authorities": [
+        "workflows/verify-work/gap-repair.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "gap_report_write_or_schema_repair",
+          "authorities": [
+            "templates/research-verification.md",
+            "templates/verification-report.md",
+            "templates/contract-results-schema.md",
+            "references/shared/canonical-schema-discipline.md"
+          ]
+        },
+        {
+          "when": "error_propagation_gap",
+          "authorities": [
+            "references/protocols/error-propagation-protocol.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/verify-work.md"
+      ],
+      "must_not_eager_load_groups": [
+        "verify_schema_report_deferrals"
+      ],
+      "allowed_tools": [
+        "ask_user",
+        "file_read",
+        "file_edit",
+        "file_write",
+        "find_files",
+        "search_files",
+        "shell",
+        "task"
+      ],
+      "writes_allowed": [
+        "GPD/phases/XX-name/XX-VERIFICATION.md"
+      ],
+      "produced_state": [
+        "diagnosed gaps",
+        "repair plans",
+        "verification closeout"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "gaps are diagnosed",
+        "repair plans are verified",
+        "verification closeout is ready"
+      ]
+    }
+  ]
+}

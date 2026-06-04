@@ -1,5 +1,5 @@
 <purpose>
-Export research results into shareable formats. Collects key results, equations, derivations, and figures from all completed phases and packages them for external consumption. Supports HTML (with MathJax), LaTeX (journal-ready scaffold), ZIP (reproducibility package), or all formats.
+Export research results into shareable formats. Collects key results, equations, derivations, and figures from all completed phases and packages them for external consumption. Supports HTML (with MathJax), LaTeX (journal-ready scaffold), ZIP (reproducibility package), or all formats. Generated files are not committed unless `$ARGUMENTS` includes explicit `--commit`.
 </purpose>
 
 <required_reading>
@@ -18,10 +18,10 @@ file_read:
 - `GPD/STATE.md` -- current position
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd roadmap analyze failed: $ROADMAP"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -29,7 +29,7 @@ Extract: `project_title`, `milestone`, completed phases list, total phase count.
 
 **If no completed phases:**
 
-```
+```text
 ╔══════════════════════════════════════════════════════════════╗
 ║  ERROR                                                       ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -37,7 +37,7 @@ Extract: `project_title`, `milestone`, completed phases list, total phase count.
 No completed phases found. Nothing to export.
 
 Complete at least one phase before exporting:
-  /gpd:execute-phase <phase-number>
+  gpd:execute-phase <phase-number>
 ```
 
 Exit.
@@ -51,7 +51,7 @@ For each completed phase:
 1. Read all SUMMARY.md files:
 
 ```bash
-gpd summary-extract {path} --field one_liner --field key_results --field equations --field key_files
+gpd --raw summary-extract {path} --field one_liner --field key_results --field equations --field key_files
 ```
 
 2. Collect:
@@ -108,6 +108,8 @@ Export format:
 ```bash
 mkdir -p exports
 ```
+
+Output boundary: `exports/` is the only durable write root for this workflow. Do not write generated export files under `GPD/publication/`, `GPD/review/`, `GPD/exports/`, `slides/`, manuscript roots, or OS temp directories. Export artifacts are shareable copies only; they must not update project state and must not satisfy publication, peer-review, response, arXiv-package, or slides gates.
 
 </step>
 
@@ -212,68 +214,29 @@ Structure:
 <step name="generate_latex">
 **If format is `latex` or `all`:**
 
-Write `exports/results.tex`:
+Prefer pandoc when available. Probe with
+`from gpd.utils.pandoc import detect_pandoc`; when `status.available and
+status.meets_minimum`, assemble `exports/results.md` with standard paper
+sections and math in `$...$` / `$$...$$`, then convert with
+`markdown_to_latex_fragment(markdown_text)`. The helper automatically uses
+`pandoc-crossref` when installed; pass `external_filters=[]` only when the user
+explicitly opts out.
 
-Structure:
+Write the fragment into the requested journal template through
+`gpd.mcp.paper.template_registry.render_paper()` when a target journal is known.
+Write the rendered template output to `exports/results.tex`.
+Otherwise create `exports/results.tex` as a minimal `article` document with
+`amsmath`, `amssymb`, `amsthm`, `physics`, `hyperref`, `booktabs`, `graphicx`,
+`natbib`, a `\tightlist` definition, the pandoc-produced fragment, and
+`\bibliographystyle{plainnat}` plus `\bibliography{results}`. This avoids
+raw-LaTeX authoring errors while keeping exported `.tex` compilable.
 
-```latex
-\documentclass[12pt,a4paper]{article}
-\usepackage{amsmath,amssymb,amsthm}
-\usepackage{physics}
-\usepackage{hyperref}
-\usepackage{booktabs}
-\usepackage{graphicx}
-
-\title{{project_title}}
-\author{[Author Name]}
-\date{\today}
-
-\begin{document}
-\maketitle
-
-\begin{abstract}
-{Project description from PROJECT.md -- placeholder for user to refine}
-\end{abstract}
-
-\section{Introduction}
-% Generated scaffold -- fill in motivation and context
-
-\section{Methods}
-% Generated from phase descriptions and approaches
-
-{For each completed phase:}
-\subsection{Phase {N}: {Name}}
-{One-liner description}
-
-\subsubsection{Key Results}
-\begin{itemize}
-{key results as \item entries}
-\end{itemize}
-
-{Equations as \begin{equation} blocks}
-
-\section{Results}
-% Aggregate key findings across all phases
-
-\section{Discussion}
-% Placeholder for interpretation
-
-\section{Conclusion}
-% Placeholder for summary
-
-\appendix
-{For each phase with detailed derivations:}
-\section{Phase {N}: {Name} -- Derivation Details}
-{Detailed derivation content from SUMMARY.md}
-
-\begin{center}
-{\footnotesize\textit{Generated with Get Physics Done (PSI)}}
-\end{center}
-
-\end{document}
-```
-
-Also write `exports/results.bib` if any citations found in SUMMARY files.
+Fallback when pandoc is unavailable or below minimum: create the legacy
+article-class scaffold directly in `exports/results.tex` with abstract,
+Introduction, Methods, per-phase subsections, Results, Discussion, Conclusion,
+appendix derivation sections, and the standard GPD footer. Also write
+`exports/results.bib` if citations are found in SUMMARY files.
+Exact LaTeX footer text: `{\footnotesize\textit{Generated with Get Physics Done (PSI)}}`.
 </step>
 
 <step name="generate_zip">
@@ -366,8 +329,8 @@ cd exports && tar -czf results.tar.gz README.md scripts/ data/ summaries/ PROJEC
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:write-paper` -- draft a full paper from research results
-- `/gpd:progress` -- check research progress
+- `gpd:write-paper` -- draft a full paper from research results
+- `gpd:progress` -- check research progress
 
 ───────────────────────────────────────────────────────────────
 ```
@@ -375,9 +338,17 @@ cd exports && tar -czf results.tar.gz README.md scripts/ data/ summaries/ PROJEC
 </step>
 
 <step name="commit_exports">
-**Commit text-based exports (not binary archives):**
+**Optional commit for text-based exports (not binary archives):**
 
-Commit the HTML and LaTeX exports. Do NOT commit ZIP/tar.gz archives (binary artifacts that bloat git).
+Do not commit exports by default. Commit HTML/LaTeX/BibTeX only when `$ARGUMENTS` includes `--commit`. Do NOT commit ZIP/tar.gz archives.
+
+If `--commit` is absent, skip this step and report:
+
+```
+Text exports were not committed. Re-run `gpd:export ... --commit` to opt in.
+```
+
+If `--commit` is present:
 
 ```bash
 # Only commit text-format exports that were actually generated
@@ -400,7 +371,7 @@ else
 fi
 ```
 
-The `commit` CLI respects `commit_docs` from config internally — if disabled, the commit is automatically skipped.
+The `commit` CLI respects `commit_docs`; if disabled, the commit is skipped.
 </step>
 
 </process>
@@ -413,6 +384,7 @@ The `commit` CLI respects `commit_docs` from config internally — if disabled, 
 - Don't include raw planning artifacts (PLAN.md, RESEARCH.md) in exports -- those are internal
 - Don't overwrite existing exports without noting it
 - Don't generate empty sections -- omit sections with no content
+- Don't commit export artifacts unless `--commit` was explicit
 - Don't commit ZIP/tar.gz archives to git -- they are binary artifacts
   </anti_patterns>
 
@@ -427,6 +399,6 @@ Export is complete when:
 - [ ] Files written to exports/
 - [ ] File locations and sizes reported to user
 - [ ] Format-specific instructions provided
-- [ ] Text exports committed (if commit_docs enabled)
+- [ ] Text exports committed only if `--commit` was explicitly requested and `commit_docs` allowed it
 
 </success_criteria>

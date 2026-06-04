@@ -10,20 +10,16 @@ allowed-tools:
   - shell
   - search_files
   - find_files
+help:
+  group: Tangents, memory, and exports
+  order: 560
+  compact_description: Search the decision log
+  display_signature: gpd:decisions [phase or keyword]
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Display the cumulative decision log from GPD/DECISIONS.md with optional filtering by phase number or keyword search.
-
-Routes to the decisions workflow which handles:
-
-- Loading and parsing the decision log table
-- Filtering by phase number (e.g., `/gpd:decisions 3`)
-- Keyword search across all fields (e.g., `/gpd:decisions regularization`)
-- Formatted display with summary statistics
+Display the cumulative decision log from `GPD/DECISIONS.md`, optionally filtered by phase number or keyword.
   </objective>
 
 <execution_context>
@@ -32,12 +28,5 @@ Routes to the decisions workflow which handles:
 </execution_context>
 
 <process>
-**Follow the decisions workflow** from `@{GPD_INSTALL_DIR}/workflows/decisions.md`.
-
-The workflow handles all logic including:
-
-1. Decision log existence checking
-2. Argument parsing (phase number vs keyword)
-3. Table filtering and display
-4. Summary statistics
+Follow the included decisions workflow exactly.
    </process>

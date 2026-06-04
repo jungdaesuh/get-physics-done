@@ -17,15 +17,13 @@ Use the installed runtime files, not Python import location:
 GPD_INSTALL_DIR="{GPD_INSTALL_DIR}"
 GPD_CONFIG_DIR="{GPD_CONFIG_DIR}"
 GPD_GLOBAL_CONFIG_DIR="{GPD_GLOBAL_CONFIG_DIR}"
-GPD_RUNTIME_FLAG="{GPD_RUNTIME_FLAG}"
 INSTALL_SCOPE="{GPD_INSTALL_SCOPE_FLAG}"
+UPDATE_COMMAND="{GPD_UPDATE_COMMAND}"
+PATCH_META="{GPD_PATCH_META}"
 PYTHON_BIN="${GPD_PYTHON:-}"
 
 if [ -z "$PYTHON_BIN" ]; then
-  PYTHON_BIN=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || true)
-fi
-if [ -z "$PYTHON_BIN" ]; then
-  PYTHON_BIN="python3"
+  PYTHON_BIN=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 fi
 
 if [ -f "$GPD_INSTALL_DIR/VERSION" ]; then
@@ -33,53 +31,6 @@ if [ -f "$GPD_INSTALL_DIR/VERSION" ]; then
 else
   INSTALLED_VERSION="0.0.0"
 fi
-
-TARGET_DIR_ARG=""
-case "$INSTALL_SCOPE" in
-  --local)
-    case "$GPD_CONFIG_DIR" in
-      ./*) ;;
-      *)
-        TARGET_DIR_ARG=$("$PYTHON_BIN" - "$INSTALL_SCOPE" "$GPD_CONFIG_DIR" "$GPD_GLOBAL_CONFIG_DIR" <<'PY'
-import shlex
-import sys
-
-install_scope, config_dir, global_config_dir = sys.argv[1:4]
-if install_scope == "--local" and config_dir.startswith("./"):
-    print("")
-elif install_scope == "--global" and config_dir == global_config_dir:
-    print("")
-else:
-    print(f" --target-dir {shlex.quote(config_dir)}")
-PY
-)
-        ;;
-    esac
-    ;;
-  --global)
-    case "$GPD_CONFIG_DIR" in
-      "$GPD_GLOBAL_CONFIG_DIR") ;;
-      *)
-        TARGET_DIR_ARG=$("$PYTHON_BIN" - "$INSTALL_SCOPE" "$GPD_CONFIG_DIR" "$GPD_GLOBAL_CONFIG_DIR" <<'PY'
-import shlex
-import sys
-
-install_scope, config_dir, global_config_dir = sys.argv[1:4]
-if install_scope == "--local" and config_dir.startswith("./"):
-    print("")
-elif install_scope == "--global" and config_dir == global_config_dir:
-    print("")
-else:
-    print(f" --target-dir {shlex.quote(config_dir)}")
-PY
-)
-        ;;
-    esac
-    ;;
-esac
-
-UPDATE_COMMAND="npx -y get-physics-done $GPD_RUNTIME_FLAG $INSTALL_SCOPE$TARGET_DIR_ARG"
-PATCH_META="$GPD_CONFIG_DIR/gpd-local-patches/backup-meta.json"
 
 printf '%s\n%s\n%s\n%s\n%s\n' \
   "$INSTALLED_VERSION" \
@@ -89,26 +40,42 @@ printf '%s\n%s\n%s\n%s\n%s\n' \
   "$PATCH_META"
 ```
 
-Parse output as:
-
-- line 1: installed version
-- line 2: install scope flag (`--local` or `--global`)
-- line 3: public update command to run
-- line 4: runtime config directory
-- line 5: expected local-patch metadata path
+Parse lines 1-5 as installed version, scope flag, public update command, runtime config directory, and local-patch metadata path.
 
 If the version file is missing, treat the install as version `0.0.0` and continue.
+
+If line 3 is empty, do not run a generic update command. Show:
+
+```text
+## GPD Update
+
+This installed workflow cannot derive a trusted update command because the install provenance is missing or legacy.
+
+Repair explicitly, then rerun update:
+`{GPD_BOOTSTRAP_COMMAND} install <runtime> <line 2> --target-dir <line 4>`
+
+Use line 2 exactly as printed (`--local` or `--global`) and line 4 exactly as printed for the target directory.
+```
+Then exit.
 </step>
 
 <step name="check_latest_version">
-Check the npm registry for the latest released `get-physics-done` version:
+Check the canonical release metadata endpoint for the latest released GPD version:
 
 ```bash
-"$PYTHON_BIN" - <<'PY'
+LATEST_RELEASE_URL="{GPD_RELEASE_LATEST_URL}"
+PYTHON_BIN="${GPD_PYTHON:-}"
+
+if [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+fi
+
+"$PYTHON_BIN" - "$LATEST_RELEASE_URL" <<'PY'
 import json
+import sys
 import urllib.request
 
-with urllib.request.urlopen("https://registry.npmjs.org/get-physics-done/latest", timeout=10) as resp:
+with urllib.request.urlopen(sys.argv[1], timeout=10) as resp:
     data = json.load(resp)
 print(data["version"])
 PY
@@ -119,10 +86,10 @@ If that fails, show:
 ```text
 ## GPD Update
 
-Couldn't check for updates (offline or npm unavailable).
+Couldn't check for updates (offline or release metadata unavailable).
 
-To update manually, run:
-`<UPDATE_COMMAND>`
+To update manually, run the command from line 3 of the install detection output.
+If line 3 is empty, use the install-provenance repair guidance from step 1 instead.
 ```
 
 Then exit.
@@ -159,11 +126,7 @@ Then exit.
 </step>
 
 <step name="show_changes_and_confirm">
-If an update is available, fetch recent release notes before asking for confirmation.
-
-Preferred source:
-
-- GitHub Releases API: `https://api.github.com/repos/psi-oss/get-physics-done/releases`
+If an update is available, fetch recent release notes before asking for confirmation. Preferred source: GitHub Releases API `{GPD_RELEASES_API_URL}`.
 
 Show a short preview covering releases newer than the installed version and up to the latest version. If release notes cannot be fetched, say so briefly and continue with the update prompt anyway.
 
@@ -178,23 +141,14 @@ Display the confirmation prompt in this shape:
 ### What's New
 [short preview of recent release notes, or a brief fallback note]
 
->> **Note:** This reinstalls the current runtime's managed GPD files:
-- GPD command files for this runtime will be replaced
-- `get-physics-done/` will be replaced
-- `gpd-*` agent files will be replaced
+>> **Note:** This replaces the runtime's managed GPD commands, agents, and `{GPD_INSTALL_ROOT_DIR_NAME}/`.
 
 Custom files outside the managed GPD install are preserved.
-If you've modified managed GPD files directly, they will be backed up to `gpd-local-patches/` and can be reapplied with `/gpd:reapply-patches` after the update.
+If you've modified managed GPD files directly, they will be backed up to `{GPD_PATCHES_DIR_NAME}/` and can be reapplied with `gpd:reapply-patches` after the update.
 ```
 
-> **Platform note:** If `ask_user` is not available, present the choices in plain text and wait for the user's freeform response.
-
 Use ask_user:
-
-- Question: "Proceed with update?"
-- Options:
-  - "Yes, update now"
-  - "No, cancel"
+Question "Proceed with update?"; options "Yes, update now" and "No, cancel". If `ask_user` is unavailable, present the choices in plain text and wait for the user's freeform response.
 
 If the user cancels, exit.
 </step>
@@ -203,18 +157,49 @@ If the user cancels, exit.
 Run the update with the public bootstrap command from step 1:
 
 ```bash
-<UPDATE_COMMAND>
+if [ -z "$UPDATE_COMMAND" ]; then
+  printf '%s\n' \
+    "ERROR: UPDATE_COMMAND is empty; this install is missing trusted update provenance." \
+    "Repair explicitly: {GPD_BOOTSTRAP_COMMAND} install <runtime> ${INSTALL_SCOPE:-<line 2>} --target-dir ${GPD_CONFIG_DIR:-<line 4>}"
+  exit 2
+fi
+sh -c "$UPDATE_COMMAND"
 ```
 
 Capture output. If the update command fails, show the error and exit.
 
-Then clear update caches so indicators disappear immediately:
+Clear update-cache candidates with the hook helper when importable and literal paths as fallback:
 
 ```bash
-rm -f \
-  "{GPD_CONFIG_DIR}/cache/gpd-update-check.json" \
-  "{GPD_GLOBAL_CONFIG_DIR}/cache/gpd-update-check.json" \
-  "$HOME/GPD/cache/gpd-update-check.json"
+GPD_CONFIG_DIR="${GPD_CONFIG_DIR:-{GPD_CONFIG_DIR}}"
+GPD_GLOBAL_CONFIG_DIR="${GPD_GLOBAL_CONFIG_DIR:-{GPD_GLOBAL_CONFIG_DIR}}"
+PYTHON_BIN="${PYTHON_BIN:-${GPD_PYTHON:-}}"
+if [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+fi
+"$PYTHON_BIN" - "$GPD_CONFIG_DIR" "$GPD_GLOBAL_CONFIG_DIR" <<'PY'
+from pathlib import Path; import sys
+
+current_config = Path(sys.argv[1])
+current_global_config = Path(sys.argv[2])
+cache_files = set()
+for root in (current_config, current_global_config, Path.home() / "{GPD_HOME_DATA_DIR_NAME}"):
+    cache_files.add(root / "{GPD_CACHE_DIR_NAME}" / "{GPD_UPDATE_CACHE_FILENAME}")
+
+try:
+    from gpd.hooks.runtime_detect import get_update_cache_files, home_update_cache_file
+    cache_files.update(get_update_cache_files(cwd=Path.cwd(), home=Path.home()))
+    cache_files.add(home_update_cache_file(home=Path.home()))
+except Exception:
+    pass
+
+for cache_file in sorted(cache_files):
+    for candidate in (cache_file, cache_file.with_name(f"{cache_file.name}.inflight")):
+        try:
+            candidate.unlink(missing_ok=True)
+        except OSError:
+            pass
+PY
 ```
 </step>
 
@@ -228,7 +213,7 @@ Format completion like:
 
 >> Restart your AI agent to pick up the new commands.
 
-[View releases](https://github.com/psi-oss/get-physics-done/releases)
+[View releases]({GPD_RELEASES_PAGE_URL})
 ```
 </step>
 
@@ -239,7 +224,7 @@ If patches were backed up, show:
 
 ```text
 Local patches were backed up before the update.
-Run /gpd:reapply-patches to merge your modifications into the new version.
+Run gpd:reapply-patches to merge your modifications into the new version.
 ```
 
 Otherwise continue normally.
@@ -248,14 +233,12 @@ Otherwise continue normally.
 
 <success_criteria>
 
-- [ ] Installed version read from the runtime install
-- [ ] Latest released version checked from npm
+- [ ] Installed and latest released versions read from runtime install and canonical metadata
 - [ ] Update skipped if already current
 - [ ] Recent release notes shown before updating when available
 - [ ] Clean reinstall warning shown
 - [ ] User confirmation obtained
-- [ ] Runtime-specific update command executed successfully
-- [ ] Update caches cleared
+- [ ] Runtime-specific update command executed successfully and caches cleared
 - [ ] Restart reminder shown
 
 </success_criteria>

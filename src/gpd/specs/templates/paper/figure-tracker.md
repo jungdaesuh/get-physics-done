@@ -1,12 +1,13 @@
 ---
 template_version: 1
+type: figure-tracker-template
 ---
 
 <!-- Used by: write-paper workflow for tracking figure generation status. -->
 
 # Figure Tracker Template
 
-Template for `GPD/paper/FIGURE_TRACKER.md` — registry of all figures for the manuscript with source data, dependencies, and status.
+Template for `${PAPER_DIR}/FIGURE_TRACKER.md` — registry of all figures for the manuscript with source data, dependencies, and status.
 Use this template as the canonical schema source of truth before creating or updating the tracker. The `figure_registry` frontmatter is machine-readable and consumed by paper-quality scoring, so keep the keys and shapes shown below intact instead of paraphrasing them into prose.
 
 ---
@@ -16,11 +17,11 @@ Use this template as the canonical schema source of truth before creating or upd
 ```markdown
 ---
 figure_registry:
-  - id: fig-main
+  - id: fig-curvature-flow-bounds
     label: "Fig. 1"
     kind: figure
     role: smoking_gun|benchmark|comparison|sanity_check|publication_polish|other
-    path: paper/figures/fig-main.pdf
+    path: paper/figures/fig-curvature_flow_bounds.pdf
     contract_ids: [claim-id, deliverable-id]
     decisive: true
     has_units: true
@@ -29,7 +30,7 @@ figure_registry:
     caption_self_contained: true
     colorblind_safe: true
     comparison_sources:
-      - GPD/comparisons/main-benchmark-COMPARISON.md
+      - GPD/comparisons/curvature-flow-benchmark-COMPARISON.md
 ---
 
 # Figure Tracker: [Paper Title]

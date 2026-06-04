@@ -32,6 +32,9 @@ __all__ = [
     "QueryMatch",
     "QueryResult",
     "SummaryEntry",
+    "VALID_SCOPES",
+    "collect_all_markdown",
+    "collect_phase_markdown",
     "collect_summaries",
     "extract_context",
     "extract_requires_values",
@@ -46,8 +49,11 @@ __all__ = [
 # ─── Models ──────────────────────────────────────────────────────────────────────
 
 
+VALID_SCOPES = frozenset({"summary", "phase", "all"})
+
+
 class SummaryEntry(BaseModel):
-    """A parsed SUMMARY file from a phase directory."""
+    """A parsed markdown file from a phase directory (SUMMARY or other .md file)."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -108,6 +114,9 @@ class DepsResult(BaseModel):
     provides_by: DepsProvider | None = None
     provider_conflicts: list[DepsProvider] = Field(default_factory=list)
     required_by: list[DepsConsumer] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
+    direct_deps: list[str] = Field(default_factory=list)
+    transitive_deps: list[str] = Field(default_factory=list)
 
 
 class AssumptionAffected(BaseModel):
@@ -132,7 +141,6 @@ class AssumptionsResult(BaseModel):
 
 
 # ─── Internal Helpers ────────────────────────────────────────────────────────
-
 
 
 def _is_valid_phase_str(s: str) -> bool:
@@ -314,6 +322,112 @@ def _serialize_search_value(value: object) -> str:
         return str(value)
 
 
+def _load_result_registry_state(cwd: Path) -> dict[str, object]:
+    """Load state for read-only result-registry projection without repair writes."""
+
+    from gpd.core.state import peek_state_json
+
+    data, _issues, _state_source = peek_state_json(
+        cwd,
+        recover_intent=False,
+        surface_blocked_project_contract=True,
+        acquire_lock=False,
+    )
+    return data if isinstance(data, dict) else {}
+
+
+def _registry_context(*values: object) -> str | None:
+    parts = [str(value) for value in values if value]
+    return " | ".join(parts) if parts else None
+
+
+def _registry_result_matches(
+    result: object,
+    *,
+    provides: str | None,
+    requires: str | None,
+    equation: str | None,
+    text: str | None,
+) -> bool:
+    """Return whether a canonical result should be included in a query search."""
+
+    if provides and not _normalized_identifier_matches(provides, getattr(result, "id", None)):
+        return False
+
+    if requires and not any(
+        _normalized_identifier_matches(requires, dependency) for dependency in getattr(result, "depends_on", []) or []
+    ):
+        return False
+
+    if equation and not term_matches(equation, getattr(result, "equation", None) or ""):
+        return False
+
+    if text:
+        searchable_values = (
+            getattr(result, "id", None),
+            getattr(result, "description", None),
+            getattr(result, "equation", None),
+            getattr(result, "validity", None),
+        )
+        if not any(term_matches(text, str(value or "")) for value in searchable_values):
+            return False
+
+    return bool(provides or requires or equation or text)
+
+
+def _append_registry_search_matches(
+    cwd: Path,
+    matches: list[QueryMatch],
+    *,
+    provides: str | None,
+    requires: str | None,
+    equation: str | None,
+    text: str | None,
+    parsed_range: tuple[str, str] | None,
+) -> None:
+    """Append matches from the canonical intermediate-result registry."""
+
+    from gpd.core.results import result_list
+
+    state = _load_result_registry_state(cwd)
+    if not state:
+        return
+
+    for result in result_list(state):
+        phase = getattr(result, "phase", None) or ""
+        if parsed_range and phase:
+            phase_norm = phase_unpad(phase)
+            min_norm = phase_unpad(parsed_range[0])
+            max_norm = phase_unpad(parsed_range[1])
+            if compare_phase_numbers(phase_norm, min_norm) < 0 or compare_phase_numbers(phase_norm, max_norm) > 0:
+                continue
+        if not _registry_result_matches(
+            result,
+            provides=provides,
+            requires=requires,
+            equation=equation,
+            text=text,
+        ):
+            continue
+        matches.append(
+            QueryMatch(
+                phase=phase,
+                plan=None,
+                field="result_registry",
+                value=getattr(result, "id", None),
+                context=_registry_context(
+                    getattr(result, "equation", None),
+                    getattr(result, "description", None),
+                    getattr(result, "validity", None),
+                ),
+            )
+        )
+
+
+def _dependency_ids_from_items(items: list[object]) -> list[str]:
+    return [str(item.id) for item in items if getattr(item, "id", None)]
+
+
 # ─── Commands ────────────────────────────────────────────────────────────────
 
 
@@ -377,6 +491,111 @@ def collect_summaries(cwd: Path) -> list[SummaryEntry]:
     return results
 
 
+@instrument_gpd_function("query.collect_phase_markdown")
+def collect_phase_markdown(cwd: Path) -> list[SummaryEntry]:
+    """Enumerate all phase directories and collect non-SUMMARY .md files."""
+    layout = ProjectLayout(cwd)
+    phases_dir = layout.phases_dir
+    results: list[SummaryEntry] = []
+
+    if not phases_dir.is_dir():
+        return results
+
+    phase_dirs = sorted(
+        [d for d in phases_dir.iterdir() if d.is_dir()],
+        key=lambda d: _phase_sort_key(d.name),
+    )
+
+    for dir_path in phase_dirs:
+        phase_match = re.match(r"^(\d+(?:\.\d+)*)", dir_path.name)
+        phase_num = phase_match.group(1) if phase_match else dir_path.name
+
+        try:
+            files = list(dir_path.iterdir())
+        except OSError:
+            continue
+
+        md_files = [
+            f for f in files
+            if f.suffix.lower() == ".md" and not layout.is_summary_file(f.name)
+        ]
+
+        for md_file in md_files:
+            try:
+                content = md_file.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+
+            try:
+                fm, body = extract_frontmatter(content)
+            except FrontmatterParseError:
+                fm = {}
+                body = content
+
+            results.append(
+                SummaryEntry(
+                    phase=phase_num,
+                    dir_name=dir_path.name,
+                    file=md_file.name,
+                    plan=md_file.stem,
+                    frontmatter=fm,
+                    body=body,
+                )
+            )
+
+    return results
+
+
+@instrument_gpd_function("query.collect_all_markdown")
+def collect_all_markdown(cwd: Path) -> list[SummaryEntry]:
+    """Collect all .md files across the entire GPD project directory."""
+    layout = ProjectLayout(cwd)
+    gpd_dir = layout.gpd
+    results: list[SummaryEntry] = []
+
+    if not gpd_dir.is_dir():
+        return results
+
+    for md_file in gpd_dir.rglob("*.md"):
+        if not md_file.is_file():
+            continue
+
+        rel = md_file.relative_to(gpd_dir)
+        parts = rel.parts
+        phase_num = ""
+        dir_name = ""
+        if len(parts) >= 2 and parts[0] == "phases":
+            dir_name = parts[1]
+            phase_match = re.match(r"^(\d+(?:\.\d+)*)", dir_name)
+            phase_num = phase_match.group(1) if phase_match else dir_name
+        else:
+            dir_name = str(rel.parent)
+
+        try:
+            content = md_file.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+
+        try:
+            fm, body = extract_frontmatter(content)
+        except FrontmatterParseError:
+            fm = {}
+            body = content
+
+        results.append(
+            SummaryEntry(
+                phase=phase_num,
+                dir_name=dir_name,
+                file=md_file.name,
+                plan=md_file.stem,
+                frontmatter=fm,
+                body=body,
+            )
+        )
+
+    return sorted(results, key=lambda e: (_phase_sort_key(e.dir_name), e.file))
+
+
 @instrument_gpd_function("query.search")
 def query(
     cwd: Path,
@@ -387,17 +606,37 @@ def query(
     equation: str | None = None,
     phase_range: str | None = None,
     text: str | None = None,
+    scope: str = "summary",
 ) -> QueryResult:
-    """Search across all phase results.
+    """Search across phase results.
 
-    Scans all GPD/phases/*-SUMMARY.md files, matching frontmatter fields
-    and body text against the provided search terms.
+    Scans markdown files according to ``scope``: ``summary`` (default,
+    SUMMARY files only), ``phase`` (all .md in phase dirs), or ``all``
+    (entire GPD directory).  Frontmatter filters (provides/requires/affects)
+    always use SUMMARY files regardless of scope.
     """
-    summaries = collect_summaries(cwd)
+    if scope not in VALID_SCOPES:
+        raise QueryError(f"invalid scope {scope!r}; expected one of: {', '.join(sorted(VALID_SCOPES))}")
+
+    # provides/requires/affects are SUMMARY-specific frontmatter fields.
+    # equation and text search body content, so they respect --scope.
+    has_frontmatter_filter = any([provides, requires, affects])
+
+    if has_frontmatter_filter:
+        entries = collect_summaries(cwd)
+    elif scope == "summary":
+        entries = collect_summaries(cwd)
+    elif scope == "phase":
+        entries = collect_summaries(cwd) + collect_phase_markdown(cwd)
+    elif scope == "all":
+        entries = collect_all_markdown(cwd)
+    else:
+        entries = collect_summaries(cwd)
+
     matches: list[QueryMatch] = []
     parsed_range = parse_phase_range(phase_range)
 
-    for entry in summaries:
+    for entry in entries:
         phase = entry.phase
         plan = entry.plan
         fm = entry.frontmatter
@@ -496,6 +735,17 @@ def query(
         if not provides and not requires and not affects and not equation and not text:
             matches.append(QueryMatch(phase=phase, plan=plan, field="all", value=None, context=body[:200].strip()))
 
+    if not affects:
+        _append_registry_search_matches(
+            cwd,
+            matches,
+            provides=provides,
+            requires=requires,
+            equation=equation,
+            text=text,
+            parsed_range=parsed_range,
+        )
+
     return QueryResult(matches=matches, total=len(matches))
 
 
@@ -514,6 +764,9 @@ def query_deps(cwd: Path, identifier: str) -> DepsResult:
     summaries = collect_summaries(cwd)
     provider_matches: list[DepsProvider] = []
     required_by: list[DepsConsumer] = []
+    registry_depends_on: list[str] = []
+    registry_direct_deps: list[str] = []
+    registry_transitive_deps: list[str] = []
 
     for entry in summaries:
         phase = entry.phase
@@ -536,10 +789,47 @@ def query_deps(cwd: Path, identifier: str) -> DepsResult:
                 required_by.append(DepsConsumer(phase=phase, plan=plan, value=rv))
                 break
 
+    state = _load_result_registry_state(cwd)
+    if state:
+        from gpd.core.errors import ResultNotFoundError
+        from gpd.core.results import result_deps, result_downstream, result_search
+
+        try:
+            deps = result_deps(state, identifier)
+        except ResultNotFoundError:
+            deps = None
+        if deps is not None:
+            provider_matches.append(
+                DepsProvider(
+                    phase=deps.result.phase or "",
+                    plan=None,
+                    value=deps.result.id,
+                )
+            )
+            registry_depends_on = list(deps.depends_on)
+            registry_direct_deps = _dependency_ids_from_items(list(deps.direct_deps))
+            registry_transitive_deps = _dependency_ids_from_items(list(deps.transitive_deps))
+
+            try:
+                downstream = result_downstream(state, identifier)
+            except ResultNotFoundError:
+                downstream = None
+            if downstream is not None:
+                for dependent in downstream.direct_dependents:
+                    if not any(item.value == dependent.id for item in required_by):
+                        required_by.append(DepsConsumer(phase=dependent.phase or "", plan=None, value=dependent.id))
+        else:
+            for dependent in result_search(state, depends_on=identifier).matches:
+                if not any(item.value == dependent.id for item in required_by):
+                    required_by.append(DepsConsumer(phase=dependent.phase or "", plan=None, value=dependent.id))
+
     return DepsResult(
         provides_by=provider_matches[-1] if provider_matches else None,
         provider_conflicts=provider_matches[:-1],
         required_by=required_by,
+        depends_on=registry_depends_on,
+        direct_deps=registry_direct_deps,
+        transitive_deps=registry_transitive_deps,
     )
 
 
@@ -619,6 +909,31 @@ def query_assumptions(cwd: Path, assumption: str) -> AssumptionsResult:
                     context=extract_context(body, assumption),
                 )
             )
+
+    from gpd.core.results import result_list
+
+    state = _load_result_registry_state(cwd)
+    for result in result_list(state):
+        searchable_values = (
+            getattr(result, "id", None),
+            getattr(result, "description", None),
+            getattr(result, "equation", None),
+            getattr(result, "validity", None),
+        )
+        if not any(term_matches(assumption, str(value or "")) for value in searchable_values):
+            continue
+        affected.append(
+            AssumptionAffected(
+                phase=getattr(result, "phase", None) or "",
+                plan=None,
+                found_in=["result_registry"],
+                context=_registry_context(
+                    getattr(result, "equation", None),
+                    getattr(result, "description", None),
+                    getattr(result, "validity", None),
+                ),
+            )
+        )
 
     return AssumptionsResult(
         assumption=assumption,

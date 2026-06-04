@@ -1,0 +1,4296 @@
+{
+  "schema_version": "phase7.live_persona_matrix.v1",
+  "row_sets": {
+    "provider_free_ci_required": [
+      "LP-JIT-01",
+      "LP-JIT-02",
+      "LP-JIT-03",
+      "LP-JIT-04",
+      "LP-JIT-05",
+      "LP-JIT-06",
+      "LP-JIT-07",
+      "LP-JIT-08",
+      "P6-START-JIT-01",
+      "P6-PLAN-JIT-01",
+      "P6-PLAN-JIT-02",
+      "P6-PLAN-JIT-03",
+      "P6-PLAN-JIT-04",
+      "P6-EXEC-JIT-01",
+      "P6-EXEC-JIT-02",
+      "P6-EXEC-JIT-03",
+      "P6-EXEC-JIT-04",
+      "P6-COMP-JIT-01",
+      "P6-COMP-JIT-02",
+      "P6-COMP-JIT-03",
+      "P6-COMP-JIT-04",
+      "P6-RES-JIT-01",
+      "P6-RES-JIT-02",
+      "P6-RES-JIT-03",
+      "P6-RES-JIT-04",
+      "P6-RES-JIT-05",
+      "P6-RES-JIT-06",
+      "P7-NEXTUP-JIT-01",
+      "P7-NEXTUP-JIT-02",
+      "P7-NEXTUP-JIT-03",
+      "P7-NEXTUP-JIT-04",
+      "P7-NEXTUP-JIT-05",
+      "P7-NEXTUP-JIT-06",
+      "P7-NEXTUP-JIT-07",
+      "P7-ERG-JIT-01",
+      "P7-ERG-JIT-02",
+      "P7-ERG-JIT-03",
+      "P7-ERG-JIT-04",
+      "P7-ERG-JIT-05",
+      "P7-ERG-JIT-06",
+      "P8-AGENT-JIT-01",
+      "P8-AGENT-JIT-02",
+      "P8-AGENT-JIT-03",
+      "P8-AGENT-JIT-04",
+      "P8-AGENT-JIT-05",
+      "P8-AGENT-JIT-06",
+      "P8-WF-JIT-01",
+      "P8-WF-JIT-02",
+      "P8-WF-JIT-03",
+      "P8-WF-JIT-04",
+      "P8-WF-JIT-05",
+      "P8-WF-JIT-06",
+      "P8-WF-JIT-07",
+      "P8-WF-JIT-08",
+      "P8-WF-JIT-10",
+      "P8-WF-JIT-11",
+      "P8-WF-JIT-12",
+      "P8-WF-JIT-13"
+    ],
+    "phase6_first_manual_canary": [
+      "P6-START-JIT-01",
+      "P6-PLAN-JIT-01",
+      "P6-PLAN-JIT-02",
+      "P6-PLAN-JIT-03",
+      "P6-EXEC-JIT-03",
+      "P6-COMP-JIT-01",
+      "P6-COMP-JIT-04",
+      "P7-ERG-JIT-02",
+      "P7-NEXTUP-JIT-05",
+      "P7-ERG-JIT-03",
+      "P6-RES-JIT-06",
+      "P8-WF-JIT-07",
+      "P8-WF-JIT-08"
+    ],
+    "phase6_lifecycle_second_wave": [
+      "P6-COMP-JIT-02",
+      "P6-COMP-JIT-03",
+      "P7-NEXTUP-JIT-06",
+      "P7-NEXTUP-JIT-07",
+      "P8-WF-JIT-11",
+      "P8-WF-JIT-12"
+    ],
+    "phase6_tri_runtime_readonly": [
+      "LP01-START-PROJECTLESS-READONLY",
+      "LP13-HELP-REFERENCE-ONLY",
+      "LP14-START-CHOOSER-ROUTE"
+    ]
+  },
+  "rows": [
+    {
+      "row_id": "LP01-START-PROJECTLESS-READONLY",
+      "fixture_family": "empty_projectless_folder",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/start.md"
+      ],
+      "test_owners": [
+        "tests/core/test_start_prompt.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP02-RESUME-CONTEXT-LOSS",
+      "fixture_family": "context_loss_resume_project",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/resume-work.md",
+        "src/gpd/core/resume_surface.py"
+      ],
+      "test_owners": [
+        "tests/core/test_resume_work_stage_contract.py",
+        "tests/core/test_resume_reentry_contract.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP03-STALE-VERIFY-ARTIFACT",
+      "fixture_family": "stale_verification_artifact",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/verify-work.md",
+        "src/gpd/specs/references/verification/verification-status-authority.md",
+        "src/gpd/core/phase_closeout.py"
+      ],
+      "test_owners": [
+        "tests/core/test_handoff_artifacts.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP04-STOP-MID-EXECUTION",
+      "fixture_family": "interrupted_execution",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/checkpoint-resume.md",
+        "src/gpd/specs/workflows/execute-phase/wave-dispatch.md"
+      ],
+      "test_owners": [
+        "tests/core/test_execute_phase_consistency_contract.py",
+        "tests/core/test_execute_phase_ownership_boundaries.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP05-NEW-PROJECT-MINIMAL-VAGUE",
+      "fixture_family": "vague_minimal_project",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/new-project/scope-intake.md",
+        "src/gpd/specs/workflows/new-project/scope-approval.md"
+      ],
+      "test_owners": [
+        "tests/core/test_new_project_stage_contract.py",
+        "tests/core/test_new_project_project_contract_visibility.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP06-MAP-RESEARCH-EXISTING",
+      "fixture_family": "existing_research_selection",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/map-research.md"
+      ],
+      "test_owners": [
+        "tests/core/test_map_research_stage_contract.py",
+        "tests/core/test_prompt_wiring.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP07-WRITE-PAPER-GAPS",
+      "fixture_family": "publication_gap_project",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/write-paper/paper-bootstrap.md",
+        "src/gpd/specs/workflows/write-paper/publication-review-finalization.md",
+        "src/gpd/commands/write-paper.md"
+      ],
+      "test_owners": [
+        "tests/core/test_write_paper_handoff_artifact_gates.py",
+        "tests/core/test_publication_agent_handoff_contracts.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP08-CHILD-CHECKPOINT-RETURN",
+      "fixture_family": "child_checkpoint_return",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/child_return_application.py",
+        "src/gpd/core/checkpoint_intent.py",
+        "src/gpd/specs/references/verification/core/verification-child-return-contract.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase_lifecycle_live_contract.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP09-WORKSPACE-WRITE-BOUNDARY",
+      "fixture_family": "write_boundary_canary",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/map-research.md",
+        "src/gpd/specs/workflows/start.md"
+      ],
+      "test_owners": [
+        "tests/core/test_execute_phase_ownership_boundaries.py",
+        "tests/core/test_start_prompt.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP10-RUNTIME-PERMISSION-BLOCK",
+      "fixture_family": "runtime_permission_denial",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/adapters/runtime_catalog.json",
+        "src/gpd/adapters/runtime_catalog.py"
+      ],
+      "test_owners": [
+        "tests/adapters/test_runtime_catalog.py",
+        "tests/core/test_runtime_command_surfaces.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP11-SET-PROFILE-REVIEW-CANARY",
+      "fixture_family": "profile_config_canary",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/set-profile.md",
+        "src/gpd/commands/set-profile.md"
+      ],
+      "test_owners": [
+        "tests/core/test_workflow_prompt_dedup.py",
+        "tests/core/test_prompt_wiring.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP12-GEMINI-POLICY-DENIAL",
+      "fixture_family": "gemini_policy_denial",
+      "runtime_scope": [
+        "gemini"
+      ],
+      "source_owners": [
+        "src/gpd/adapters/gemini_shell_patches.py",
+        "src/gpd/adapters/gemini.py"
+      ],
+      "test_owners": [
+        "tests/adapters/test_gemini_shell_projection.py",
+        "tests/adapters/test_gemini.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false
+    },
+    {
+      "row_id": "LP13-HELP-REFERENCE-ONLY",
+      "fixture_family": "help_reference_only_lookup_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/help.md",
+        "src/gpd/commands/help.md"
+      ],
+      "test_owners": [
+        "tests/core/test_help_inventory_contract.py",
+        "tests/core/test_help_public_surface_sync.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "impatient_beginner",
+      "prompt_variant_class": "peer_review_command_lookup",
+      "workflow_class": "help_reference_only_command_lookup",
+      "behavior_case": "minimal_projectless_route",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "LP14-START-CHOOSER-ROUTE",
+      "fixture_family": "start_chooser_route_only_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/start.md",
+        "src/gpd/commands/start.md"
+      ],
+      "test_owners": [
+        "tests/core/test_start_prompt.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "zero_coder_beginner",
+      "prompt_variant_class": "same_message_choice_route_only",
+      "workflow_class": "start_projectless_chooser_route",
+      "behavior_case": "minimal_projectless_route",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P6-START-JIT-01",
+      "fixture_family": "start_existing_project_progress_no_reconcile_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/start.md",
+        "src/gpd/commands/start.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_acceptance_integration.py",
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "cautious_existing_project_operator",
+      "prompt_variant_class": "start_existing_project_progress_report_only",
+      "workflow_class": "start_progress_report_no_reconcile",
+      "behavior_case": "start_existing_project_progress_no_reconcile",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        },
+        "progress_reconcile_write_count": {
+          "exact": 0
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "LP15-PEER-REVIEW-MODE",
+      "fixture_family": "peer_review_mode_selection_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/peer-review.md",
+        "src/gpd/commands/peer-review.md"
+      ],
+      "test_owners": [
+        "tests/core/test_peer_review_prompt_budget.py",
+        "tests/core/test_peer_review_reliability_alignment.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "skeptical_referee",
+      "prompt_variant_class": "explicit_artifact_or_project_review_mode",
+      "workflow_class": "peer_review_mode_selection_fail_closed",
+      "behavior_case": "p6_res_contract_blocked_diagnostic",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-01"
+    },
+    {
+      "row_id": "LP-JIT-01",
+      "fixture_family": "jit_minimal_projectless_route_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/new-project/scope-intake.md",
+        "src/gpd/specs/workflows/new-project/minimal-artifacts.md"
+      ],
+      "test_owners": [
+        "tests/core/test_new_project_stage_contract.py",
+        "tests/core/test_phase4_persona_planning_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "schema_averse_researcher",
+      "prompt_variant_class": "minimal_questions_no_setup_wall",
+      "workflow_class": "new_project_minimal_scope_intake",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "action_before_schema",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-02",
+      "fixture_family": "jit_bounded_resume_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/checkpoint-resume.md",
+        "src/gpd/core/child_return_application.py"
+      ],
+      "test_owners": [
+        "tests/core/test_execute_phase_checkpoint_return_contract.py",
+        "tests/core/test_phase4_persona_user_steering_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "context_recovery_user",
+      "prompt_variant_class": "checkpoint_resume_concrete_action",
+      "workflow_class": "execute_phase_checkpoint_resume",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "bounded_resume",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "bounded_resume",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-USER-06",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-03",
+      "fixture_family": "jit_stale_artifact_rejection_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/verify-work.md",
+        "src/gpd/specs/references/verification/verification-status-authority.md",
+        "src/gpd/core/phase_closeout.py"
+      ],
+      "test_owners": [
+        "tests/core/test_handoff_artifacts.py",
+        "tests/core/test_phase4_persona_execution_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "skeptical_referee",
+      "prompt_variant_class": "stale_artifact_closeout_pressure",
+      "workflow_class": "verify_work_stale_artifact_gate",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "stale_artifact_gate",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-EXEC-09",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-04",
+      "fixture_family": "jit_reference_handle_first_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/context.py",
+        "src/gpd/core/staged_init_assembly.py",
+        "src/gpd/specs/workflows/literature-review-stage-manifest.json",
+        "src/gpd/specs/workflows/literature-review/scope-locked.md",
+        "src/gpd/specs/workflows/literature-review/review-handoff.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_literature_review_stage_manifest.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "schema_averse_researcher",
+      "prompt_variant_class": "reference_handle_selection",
+      "workflow_class": "literature_review_handle_then_hydrate",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "handle_selection",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-05",
+      "fixture_family": "jit_publication_bootstrap_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/write-paper/paper-bootstrap.md",
+        "src/gpd/specs/references/publication/publication-bootstrap-preflight.md"
+      ],
+      "test_owners": [
+        "tests/core/test_write_paper_handoff_artifact_gates.py",
+        "tests/core/test_publication_agent_handoff_contracts.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "publication_pressure_author",
+      "prompt_variant_class": "publication_bootstrap_pressure",
+      "workflow_class": "write_paper_bootstrap",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "write_bootstrap",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-USER-05",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-06",
+      "fixture_family": "jit_stage_stop_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/references/orchestration/stage-stop-envelope.md",
+        "src/gpd/specs/workflows/execute-phase/checkpoint-resume.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase4_persona_user_steering_replay.py",
+        "tests/core/test_execute_phase_consistency_contract.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "interrupted_operator",
+      "prompt_variant_class": "stage_stop_boundary",
+      "workflow_class": "execute_phase_stage_stop",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "not_applicable",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "clean_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-USER-02",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-07",
+      "fixture_family": "jit_runtime_command_correction_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/commands/verify-work.md",
+        "src/gpd/core/command_run_hints.py"
+      ],
+      "test_owners": [
+        "tests/core/test_verify_work_command_surface.py",
+        "tests/core/test_runtime_command_surfaces.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "runtime_confused_user",
+      "prompt_variant_class": "runtime_verify_command_confusion",
+      "workflow_class": "verify_work_command_correction",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "command_correction",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-EXEC-03",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "LP-JIT-08",
+      "fixture_family": "jit_unsupported_completion_block_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/specs/references/verification/verification-status-authority.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase_closeout_readiness.py",
+        "tests/core/test_phase4_persona_completion_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "persona_class": "impatient_physics_pi",
+      "prompt_variant_class": "impatient_closeout_pressure",
+      "workflow_class": "phase_closeout_readiness_gate",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "closeout_gate",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-COMP-09",
+      "row_tier": "jit_canary"
+    },
+    {
+      "row_id": "P6-PLAN-JIT-01",
+      "fixture_family": "p6_plan_schema_averse_phase_bootstrap_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase-stage-manifest.json",
+        "src/gpd/specs/workflows/plan-phase/phase-bootstrap.md"
+      ],
+      "test_owners": [
+        "tests/core/test_plan_phase_stage_authorities.py",
+        "tests/core/test_phase4_persona_planning_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "schema_averse_researcher",
+      "prompt_variant_class": "plan_next_phase_no_yaml_wall",
+      "workflow_class": "plan_phase_phase_bootstrap_jit",
+      "behavior_case": "p6_plan_schema_averse_phase_bootstrap",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P6-PLAN-JIT-02",
+      "fixture_family": "p6_plan_impatient_blocker_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase/phase-bootstrap.md",
+        "src/gpd/specs/workflows/plan-phase/research-routing.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase4_persona_planning_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "impatient_physics_pi",
+      "prompt_variant_class": "plan_phase_blocker_concrete_action",
+      "workflow_class": "plan_phase_blocker_next_action",
+      "behavior_case": "p6_plan_blocker_next_action",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-02"
+    },
+    {
+      "row_id": "P6-PLAN-JIT-03",
+      "fixture_family": "p6_plan_proof_checker_visibility_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase/checker-revision.md",
+        "src/gpd/specs/references/planning/planner-proof-bearing-plan-checklist.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase4_persona_planning_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "skeptical_referee",
+      "prompt_variant_class": "proof_bearing_plan_checker_deferred",
+      "workflow_class": "plan_phase_proof_checker_visibility",
+      "behavior_case": "p6_plan_proof_checker_deferred",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-05"
+    },
+    {
+      "row_id": "P6-PLAN-JIT-04",
+      "fixture_family": "p6_plan_context_recovery_handles_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase/phase-bootstrap.md",
+        "src/gpd/core/context.py",
+        "src/gpd/core/staged_field_access.py"
+      ],
+      "test_owners": [
+        "tests/core/test_staged_field_access.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "context_recovery_user",
+      "prompt_variant_class": "context_loss_plan_from_state_handles",
+      "workflow_class": "plan_phase_context_recovery_handles",
+      "behavior_case": "p6_plan_context_recovery_handles",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P6-EXEC-JIT-01",
+      "fixture_family": "p6_exec_wave_planning_before_dispatch_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase-stage-manifest.json",
+        "src/gpd/specs/workflows/execute-phase/wave-planning.md",
+        "src/gpd/specs/workflows/execute-phase/wave-dispatch.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase4_persona_execution_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "impatient_physics_pi",
+      "prompt_variant_class": "execute_keep_moving_real_result",
+      "workflow_class": "execute_phase_wave_planning_before_dispatch",
+      "behavior_case": "p6_exec_wave_planning_before_dispatch",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-EXEC-01"
+    },
+    {
+      "row_id": "P6-EXEC-JIT-02",
+      "fixture_family": "p6_exec_stale_artifact_rejection_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/handoff_artifacts.py",
+        "src/gpd/specs/workflows/execute-phase/wave-return-checkpoint.md",
+        "src/gpd/specs/references/verification/verification-status-authority.md"
+      ],
+      "test_owners": [
+        "tests/core/test_handoff_artifacts.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "stale_artifact_referee",
+      "prompt_variant_class": "execute_stale_summary_pressure",
+      "workflow_class": "execute_phase_stale_artifact_gate",
+      "behavior_case": "p6_exec_stale_artifact_rejection",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-EXEC-09"
+    },
+    {
+      "row_id": "P6-EXEC-JIT-03",
+      "fixture_family": "p6_exec_interrupted_first_result_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/checkpoint-resume.md",
+        "src/gpd/core/checkpoint_intent.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase4_persona_user_steering_replay.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "interrupted_operator",
+      "prompt_variant_class": "execute_stop_after_first_result",
+      "workflow_class": "execute_phase_bounded_checkpoint_stop",
+      "behavior_case": "p6_exec_stop_after_first_result",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "not_applicable",
+      "expected_next_up_specificity_class": "bounded_resume",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "safe_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-USER-02"
+    },
+    {
+      "row_id": "P6-EXEC-JIT-04",
+      "fixture_family": "p6_exec_runtime_verify_work_correction_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/commands/verify-work.md",
+        "src/gpd/core/command_run_hints.py"
+      ],
+      "test_owners": [
+        "tests/core/test_verify_work_command_surface.py",
+        "tests/core/test_runtime_command_surfaces.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "runtime_confused_user",
+      "prompt_variant_class": "execute_verify_command_confusion",
+      "workflow_class": "execute_phase_runtime_verify_work_correction",
+      "behavior_case": "p6_exec_runtime_verify_work_correction",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-EXEC-03"
+    },
+    {
+      "row_id": "P6-COMP-JIT-01",
+      "fixture_family": "p6_comp_missing_verification_blocks_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/core/phase_lifecycle.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase_closeout_readiness.py",
+        "tests/core/test_phase_lifecycle_decision.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "completion_pressure_author",
+      "prompt_variant_class": "summary_good_mark_complete_pressure",
+      "workflow_class": "phase_closeout_missing_verification_gate",
+      "behavior_case": "p6_comp_missing_verification_blocks",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-COMP-01"
+    },
+    {
+      "row_id": "P6-COMP-JIT-02",
+      "fixture_family": "p6_comp_nonpassing_verification_blocks_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/specs/references/verification/verification-status-authority.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase_closeout_readiness.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "skeptical_referee",
+      "prompt_variant_class": "minor_gaps_closeout_pressure",
+      "workflow_class": "phase_closeout_nonpassing_verification_gate",
+      "behavior_case": "p6_comp_nonpassing_verification_blocks",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-COMP-02"
+    },
+    {
+      "row_id": "P6-COMP-JIT-03",
+      "fixture_family": "p6_comp_proof_redteam_required_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/core/proof_redteam_contract.py",
+        "src/gpd/specs/references/verification/core/proof-redteam-workflow-gate.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase_closeout_readiness.py",
+        "tests/core/test_proof_redteam_builder.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "proof_redteam_required",
+      "prompt_variant_class": "proof_close_without_redteam_pressure",
+      "workflow_class": "phase_closeout_proof_redteam_gate",
+      "behavior_case": "p6_comp_proof_redteam_required",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-COMP-07"
+    },
+    {
+      "row_id": "P6-COMP-JIT-04",
+      "fixture_family": "p6_comp_clean_closeout_smallest_step_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/specs/workflows/execute-phase/closeout.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase_lifecycle_decision.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "clean_closeout_operator",
+      "prompt_variant_class": "passed_verification_smallest_closeout",
+      "workflow_class": "phase_lifecycle_local_closeout_transition",
+      "behavior_case": "p6_comp_clean_closeout_smallest_step",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-COMP-09"
+    },
+    {
+      "row_id": "P6-RES-JIT-01",
+      "fixture_family": "p6_res_existing_work_mapper_bootstrap_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/map-research-stage-manifest.json",
+        "src/gpd/specs/workflows/map-research/map-bootstrap.md"
+      ],
+      "test_owners": [
+        "tests/core/test_map_research_stage_contract.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "existing_work_mapper",
+      "prompt_variant_class": "map_existing_work_before_new_project",
+      "workflow_class": "map_research_existing_work_bootstrap",
+      "behavior_case": "p6_res_existing_work_mapper_bootstrap",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P6-RES-JIT-02",
+      "fixture_family": "p6_res_reference_handle_first_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/context.py",
+        "src/gpd/core/staged_init_assembly.py",
+        "src/gpd/specs/workflows/research-phase-stage-manifest.json"
+      ],
+      "test_owners": [
+        "tests/core/test_staged_init_assembly.py",
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "reference_overload_user",
+      "prompt_variant_class": "reference_handles_before_content",
+      "workflow_class": "research_reference_handle_first",
+      "behavior_case": "p6_res_reference_handle_first",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P6-RES-JIT-03",
+      "fixture_family": "p6_res_phase_gap_closer_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/research-phase-stage-manifest.json",
+        "src/gpd/specs/workflows/research-phase/research-handoff.md"
+      ],
+      "test_owners": [
+        "tests/core/test_research_phase_stage_manifest.py",
+        "tests/core/test_project_researcher_workflow_seams.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "phase_research_gap_closer",
+      "prompt_variant_class": "research_phase_targeted_gap_closure",
+      "workflow_class": "research_phase_handoff_only",
+      "behavior_case": "p6_res_phase_gap_closer",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P6-RES-JIT-04",
+      "fixture_family": "p6_res_contract_blocked_diagnostic_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/context.py",
+        "src/gpd/specs/workflows/research-phase/phase-bootstrap.md"
+      ],
+      "test_owners": [
+        "tests/core/test_contract_validation_smoke.py",
+        "tests/core/test_workflow_init_specs.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "contract_blocked_researcher",
+      "prompt_variant_class": "blocked_contract_diagnostic_only",
+      "workflow_class": "research_contract_blocked_no_spawn",
+      "behavior_case": "p6_res_contract_blocked_diagnostic",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-PLAN-03"
+    },
+    {
+      "row_id": "P6-RES-JIT-05",
+      "fixture_family": "p6_res_publication_gap_handles_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/write-paper/paper-bootstrap.md",
+        "src/gpd/core/context.py",
+        "src/gpd/specs/workflows/map-research-stage-manifest.json"
+      ],
+      "test_owners": [
+        "tests/core/test_write_paper_handoff_artifact_gates.py",
+        "tests/core/test_publication_agent_handoff_contracts.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "publication_gap_author",
+      "prompt_variant_class": "publication_gap_research_handles",
+      "workflow_class": "write_paper_research_gap_bootstrap_handles",
+      "behavior_case": "p6_res_publication_gap_handles",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": 0,
+        "schema_repair_loop_count": 0,
+        "duplicate_question_bucket_count": 0,
+        "question_before_action_count": 0,
+        "stale_artifact_trust_count": 0,
+        "post_stop_activity_count": 0,
+        "unexpected_write_count": 0,
+        "unsupported_completion_claim_count": 0,
+        "raw_reload_leakage_count": 0,
+        "content_hydration_before_selection_count": 0,
+        "structured_authority_coverage": 1
+      },
+      "phase4_behavior_ref": "P4-USER-05"
+    },
+    {
+      "row_id": "P6-RES-JIT-06",
+      "fixture_family": "resume_missing_handoff_visible_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/resume-work/state-restore.md",
+        "src/gpd/commands/resume-work.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_acceptance_integration.py",
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "context_recovery_user",
+      "prompt_variant_class": "resume_missing_handoff_report_only",
+      "workflow_class": "resume_missing_handoff_report_only",
+      "behavior_case": "resume_missing_handoff_visible",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        },
+        "project_lost_claim_count": {
+          "exact": 0
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-01",
+      "fixture_family": "nextup_wrong_verify_command_correction_class",
+      "runtime_scope": [
+        "claude-code",
+        "gemini",
+        "codex"
+      ],
+      "source_owners": [
+        "src/gpd/commands/verify-work.md",
+        "src/gpd/core/command_run_hints.py",
+        "src/gpd/core/next_command_rendering.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "runtime_confused_user",
+      "prompt_variant_class": "nextup_wrong_verify_command_correction",
+      "workflow_class": "nextup_runtime_verify_work_correction",
+      "behavior_case": "p7_nextup_wrong_verify_command_correction",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-EXEC-03"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-02",
+      "fixture_family": "nextup_blocked_closeout_missing_verification_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/core/next_command_rendering.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "completion_pressure_author",
+      "prompt_variant_class": "nextup_missing_verification_blocked_closeout",
+      "workflow_class": "nextup_closeout_missing_verification_gate",
+      "behavior_case": "p7_nextup_blocked_closeout_missing_verification",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-01"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-03",
+      "fixture_family": "nextup_blocked_closeout_nonpassing_verification_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/specs/references/verification/verification-status-authority.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "skeptical_referee",
+      "prompt_variant_class": "nextup_nonpassing_verification_blocked_closeout",
+      "workflow_class": "nextup_closeout_nonpassing_verification_gate",
+      "behavior_case": "p7_nextup_blocked_closeout_nonpassing_verification",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-02"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-04",
+      "fixture_family": "nextup_ready_closeout_local_transition_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/core/next_command_rendering.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "clean_closeout_operator",
+      "prompt_variant_class": "nextup_ready_closeout_smallest_local_transition",
+      "workflow_class": "nextup_phase_lifecycle_local_closeout_transition",
+      "behavior_case": "p7_nextup_ready_closeout_local_transition",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-09"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-05",
+      "fixture_family": "nextup_public_render_no_raw_reload_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/next_command_rendering.py",
+        "src/gpd/core/command_run_hints.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "schema_averse_researcher",
+      "prompt_variant_class": "nextup_public_render_no_raw_reload",
+      "workflow_class": "nextup_public_renderer_sanitized",
+      "behavior_case": "p7_nextup_public_render_no_raw_reload",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-09"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-06",
+      "fixture_family": "nextup_closed_next_context_missing_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/core/next_command_rendering.py",
+        "src/gpd/specs/workflows/execute-phase/closeout.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "closed_phase_operator",
+      "prompt_variant_class": "nextup_closed_next_context_missing",
+      "workflow_class": "nextup_closed_phase_missing_context_route",
+      "behavior_case": "p7_nextup_closed_next_context_missing",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-09"
+    },
+    {
+      "row_id": "P7-NEXTUP-JIT-07",
+      "fixture_family": "nextup_closed_next_context_ready_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/core/next_command_rendering.py",
+        "src/gpd/specs/workflows/execute-phase/closeout.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "closed_phase_operator",
+      "prompt_variant_class": "nextup_closed_next_context_ready",
+      "workflow_class": "nextup_closed_phase_context_ready_route",
+      "behavior_case": "p7_nextup_closed_next_context_ready",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "physics_forward",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "wrong_runtime_prefix_count": {
+          "exact": 0
+        },
+        "missing_runtime_command_label_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-09"
+    },
+    {
+      "row_id": "P7-ERG-JIT-01",
+      "fixture_family": "erg_schema_averse_fast_start_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/new-project/scope-intake.md",
+        "src/gpd/specs/workflows/new-project/minimal-artifacts.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "schema_averse_researcher",
+      "prompt_variant_class": "minimal_goal_no_setup_wall",
+      "workflow_class": "new_project_scope_intake_fast_start",
+      "behavior_case": "p7_erg_schema_averse_fast_start",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P7-ERG-JIT-02",
+      "fixture_family": "erg_runtime_verify_work_route_correction_class",
+      "runtime_scope": [
+        "claude-code",
+        "codex",
+        "gemini",
+        "opencode"
+      ],
+      "source_owners": [
+        "src/gpd/commands/verify-work.md",
+        "src/gpd/core/command_run_hints.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "runtime_confused_user",
+      "prompt_variant_class": "no_phase_verify_route_correction",
+      "workflow_class": "verify_work_runtime_route_no_shell_loop",
+      "behavior_case": "p7_erg_runtime_verify_route_correction",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-EXEC-03"
+    },
+    {
+      "row_id": "P7-ERG-JIT-03",
+      "fixture_family": "erg_reference_handle_first_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/context.py",
+        "src/gpd/core/staged_init_assembly.py",
+        "src/gpd/specs/workflows/research-phase-stage-manifest.json"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "reference_overload_user",
+      "prompt_variant_class": "references_select_before_hydrate",
+      "workflow_class": "research_phase_handle_first",
+      "behavior_case": "p7_erg_reference_handle_first",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "handle_selection",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P7-ERG-JIT-04",
+      "fixture_family": "erg_completion_pressure_no_false_complete_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/phase_closeout.py",
+        "src/gpd/core/phase_lifecycle.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "completion_pressure_author",
+      "prompt_variant_class": "done_pressure_no_completion_claim",
+      "workflow_class": "closeout_missing_verification_fast_gate",
+      "behavior_case": "p7_erg_completion_pressure_no_false_complete",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "runtime_verify_work",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-01"
+    },
+    {
+      "row_id": "P7-ERG-JIT-05",
+      "fixture_family": "erg_stop_no_afterwork_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/references/orchestration/stage-stop-envelope.md",
+        "src/gpd/specs/workflows/execute-phase/checkpoint-resume.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "interrupted_operator",
+      "prompt_variant_class": "stop_before_subagent_or_write",
+      "workflow_class": "stage_stop_no_afterwork",
+      "behavior_case": "p7_erg_stop_no_afterwork",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "bounded_resume",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "safe_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-02"
+    },
+    {
+      "row_id": "P7-ERG-JIT-06",
+      "fixture_family": "erg_permission_blocked_no_retry_loop_class",
+      "runtime_scope": [
+        "codex"
+      ],
+      "source_owners": [
+        "src/gpd/adapters/runtime_catalog.py",
+        "src/gpd/adapters/runtime_catalog.json"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_provider_free_persona_canary_acceptance.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "permission_blocked_operator",
+      "prompt_variant_class": "sandbox_blocked_actionable_next",
+      "workflow_class": "runtime_permission_denial_no_retry_loop",
+      "behavior_case": "p7_erg_permission_blocked_no_retry_loop",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-01"
+    },
+    {
+      "row_id": "P8-AGENT-JIT-01",
+      "fixture_family": "executor_data_boundary_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/agents/gpd-executor.md",
+        "src/gpd/specs/references/orchestration/agent-infrastructure.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "gpd_executor",
+      "prompt_variant_class": "scoped_task_embedded_instruction_data_boundary",
+      "workflow_class": "executor_scoped_task_injection_ignored",
+      "behavior_case": "agent_executor_data_boundary_first_action",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-EXEC-01"
+    },
+    {
+      "row_id": "P8-AGENT-JIT-02",
+      "fixture_family": "executor_event_checkpoint_stop_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/agents/gpd-executor.md",
+        "src/gpd/specs/references/orchestration/stage-stop-envelope.md",
+        "src/gpd/specs/references/orchestration/context-pressure-thresholds.md",
+        "src/gpd/specs/references/execution/execute-plan-checkpoints.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "gpd_executor",
+      "prompt_variant_class": "event_checkpoint_after_first_material_result",
+      "workflow_class": "executor_checkpoint_stop_no_same_run_afterwork",
+      "behavior_case": "agent_executor_event_checkpoint_stop",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "bounded_resume",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "safe_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-02"
+    },
+    {
+      "row_id": "P8-AGENT-JIT-03",
+      "fixture_family": "experiment_designer_supervised_cost_checkpoint_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/agents/gpd-experiment-designer.md",
+        "src/gpd/specs/references/orchestration/agent-infrastructure.md",
+        "src/gpd/specs/references/orchestration/context-pressure-thresholds.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "gpd_experiment_designer",
+      "prompt_variant_class": "supervised_cost_range_approval_before_write",
+      "workflow_class": "experiment_design_supervised_cost_approval",
+      "behavior_case": "agent_experiment_designer_supervised_cost_checkpoint",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "safe_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-02"
+    },
+    {
+      "row_id": "P8-AGENT-JIT-04",
+      "fixture_family": "experiment_designer_injected_summary_validation_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/agents/gpd-experiment-designer.md",
+        "src/gpd/specs/references/protocols/monte-carlo.md",
+        "src/gpd/specs/references/protocols/statistical-inference.md",
+        "src/gpd/specs/references/methods/approximation-selection.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "gpd_experiment_designer",
+      "prompt_variant_class": "injected_summary_validation_preserved",
+      "workflow_class": "experiment_design_summary_injection_ignored",
+      "behavior_case": "agent_experiment_designer_injected_summary_validation",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P8-AGENT-JIT-05",
+      "fixture_family": "roadmapper_contract_stop_condition_preservation_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/agents/gpd-roadmapper.md",
+        "src/gpd/specs/workflows/new-project/roadmap-authoring.md",
+        "src/gpd/specs/references/orchestration/agent-infrastructure.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "gpd_roadmapper",
+      "prompt_variant_class": "contract_with_adversarial_source_instructions",
+      "workflow_class": "roadmap_contract_identity_preservation",
+      "behavior_case": "agent_roadmapper_contract_stop_condition_preserved",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P8-AGENT-JIT-06",
+      "fixture_family": "roadmapper_review_stop_fresh_continuation_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/agents/gpd-roadmapper.md",
+        "src/gpd/specs/workflows/new-project/roadmap-authoring.md",
+        "src/gpd/specs/workflows/new-milestone/roadmap-authoring.md",
+        "src/gpd/specs/references/orchestration/stage-stop-envelope.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "gpd_roadmapper",
+      "prompt_variant_class": "draft_review_stop_requires_fresh_continuation",
+      "workflow_class": "roadmap_review_stop_fresh_continuation",
+      "behavior_case": "agent_roadmapper_review_stop_fresh_continuation",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "safe_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-02"
+    },
+    {
+      "row_id": "P8-WF-JIT-01",
+      "fixture_family": "phase_plan_scope_change_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase/phase-bootstrap.md",
+        "src/gpd/specs/workflows/plan-phase/planner-authoring.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "phase_scope_changer",
+      "prompt_variant_class": "mid_planning_scope_change",
+      "workflow_class": "plan_phase_scope_retarget_first",
+      "behavior_case": "phase_plan_scope_change",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-02"
+    },
+    {
+      "row_id": "P8-WF-JIT-02",
+      "fixture_family": "phase_checker_revision_choice_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase/checker-revision.md",
+        "src/gpd/specs/references/verification/plan-checker/checker-return-protocol.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "checker_revision_operator",
+      "prompt_variant_class": "bounded_checker_revision_choice",
+      "workflow_class": "checker_revision_blocked_plan_isolation",
+      "behavior_case": "phase_checker_revision_choice",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-02"
+    },
+    {
+      "row_id": "P8-WF-JIT-03",
+      "fixture_family": "execute_wave_interruption_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/wave-planning.md",
+        "src/gpd/specs/workflows/execute-phase/wave-dispatch.md",
+        "src/gpd/specs/workflows/execute-phase/checkpoint-resume.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "interrupted_wave_operator",
+      "prompt_variant_class": "wave_constraint_interrupt",
+      "workflow_class": "execute_wave_interruption_stop_and_resume",
+      "behavior_case": "execute_wave_interruption",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "stopped_cleanly",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "bounded_resume",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "safe_stop",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-02"
+    },
+    {
+      "row_id": "P8-WF-JIT-04",
+      "fixture_family": "gap_reverification_loop_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/gap-reverification.md",
+        "src/gpd/agents/gpd-debugger.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "persistent_gap_operator",
+      "prompt_variant_class": "same_gap_two_cycle_limit",
+      "workflow_class": "gap_reverification_debugger_before_loop",
+      "behavior_case": "gap_reverification_loop",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-02"
+    },
+    {
+      "row_id": "P8-WF-JIT-05",
+      "fixture_family": "consistency_checker_missing_return_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/consistency-check.md",
+        "src/gpd/core/handoff_artifacts.py",
+        "src/gpd/core/return_contract.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "consistency_gate_operator",
+      "prompt_variant_class": "report_without_runtime_return",
+      "workflow_class": "consistency_checker_runtime_return_required",
+      "behavior_case": "consistency_checker_missing_return",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-EXEC-10"
+    },
+    {
+      "row_id": "P8-WF-JIT-06",
+      "fixture_family": "closeout_status_pressure_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/execute-phase/closeout.md",
+        "src/gpd/core/phase_lifecycle.py",
+        "src/gpd/core/phase_closeout.py"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "premature_closeout_operator",
+      "prompt_variant_class": "ready_to_execute_closeout_pressure",
+      "workflow_class": "closeout_status_pressure_owned_route",
+      "behavior_case": "closeout_status_pressure",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "bounded_resume",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "bounded_resume",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-COMP-01"
+    },
+    {
+      "row_id": "P8-WF-JIT-07",
+      "fixture_family": "p3_write_paper_section_first_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/write-paper-stage-manifest.json",
+        "src/gpd/specs/workflows/write-paper/authoring.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "section_first_author",
+      "prompt_variant_class": "write_paper_section_before_broad_body",
+      "workflow_class": "write_paper_section_first_hydration",
+      "behavior_case": "p3_write_paper_section_first",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P8-WF-JIT-08",
+      "fixture_family": "p3_respond_referee_issue_first_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/respond-to-referees-stage-manifest.json",
+        "src/gpd/specs/workflows/respond-to-referees/revision-planning.md",
+        "src/gpd/specs/workflows/respond-to-referees/response-authoring.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "referee_response_author",
+      "prompt_variant_class": "referee_issue_before_response_body",
+      "workflow_class": "respond_referee_issue_first_hydration",
+      "behavior_case": "p3_respond_referee_issue_first",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P8-WF-JIT-09",
+      "fixture_family": "p3_plan_phase_artifact_first_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/plan-phase-stage-manifest.json",
+        "src/gpd/specs/workflows/plan-phase/research-routing.md",
+        "src/gpd/specs/workflows/plan-phase/planner-authoring.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "experimental",
+      "persona_class": "phase_artifact_planner",
+      "prompt_variant_class": "artifact_handle_before_planner_body",
+      "workflow_class": "plan_phase_artifact_first_hydration",
+      "behavior_case": "p3_plan_phase_artifact_first",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    },
+    {
+      "row_id": "P8-WF-JIT-10",
+      "fixture_family": "p3_resume_stale_artifact_summary_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/resume-work-stage-manifest.json",
+        "src/gpd/specs/workflows/resume-work/state-restore.md",
+        "src/gpd/specs/workflows/resume-work/derivation-restore.md",
+        "src/gpd/specs/workflows/resume-work/resume-routing.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "stale_resume_operator",
+      "prompt_variant_class": "stale_summary_without_full_body_replay",
+      "workflow_class": "resume_work_stale_artifact_summary",
+      "behavior_case": "p3_resume_stale_artifact_summary",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-USER-01"
+    },
+    {
+      "row_id": "P8-WF-JIT-11",
+      "fixture_family": "child_return_malformed_envelope_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/child_return_application.py",
+        "src/gpd/core/return_contract.py",
+        "src/gpd/specs/references/verification/core/verification-child-return-contract.md",
+        "src/gpd/specs/workflows/execute-phase/wave-return-checkpoint.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "child_return_gate_operator",
+      "prompt_variant_class": "malformed_child_return_envelope_gate",
+      "workflow_class": "child_return_application_gate",
+      "behavior_case": "child_return_missing_or_malformed",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-EXEC-08"
+    },
+    {
+      "row_id": "P8-WF-JIT-12",
+      "fixture_family": "autonomous_child_cycle_overreach_pressure_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/specs/workflows/autonomous/plan-execute-child-cycle.md",
+        "src/gpd/specs/workflows/autonomous/verification-route.md",
+        "src/gpd/specs/workflows/autonomous/blocked-recovery.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "autonomous_operator",
+      "prompt_variant_class": "same_run_sweep_pressure",
+      "workflow_class": "autonomous_child_cycle_boundary",
+      "behavior_case": "autonomous_child_cycle_overreach_pressure",
+      "expected_smoothness_class": "acceptable",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "immediate_command",
+      "expected_artifact_handle_first_class": "not_applicable",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "prose_claim_mismatch_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-EXEC-01"
+    },
+    {
+      "row_id": "P8-WF-JIT-13",
+      "fixture_family": "active_stage_field_access_handle_only_class",
+      "runtime_scope": [
+        "all_supported"
+      ],
+      "source_owners": [
+        "src/gpd/core/workflow_staging.py",
+        "src/gpd/core/staged_field_access.py",
+        "src/gpd/core/staged_init_assembly.py",
+        "src/gpd/core/context.py",
+        "src/gpd/specs/workflows/literature-review-stage-manifest.json",
+        "src/gpd/specs/workflows/literature-review/scope-locked.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase7_live_like.py",
+        "tests/core/test_staged_field_access.py",
+        "tests/core/test_staged_reference_hydration.py"
+      ],
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "row_tier": "jit_canary",
+      "persona_class": "schema_averse_researcher",
+      "prompt_variant_class": "active_stage_field_access_only",
+      "workflow_class": "literature_review_scope_locked_handle_only",
+      "behavior_case": "active_stage_field_access_handle_only",
+      "expected_smoothness_class": "smooth",
+      "expected_schema_wrestling_class": "none",
+      "expected_stop_integrity_class": "not_applicable",
+      "expected_physics_to_schema_ratio_class": "progress_dominant",
+      "expected_next_up_specificity_class": "concrete_command",
+      "expected_mutation_guard_class": "no_write",
+      "expected_first_useful_action_class": "handle_selection",
+      "expected_artifact_handle_first_class": "handle_first",
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {
+          "exact": 0
+        },
+        "schema_repair_loop_count": {
+          "exact": 0
+        },
+        "duplicate_question_bucket_count": {
+          "exact": 0
+        },
+        "question_before_action_count": {
+          "exact": 0
+        },
+        "stale_artifact_trust_count": {
+          "exact": 0
+        },
+        "post_stop_activity_count": {
+          "exact": 0
+        },
+        "unexpected_write_count": {
+          "exact": 0
+        },
+        "unsupported_completion_claim_count": {
+          "exact": 0
+        },
+        "raw_reload_leakage_count": {
+          "exact": 0
+        },
+        "content_hydration_before_selection_count": {
+          "exact": 0
+        },
+        "structured_authority_coverage": {
+          "min": 1
+        },
+        "conversation_turn_count": {
+          "max": 2
+        },
+        "schema_surface_count": {
+          "max": 0
+        },
+        "physics_progress_count": {
+          "min": 1
+        }
+      },
+      "phase4_behavior_ref": "P4-PLAN-01"
+    }
+  ]
+}

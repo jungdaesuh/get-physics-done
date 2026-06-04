@@ -1,7 +1,7 @@
 [project]
 name = "get-physics-done"
-version = "1.1.0"
-description = "GPD — Get Physics Done: open-source AI copilot for physics research"
+version = "1.2.2"
+description = "GPD — Get Physics Done: open-source agentic AI system for physics research"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -18,24 +18,24 @@ keywords = [
     "research",
     "ai",
     "agentic",
-    "claude",
-    "codex",
-    "gemini",
-    "opencode",
+    "ai runtimes",
+    "runtime adapters",
 ]
 classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
     # Core
-    "typer>=0.24.1",
-    "rich>=14.3.3",
-    "pydantic>=2.12",
+    "typer>=0.24.2",
+    "rich>=15.0.0",
+    "pydantic>=2.13.3",
     "PyYAML>=6.0.3",
-    "mcp[cli]>=1.26.0",
+    "mcp>=1.27.0",
     # Utilities
     "pybtex>=0.25.1",
     "Pillow>=12.1.1",
@@ -43,8 +43,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+paper = [
+    "cairosvg>=2.7.0",
+    "pypdf>=5.0",
+]
 arxiv = [
-    "arxiv-mcp-server>=0.3.2",
+    "arxiv-mcp-server[pdf]>=0.4.11",
+    # arxiv-mcp-server already depends on `arxiv` transitively (its
+    # tools/search.py, tools/download.py, etc. import it directly). The
+    # GPD bridge itself does not import `arxiv` — we pin a tighter floor
+    # explicitly so a transitive bump never silently drops to a known-
+    # broken older version.
+    "arxiv>=2.4.1",
+    # Used directly by the OpenAlex translator and GCS PDF fetcher. While
+    # arxiv-mcp-server already depends on httpx, we declare it explicitly
+    # so the gpd-mcp-arxiv entrypoint never relies on a transitive resolve.
+    "httpx>=0.27",
+    "cairosvg>=2.7.0",
+    "pypdf>=5.0",
 ]
 
 [project.scripts]
@@ -54,6 +70,8 @@ gpd = "gpd.cli:entrypoint"
 "gpd-mcp-protocols" = "gpd.mcp.servers.protocols_server:main"
 "gpd-mcp-errors" = "gpd.mcp.servers.errors_mcp:main"
 "gpd-mcp-patterns" = "gpd.mcp.servers.patterns_server:main"
+"gpd-mcp-arxiv" = "gpd.mcp.servers.arxiv_bridge:main"
+"gpd-mcp-wolfram" = "gpd.mcp.integrations.wolfram_bridge:main"
 "gpd-mcp-state" = "gpd.mcp.servers.state_server:main"
 "gpd-mcp-skills" = "gpd.mcp.servers.skills_server:main"
 
@@ -64,18 +82,77 @@ Repository = "https://github.com/psi-oss/get-physics-done"
 Issues = "https://github.com/psi-oss/get-physics-done/issues"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.29.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/gpd"]
 
+[tool.hatch.build.targets.sdist]
+include = [
+    "/.github",
+    "/.gitignore",
+    "/.pre-commit-config.yaml",
+    "/CHANGELOG.md",
+    "/CITATION.cff",
+    "/CLA",
+    "/CONTRIBUTING.md",
+    "/LICENSE",
+    "/README.md",
+    "/bin",
+    "/docs",
+    "/infra",
+    "/package.json",
+    "/pyproject.toml",
+    "/scripts",
+    "/src",
+    "/tests",
+    "/uv.lock",
+]
+exclude = [
+    "/.DS_Store",
+    "/.coverage",
+    "/.coverage.*",
+    "/.mypy_cache",
+    "/.nox",
+    "/.npm-cache",
+    "/.pytest_cache",
+    "/.ruff_cache",
+    "/.tox",
+    "/.uv-cache",
+    "/.venv",
+    "/__pycache__",
+    "/build",
+    "/coverage.xml",
+    "/GPD*",
+    "/htmlcov",
+    "/junit.xml",
+    "/pytest-report.xml",
+    "/dist",
+    "/tmp",
+    "/*.egg-info",
+    "/*.prof",
+    "/*.profdata",
+    "/*.profraw",
+    "**/__pycache__",
+    "**/*.egg-info",
+    "**/*.prof",
+    "**/*.profdata",
+    "**/*.profraw",
+    "**/*.pyc",
+    "**/*.pyo",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "-n auto"
-markers = []
+# Default to maximal local parallelism with worker stealing so giant modules do
+# not serialize the suite behind a single xdist worker.
+addopts = "-n auto --dist=worksteal"
+markers = [
+    "no_stable_hook_python: opt out of the autouse _stable_hook_python fixture",
+]
 
 [tool.ruff]
 target-version = "py311"
@@ -93,5 +170,5 @@ dev = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-xdist>=3.8.0",
-    "ruff>=0.15.5",
+    "ruff>=0.15.11",
 ]

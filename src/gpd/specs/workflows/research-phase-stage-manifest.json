@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "workflow_id": "research-phase",
+  "authority_groups": {
+    "researcher_shared_deferred": [
+      "references/shared/shared-protocols.md",
+      "references/research/researcher-shared.md",
+      "references/orchestration/agent-infrastructure.md"
+    ]
+  },
+  "stage_defaults": {
+    "allowed_tools": [
+      "ask_user",
+      "file_read",
+      "shell",
+      "task"
+    ],
+    "conditional_authorities": [],
+    "writes_allowed": []
+  },
+  "stages": [
+    {
+      "id": "phase_bootstrap",
+      "order": 1,
+      "purpose": "phase validation, existing research routing, and model/bootstrap setup",
+      "mode_paths": [
+        "workflows/research-phase/phase-bootstrap.md"
+      ],
+      "required_init_fields": [
+        "autonomy",
+        "research_mode",
+        "phase_found",
+        "phase_dir",
+        "phase_number",
+        "phase_name",
+        "phase_slug",
+        "padded_phase",
+        "has_research",
+        "has_context",
+        "has_plans",
+        "has_verification",
+        "has_validation",
+        "state_exists",
+        "roadmap_exists",
+        "planning_exists",
+        "platform",
+        "project_contract",
+        "project_contract_gate",
+        "project_contract_load_info",
+        "project_contract_validation"
+      ],
+      "loaded_authorities": [
+        "workflows/research-phase/phase-bootstrap.md",
+        "references/orchestration/model-profile-resolution.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/research-phase.md",
+        "workflows/research-phase/research-handoff.md",
+        "references/orchestration/runtime-delegation-note.md"
+      ],
+      "must_not_eager_load_groups": [
+        "researcher_shared_deferred"
+      ],
+      "produced_state": [
+        "phase bootstrap state",
+        "existing research routing state"
+      ],
+      "next_stages": [
+        "research_handoff"
+      ],
+      "checkpoints": [
+        "phase is validated",
+        "existing research is routed before respawn",
+        "runtime delegation note remains deferred"
+      ]
+    },
+    {
+      "id": "research_handoff",
+      "order": 2,
+      "purpose": "assemble the phase research handoff, spawn the researcher, and gate the fresh artifact",
+      "mode_paths": [
+        "workflows/research-phase/research-handoff.md"
+      ],
+      "required_init_fields": [
+        "autonomy",
+        "review_cadence",
+        "research_mode",
+        "phase_found",
+        "phase_dir",
+        "phase_number",
+        "phase_name",
+        "contract_intake",
+        "effective_reference_intake",
+        "reference_artifact_files",
+        "selected_protocol_bundle_ids",
+        "protocol_bundle_count",
+        "protocol_bundle_load_manifest",
+        "protocol_bundle_verifier_extensions",
+        "current_execution",
+        "active_references",
+        "derived_manuscript_proof_review_status"
+      ],
+      "loaded_authorities": [
+        "workflows/research-phase/research-handoff.md",
+        "references/orchestration/model-profile-resolution.md",
+        "references/orchestration/runtime-delegation-note.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/research-phase.md"
+      ],
+      "must_not_eager_load_groups": [
+        "researcher_shared_deferred"
+      ],
+      "writes_allowed": [
+        "GPD/phases/XX-name/XX-RESEARCH.md"
+      ],
+      "produced_state": [
+        "phase research handoff state",
+        "research artifact gating state"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "reference, contract, and protocol handles are visible to the handoff",
+        "runtime delegation note is loaded only for the child handoff",
+        "fresh RESEARCH artifact is required before completion"
+      ]
+    }
+  ]
+}

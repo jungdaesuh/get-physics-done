@@ -1,4 +1,4 @@
-"""Regression coverage for schema-versioned MCP catalog envelopes."""
+"""Assertions for schema-versioned MCP catalog envelopes."""
 
 from __future__ import annotations
 
@@ -15,8 +15,25 @@ def _assert_strict_envelope(result: object, expected_payload: dict[str, object])
     assert result == {"schema_version": 1, **expected_payload}
 
 
+def test_stable_mcp_response_preserves_different_payload_schema_version() -> None:
+    from gpd.mcp.servers import stable_mcp_response
+
+    result = stable_mcp_response({"schema_version": 2, "status": "ok"})
+
+    assert result == {"schema_version": 1, "payload_schema_version": 2, "status": "ok"}
+
+
+def test_stable_mcp_response_keeps_equal_schema_version_payloads_unchanged() -> None:
+    from gpd.mcp.servers import stable_mcp_response
+
+    result = stable_mcp_response({"schema_version": 1, "status": "ok"})
+
+    assert result == {"schema_version": 1, "status": "ok"}
+    assert "payload_schema_version" not in result
+
+
 def test_protocols_success_envelope() -> None:
-    from gpd.mcp.servers.protocols_server import get_protocol
+    from gpd.mcp.servers.protocols_server import _PROTOCOL_USAGE_CAUTION, get_protocol
 
     store = MagicMock()
     store.get.return_value = {
@@ -46,6 +63,7 @@ def test_protocols_success_envelope() -> None:
             "steps": ["Identify small parameter"],
             "checkpoints": ["Verify limiting cases"],
             "content": "# Perturbation Theory Protocol\n",
+            "usage_caution": _PROTOCOL_USAGE_CAUTION,
         },
     )
 
@@ -154,13 +172,13 @@ def test_conventions_success_envelope() -> None:
     )
 
 
-def test_conventions_error_envelope() -> None:
+def test_conventions_error_envelope(fake_project_dir) -> None:
     from gpd.mcp.servers.conventions_server import convention_set
 
     with patch(
         "gpd.mcp.servers.conventions_server._update_lock_in_project",
         side_effect=TimeoutError("lock acquisition timed out"),
     ):
-        result = convention_set("/tmp/project", "metric_signature", "(+,-,-,-)")
+        result = convention_set(fake_project_dir, "metric_signature", "(+,-,-,-)")
 
     _assert_strict_envelope(result, {"error": "lock acquisition timed out"})

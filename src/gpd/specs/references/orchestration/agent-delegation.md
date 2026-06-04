@@ -1,6 +1,13 @@
 # Agent Delegation Reference
 
-This document defines the standardized pattern for spawning GPD agents across runtimes.
+This is the canonical delegation contract for spawned GPD agents. Reuse these rules anywhere a workflow, runtime note, infrastructure reference, or continuation template needs to describe a handoff. Other prompt surfaces should link here instead of restating these rules.
+
+## Delegation Invariants
+
+1. **One-shot handoff:** A spawned subagent runs once. If it needs human input, it returns `status: checkpoint` and stops.
+2. **Child artifact gate:** Use `references/orchestration/child-artifact-gate.md`; each callsite names expected artifacts, validators, applicator, and failure route.
+3. **Return gate:** Required `gpd_return` envelopes must be valid. Files and commits are recovery evidence only until the child artifact gate passes.
+4. **Fresh continuation ownership:** The orchestrator, not the child, presents the checkpoint and spawns any fresh continuation handoff.
 
 ## task() Delegation Block
 
@@ -25,7 +32,7 @@ task(
 | Method | Agent Spawn Method |
 |--------|-------------------|
 | **Subagent spawning** | `task(subagent_type="gpd-{agent}", model="{model}", readonly=false, prompt="...")` or equivalent; omit `model` when it resolves empty |
-| **Projected command surface** | Invoke the runtime's installed GPD command or agent action surface. For example, some runtimes expose `/gpd:{agent}` slash commands. |
+| **Projected command surface** | Invoke the runtime's installed GPD command or agent action surface. |
 | **Tool discovery** | Agents may appear on the runtime's discoverable action/tool surface after installation |
 | **Fallback** | Execute the installed agent prompt instructions sequentially in the main context |
 
@@ -51,9 +58,10 @@ Every runtime-specific delegation surface must preserve these workflow semantics
 2. **Model semantics:** The `model` parameter is omitted when `gpd resolve-model` returns empty.
 3. **Write access:** File-producing subagents must be spawned with write permissions (`readonly=false`). Without this, runtimes that default to read-only mode will silently discard all file writes.
 4. **Write-scope isolation:** Parallel subagents get disjoint writable targets.
-5. **Blocking completion semantics:** The orchestrator treats the handoff as incomplete until artifacts or structured return data are present.
-6. **Success-path artifact gate:** A reported success is not sufficient by itself. If `expected_artifacts` are missing, the handoff is incomplete even when the runtime says it finished cleanly.
-7. **Return-envelope parity:** The subagent must return the same machine-readable outcome shape the shared workflows expect.
+5. **Blocking completion semantics:** The orchestrator treats the handoff as incomplete until the local child artifact gate passes.
+6. **Success-path artifact gate:** Reported success is provisional; apply `references/orchestration/child-artifact-gate.md` before downstream routing.
+7. **Return-envelope parity:** The subagent must return the machine-readable outcome shape the workflows expect. A missing or invalid `gpd_return` envelope is an incomplete handoff; retry or use explicit main-context fallback.
+8. **Checkpoint, don't idle:** `task()` is a single-run handoff. A spawned subagent must not wait for the user inside the same handoff. If human input is required, return `status: checkpoint` with the proposal/blocker and enough state for the orchestrator to present the checkpoint and spawn a fresh continuation handoff.
 
 If a runtime cannot satisfy these invariants with native subagents, fall back to a sequential main-context execution that still preserves the same write scope, artifact checks, and return-envelope discipline.
 
@@ -63,17 +71,20 @@ For GPD-owned runtime surfaces, use the effective installed runtime rather than 
 
 Subagent file writes can silently fail on any runtime — the agent reports success but files are not persisted to disk. This is a known class of bug across multiple runtimes and must be treated as a normal operating condition, not an edge case.
 
-**After every file-producing subagent completes, the orchestrator MUST:**
+Apply `references/orchestration/child-artifact-gate.md` after every file-producing subagent. Recovery is limited to preserving child-authored work:
 
-1. **Verify expected artifacts exist on disk** using `file_read` or `ls`. Do not trust the subagent's claim that it wrote them.
-2. **If artifacts are missing but the subagent returned content:**
-   - Extract the file content from the subagent's response text (structured return envelope, inline content, or quoted output).
-   - Write the files directly in the main orchestrator context using the main context's Write/Edit tools.
-   - This is the primary recovery path and should succeed because the main context's file tools are not affected by the subagent persistence bug.
-3. **If artifacts are missing and the subagent returned no usable content:**
+1. **If artifacts are missing but the subagent returned literal child-authored file contents:**
+   - Recover only those literal expected-file contents from response text or quoted output.
+   - Write those file contents directly in the main orchestrator context.
+   - Do not synthesize, patch, or paste a child `gpd_return`. The envelope comes from the child or from explicit main-context fallback.
+   - Re-run the child artifact gate before accepting success.
+2. **If the return envelope is missing or invalid:**
+   - Treat the handoff as incomplete even when files or commits exist.
+   - Retry the child handoff, or start an explicit main-context fallback that follows the same write scope and produces its own valid return envelope.
+3. **If artifacts are missing and the subagent returned no usable file contents:**
    - Re-execute the subagent's task in the main orchestrator context (not via task tool) following the same prompt and write scope.
    - This is the fallback described in the Platform Note Template.
-4. **Never silently proceed** with missing artifacts. Every `expected_artifacts` entry must exist on disk before the orchestrator marks the handoff as complete.
+4. **Never silently proceed** with missing artifacts or invalid returns.
 
 ## Prompt Contract Addendum
 
@@ -91,6 +102,8 @@ shared_state_policy: return_only | direct
 </spawn_contract>
 ```
 
+File-producing or state-sensitive spawned prompts must include this block directly in the prompt text. The only allowed exemption is an adjacent documented exemption stating that the task is read-only, produces no artifacts, and returns no shared-state update; the prompt must still state the structured return envelope.
+
 Use the fields this way:
 
 - `write_scope.mode`: `scoped_write` for normal subagents with isolated artifact ownership. Use `direct` only when the subagent is explicitly allowed to mutate canonical shared state.
@@ -105,5 +118,5 @@ If the task does not produce files, still state the `shared_state_policy` and th
 Add this before any task() call in a workflow:
 
 ```
-> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents. If subagent spawning is unavailable, execute these steps sequentially in the main context.
+> **Runtime delegation:** Spawn a subagent for the task below. Adapt the `task()` call to your runtime's agent spawning mechanism. If `model` resolves to `null` or an empty string, omit it so the runtime uses its default model. Always pass `readonly=false` for file-producing agents.
 ```

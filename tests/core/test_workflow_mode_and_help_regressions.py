@@ -1,0 +1,137 @@
+import re
+from pathlib import Path
+
+from gpd.core.workflow_staging import load_workflow_stage_manifest
+from tests.workflow_authority_support import STAGED_WORKFLOW_AUTHORITY_NAMES, workflow_authority_text
+
+WORKFLOWS_DIR = Path("src/gpd/specs/workflows")
+
+MODE_AWARE_WORKFLOWS = (
+    "plan-phase.md",
+    "research-phase.md",
+    "map-research.md",
+    "literature-review.md",
+    "new-project.md",
+    "new-milestone.md",
+    "execute-phase.md",
+)
+
+
+def _read_workflow(name: str) -> str:
+    if name.removesuffix(".md") in STAGED_WORKFLOW_AUTHORITY_NAMES:
+        return workflow_authority_text(WORKFLOWS_DIR, name)
+    return (WORKFLOWS_DIR / name).read_text(encoding="utf-8")
+
+
+def _mode_aware_section(text: str) -> str:
+    match = re.search(
+        r"\*\*(?:Mode-aware behavior|Mode behavior):\*\*(?P<section>.*?)(?=\n(?:```|@|Run centralized|Normalize|##|<))",
+        text,
+        re.S,
+    )
+    assert match is not None
+    return match.group("section")
+
+
+def _mentions_balanced_default(text: str) -> bool:
+    return bool(
+        "research_mode=balanced" in text
+        or re.search(r"RESEARCH_MODE=.*--default balanced", text)
+        or re.search(r"`?balanced`?.{0,80}(?:standard|recommended default|default)", text, re.I | re.S)
+    )
+
+
+def _discover_help_section(text: str) -> str:
+    match = re.search(
+        r"\*\*`gpd:discover \[phase or topic\] \[--depth quick\|medium\|deep\]`\*\*\n(?P<section>.*?)(?=\n\*\*`gpd:show-phase)",
+        text,
+        re.S,
+    )
+    assert match is not None
+    return match.group("section")
+
+
+def test_owned_workflows_make_balanced_research_mode_explicit() -> None:
+    for name in MODE_AWARE_WORKFLOWS:
+        workflow = _read_workflow(name)
+        if name == "map-research.md":
+            manifest = load_workflow_stage_manifest("map-research")
+            assert "research_mode" in manifest.stage("map_bootstrap").required_init_fields
+        assert "research_mode" in workflow, name
+        assert _mentions_balanced_default(workflow), name
+
+
+def test_research_phase_keeps_supervised_review_and_artifact_gate_mode_rules() -> None:
+    section = _mode_aware_section(_read_workflow("research-phase.md"))
+
+    assert "Supervised reviews" in section
+    assert "balanced/yolo" in section
+    assert "artifact gate" in section
+
+
+def test_autonomy_prompt_defaults_preserve_supervised_default() -> None:
+    fallback_workflows = (
+        "audit-milestone.md",
+        "debug.md",
+        "digest-knowledge.md",
+        "validate-conventions.md",
+    )
+
+    for name in fallback_workflows:
+        autonomy_lines = [line for line in _read_workflow(name).splitlines() if line.startswith("AUTONOMY=")]
+        assert autonomy_lines, name
+        assert all("--default supervised" in line for line in autonomy_lines), name
+        assert all('|| echo "balanced"' not in line for line in autonomy_lines), name
+        assert all('|| echo "supervised"' in line for line in autonomy_lines), name
+
+    for name in (
+        "audit-milestone.md",
+        "debug.md",
+        "literature-review.md",
+        "respond-to-referees.md",
+        "plan-phase.md",
+        "parameter-sweep.md",
+        "quick.md",
+        "new-milestone.md",
+    ):
+        workflow = _read_workflow(name)
+        assert (
+            "--default supervised" in workflow
+            or "`autonomy=supervised` (default)" in workflow
+            or "`autonomy=supervised`:" in workflow
+            or "supervised pauses" in workflow
+        ), name
+        assert "`autonomy=balanced` (default)" not in workflow, name
+
+
+def test_help_dedupes_runtime_permission_readiness_trio() -> None:
+    help_workflow = _read_workflow("help.md")
+
+    assert help_workflow.count("gpd permissions status --runtime <runtime> --autonomy <mode>") == 1
+    assert help_workflow.count("gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>") == 1
+    assert help_workflow.count("gpd permissions sync --runtime <runtime> --autonomy <mode>") == 1
+
+
+def test_help_describes_discover_quick_depth_as_verification_only_without_files() -> None:
+    discover_help = _discover_help_section(_read_workflow("help.md"))
+
+    assert "quick (summary)" not in discover_help
+    assert re.search(r"verification[- ]only|no files? (?:created|written)|without writing a file", discover_help, re.I)
+
+
+def test_publication_workflows_read_mode_state_from_init_context() -> None:
+    write_paper = _read_workflow("write-paper.md")
+    respond = _read_workflow("respond-to-referees.md")
+
+    assert re.search(r"gpd --raw init write-paper --stage paper_bootstrap", write_paper)
+    assert re.search(r'INIT="\$[A-Z_]*BOOTSTRAP_INIT"', write_paper)
+    assert "autonomy" in write_paper
+    assert "research_mode" in write_paper
+    assert "gpd --raw config get autonomy" not in write_paper
+    assert "gpd --raw config get research_mode" not in write_paper
+
+    assert 'gpd --raw init respond-to-referees --stage bootstrap -- "$ARGUMENTS"' in respond
+    assert "INIT=$(gpd --raw init respond-to-referees --stage bootstrap)" in respond
+    assert 'AUTONOMY=$(echo "$INIT" | gpd json get .autonomy --default supervised)' in respond
+    assert 'RESEARCH_MODE=$(echo "$INIT" | gpd json get .research_mode --default balanced)' in respond
+    assert "gpd --raw config get autonomy" not in respond

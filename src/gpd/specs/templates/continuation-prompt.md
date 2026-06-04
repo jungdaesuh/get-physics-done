@@ -4,7 +4,13 @@ template_version: 1
 
 # Executor Continuation Prompt Template
 
-Template for spawning a fresh gpd-executor agent to continue plan execution after a checkpoint pause. Uses a fresh agent with explicit state instead of resume to avoid serialization issues with parallel tool calls.
+Template for spawning a fresh gpd-executor agent to continue plan execution after a checkpoint pause. This is a fresh continuation handoff owned by the orchestrator, not an in-run wait or resume-in-place; see `{GPD_INSTALL_DIR}/references/orchestration/continuation-boundary.md`. The `<execution_segment>` block is the workflow/runtime handoff payload; if the pause is durably recorded, the canonical bounded-segment subset of that payload is persisted in `continuation.bounded_segment` and also recorded in the append-only execution lineage so the execution head can be rebuilt without parsing prose.
+
+Persisted bounded-segment fields: `resume_file`, `phase`, `plan`, `segment_id`, `segment_status`, `checkpoint_reason`, `waiting_reason`, `blocked_reason`, `waiting_for_review`, `first_result_gate_pending`, `pre_fanout_review_pending`, `pre_fanout_review_cleared`, `skeptical_requestioning_required`, `downstream_locked`, `skeptical_requestioning_summary`, `weakest_unchecked_anchor`, `disconfirming_observation`, `transition_id`, `last_result_id`, `updated_at`, `source_session_id`, `recorded_by`.
+
+Recorded handoff fields: `resume_file`, `stopped_at`, `last_result_id`, `recorded_at`, `recorded_by`.
+
+If the checkpoint payload names expected artifacts, verify them on disk before continuing; returned text alone is not enough.
 
 Referenced by `workflows/execute-phase.md` checkpoint_handling step.
 
@@ -14,6 +20,7 @@ Referenced by `workflows/execute-phase.md` checkpoint_handling step.
 
 ```markdown
 <objective>
+This is a fresh continuation handoff owned by the orchestrator. Do not wait for the user inside the spawned run.
 Continue executing plan {plan_number} of phase {phase_number}-{phase_name} from task {resume_task_number}.
 
 Previous tasks are completed and committed. Verify prior commits exist, then continue from task {resume_task_number}: {resume_task_name}.
@@ -38,6 +45,8 @@ Return state updates (position, decisions, metrics) in your response -- do NOT w
 {execution_segment}
 </execution_segment>
 
+`execution_segment` is the transient runtime handoff payload. `continuation.bounded_segment` is the persisted storage shape that records the same bounded stop when the orchestrator durably writes or refreshes the pause state. Clear or replace that persisted field when the bounded stop is consumed, retired, or superseded by a newer segment. Keep `.continue-here.md` as a discovery surface only, and treat the derived execution head as rebuilt status rather than the bounded authority. Any task-summary narration belongs to the checkpoint envelope, not the persisted bounded segment.
+
 If the execution segment indicates `pre_fanout_review_pending: true`, do not unlock downstream dependent work until the review outcome has been incorporated into this continuation.
 
 If the execution segment also indicates `pre_fanout_review_cleared: true`, treat that as "review accepted, unlock still outstanding" rather than "gate retired." The continuation must preserve the separate fanout-unlock transition.
@@ -48,9 +57,21 @@ Do not assume a `first_result` or `pre_fanout` clear also clears skeptical re-qu
 
 If the execution segment indicates `first_result_gate_pending: true`, do not reinterpret that gate as passed just because the result looks plausible. Continue only after the review outcome has been made explicit in this continuation.
 
-<protocol_bundles>
+<selected_protocol_bundle_ids>
+{selected_protocol_bundle_ids}
+</selected_protocol_bundle_ids>
+
+<protocol_bundle_load_manifest>
+{protocol_bundle_load_manifest}
+</protocol_bundle_load_manifest>
+
+<protocol_bundle_context>
 {protocol_bundle_context}
-</protocol_bundles>
+</protocol_bundle_context>
+
+<protocol_bundle_verifier_extensions>
+{protocol_bundle_verifier_extensions}
+</protocol_bundle_verifier_extensions>
 
 <resume_instructions>
 {resume_instructions}
@@ -61,6 +82,7 @@ Read these files at execution start using the file_read tool:
 - Workflow: {GPD_INSTALL_DIR}/workflows/execute-plan.md
 - Summary template: {GPD_INSTALL_DIR}/templates/summary.md
 - Checkpoints ref: {GPD_INSTALL_DIR}/references/orchestration/checkpoints.md
+- Continuation boundary: {GPD_INSTALL_DIR}/references/orchestration/continuation-boundary.md
 - Validation ref: {GPD_INSTALL_DIR}/references/verification/core/verification-core.md
 - Plan: {phase_dir}/{plan_file}
 - State: GPD/STATE.md
@@ -73,6 +95,8 @@ Before executing task {resume_task_number}, verify that prior tasks' commits exi
 git log --oneline --grep="({phase}-{plan}):" | head -20
 
 Compare against the completed tasks table above. If any expected commits are missing, STOP and report the discrepancy -- do not proceed with incomplete prior state.
+
+If the checkpoint or execution segment names expected artifacts, verify them on disk before continuing; do not treat returned text alone as sufficient evidence.
 
 Also verify the bounded execution segment still satisfies its resume preconditions:
 
@@ -111,8 +135,11 @@ Also verify the bounded execution segment still satisfies its resume preconditio
 | `{checkpoint_type}`       | From checkpoint return              | `human-verify`                                                            |
 | `{user_response}`         | User's response to checkpoint       | `approved` or `Select: option-a` or `done`                                |
 | `{resume_instructions}`   | Generated from checkpoint type      | See table below                                                           |
-| `{execution_segment}`     | Structured bounded segment state    | Segment JSON or markdown block with cursor, checkpoint cause, downstream-lock status, any `pre_fanout_review_cleared` marker, skeptical re-questioning fields, and resume preconditions |
+| `{execution_segment}`     | Runtime handoff payload             | Segment JSON or markdown block whose persisted bounded-segment subset contains exactly the canonical continuation fields listed above |
+| `{selected_protocol_bundle_ids}` | Selected protocol bundle IDs | Structured selected bundle list carried across continuations |
+| `{protocol_bundle_load_manifest}` | Protocol bundle load manifest | Structured bundle asset/load metadata when provided by init |
 | `{protocol_bundle_context}` | Selected protocol bundle summary | Additive specialized-loading guidance carried across continuations |
+| `{protocol_bundle_verifier_extensions}` | Protocol bundle verifier extensions | Additive verifier checklist guidance carried across continuations |
 | `{phase_dir}`             | Phase directory path                | `GPD/phases/03-phase-diagram`                                       |
 | `{plan_file}`             | Plan filename                       | `03-03-PLAN.md`                                                           |
 | `{phase}`                 | Phase prefix                        | `03`                                                                      |
@@ -138,12 +165,11 @@ Also verify the bounded execution segment still satisfies its resume preconditio
 task(
   subagent_type="gpd-executor",
   model="{executor_model}",
+  readonly=false,
   prompt="First, read {GPD_AGENTS_DIR}/gpd-executor.md for your role and instructions.\n\n" + filled_template,
   description="Continue {phase}-{plan} from task {resume_task_number}"
 )
 ```
-
-<!-- task() subagent_type and model parameters are runtime-specific. The installer adapts these to the target platform's delegation mechanism. -->
 
 **Why fresh agent, not resume:** Resume relies on internal serialization that can break with parallel tool calls. Fresh agents with explicit prior state and an explicit `execution_segment` block are more reliable and produce consistent results across platforms.
 
@@ -156,5 +182,5 @@ task(
 3. User responds with approval/decision/action confirmation
 4. Orchestrator fills this template with checkpoint state + bounded `execution_segment` + user response
 5. Orchestrator spawns fresh gpd-executor with filled template
-6. New executor verifies prior commits, incorporates user response, continues execution
+6. New executor verifies prior commits, incorporates user response, verifies any required artifacts, and continues execution
 7. If executor hits another checkpoint, cycle repeats (step 1)

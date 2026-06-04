@@ -6,6 +6,7 @@
   <a href="https://github.com/psi-oss/get-physics-done/actions/workflows/test.yml"><img alt="CI" src="https://github.com/psi-oss/get-physics-done/actions/workflows/test.yml/badge.svg"></a>
   <a href="https://github.com/psi-oss/get-physics-done/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/badge/License-Apache_2.0-d4d4d8?style=flat&labelColor=3f3f46"></a>
   <a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-ffd43b?style=flat&labelColor=3776ab&logo=python&logoColor=white"></a>
+  <a href="https://pypi.org/project/get-physics-done/"><img alt="PyPI" src="https://img.shields.io/pypi/v/get-physics-done?style=flat&logo=pypi&logoColor=white&labelColor=3775a9&color=ffd43b"></a>
   <a href="https://www.npmjs.com/package/get-physics-done"><img alt="npm" src="https://img.shields.io/npm/v/get-physics-done?style=flat&logo=npm&logoColor=white&labelColor=1f1f1f&color=cb3837"></a>
 </p>
 
@@ -16,71 +17,215 @@
   <a href="#supported-runtimes"><img alt="OpenCode supported" src="https://img.shields.io/badge/OpenCode-supported-cfcecd?style=flat&labelColor=565656&logo=data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAYAAADimHc4AAABzUlEQVR4AeycQQrCQBAEF1%2Bg6J%2F0o5LPCXmCnnNx0E2nNqGEPciw024VffV0PZ%2FfHo7BqflBCSgAxd%2BaAhQAE4DjbYACYAJwvA1QAEwAjrcBCgAIDBRpA2AZClAATACOtwEKgAnA8TZAATABOD7egNc8tz2ftJ%2B4gPQD9r5fAbDBDQXALx00XgGwGAUoACYAx9sABcAE4HgboACYABxvAxSwJHC7XFryLNP4bzYg7KBar4CKUHiugDDgar0CKkLhuQLCgKv1CqgIhecKCAOu1iugIhSeKyAMuFqvgIpQeK6AMOBq%2FXAC7o9H6z5fdlRAtp4PJ2BrAHSeAmADClAATACOtwEKgAnA8TZAATABON4GKAAmAMev2AD4JTuNVwAsTgEKgAnA8TZAATABON4GKAAmAMfbAAXABOB4G9ApoPe6AnoJdt5XQCfA3uvDCXhOU0ueXmBr3x9OwNoPHH2fAmBDClAATACOtwEKgAnA8TZAAX8QONAVGwDLVIACYAJwfLwByf%2F%2B2WJ32k9cQPoBe9%2BvANigAhQAE4DjbYACYAJw%2FA8NgH%2FpQeMVAItVgAJgAnC8DVAATACOtwEKgAnA8TZAATABON4GFALS4w8AAAD%2F%2Fx7wkLQAAAAGSURBVAMAKj5LkLSa6SQAAAAASUVORK5CYII%3D"></a>
 </p>
 
-Get Physics Done is an open-source AI copilot for physics research from [Physical Superintelligence PBC (PSI)](https://www.psi.inc), released as a community contribution. GPD helps turn a research question into a structured workflow: scope the problem, plan the work, derive results, verify them, and package the output.
+Get Physics Done is an open-source agentic AI system for physics research from [Physical Superintelligence PBC (PSI)](https://www.psi.inc), released as a community contribution. GPD helps turn a research question into a structured workflow: scope the problem, plan the work, derive results, verify them, and package the output.
 
 https://github.com/user-attachments/assets/e79f8153-c0bd-484f-b69e-da8f142649e0
 
-[Quick Start](#quick-start) · [Supported Runtimes](#supported-runtimes) · [Workflow](#what-gpd-does) · [Commands](#key-in-runtime-commands) · [Models](#optional-model-profiles-and-tier-overrides) · [Advanced CLI](#advanced-cli-utilities) · [System Requirements](#system-requirements)
+[Start Here](#start-here) · [Quick Start](#quick-start) · [Supported Runtimes](#supported-runtimes) · [Workflow](#what-gpd-does) · [Commands](#key-gpd-paths) · [Models](#optional-model-profiles-and-tier-overrides) · [Advanced CLI](#advanced-cli-utilities) · [System Requirements](#system-requirements)
+
+## Start Here
+
+GPD is not a standalone app. It installs physics-research commands into Claude Code, Codex, Gemini CLI, GitHub Copilot CLI, or OpenCode.
+
+To install GPD, run this in your system terminal:
+```bash
+# Requires Node.js.
+npx -y get-physics-done
+```
+
+<details>
+<summary><strong>Working from a source checkout?</strong></summary>
+
+If you are developing this repo itself rather than installing the published
+bootstrap package, prefer `uv` so the environment is resolved from
+`pyproject.toml` and `uv.lock`:
+
+```bash
+uv sync --dev
+uv run gpd --help
+```
+
+After `uv sync --dev`, you can also `source .venv/bin/activate` and run
+`gpd ...` directly if you prefer an activated shell. To exercise the public
+installer flow from a source checkout, still use the matching `npx -y
+get-physics-done` bootstrap command from [Start Here](#start-here).
+
+</details>
+
+<details>
+<summary><strong>Need Node.js?</strong></summary>
+
+`npm` and `npx` come with Node.js, so install Node.js 20 or newer first in your
+normal system terminal, then come back here.
+
+- Windows: Install Node.js LTS with `winget` (includes `npm` and `npx`): `winget install OpenJS.NodeJS.LTS`
+- macOS: Install Node.js with Homebrew (includes `npm` and `npx`): `brew install node`
+- Linux: follow the [Linux guide](https://github.com/psi-oss/get-physics-done/blob/main/docs/linux.md). Distribution `nodejs` / `npm` packages are useful only if `node --version` reports `v20` or newer.
+
+</details>
+
+<details>
+<summary><strong>New to terminals?</strong></summary>
+
+If you are new to terminals, start with the [Beginner Onboarding Hub](https://github.com/psi-oss/get-physics-done/tree/main/docs).
+Use the hub as the single beginner path. It keeps the OS guides, runtime guides,
+and post-install checklist in one place, while this README keeps the reference
+tables and advanced surfaces.
+
+The hub owns the beginner preflight and caveats: prerequisites, runtime/account
+expectations, and the reminder that GPD does not install your runtime or provide
+model access, billing, or API credits.
+
+There are two places you type commands: your normal system terminal and the AI runtime.
+
+<!-- gpd-public-surface:terminal-runtime-bridge:start -->
+Use your normal terminal for installs, local `gpd ...` diagnostics, and runtime launchers such as `claude`, `gemini`, `codex`, `opencode`, `gh copilot`.
+Use the opened runtime for the installed GPD command ladder (`help -> start -> tour -> new-project / map-research -> resume-work`); start with `/gpd:help`, `$gpd-help`, `/gpd-help`.
+<!-- gpd-public-surface:terminal-runtime-bridge:end -->
+
+</details>
+
 
 ## Who This Is For
 
-GPD is for hard physics research problems that cannot be handled reliably with manual prompting.
+GPD is for physics research projects that need more structure than a one-off chat.
 
 It is designed for long-horizon projects that require rigorous verification, structured research memory, multi-step analytical work, complex numerical studies, and manuscript writing or review.
+
+GPD is built to favor scientific rigor and critical thinking over agreeability. Treat preferred explanations as hypotheses to test, and keep missing evidence, failed lookups, and unproduced artifacts explicit instead of inventing them.
+
+GPD is a scalpel, not an autopilot. Treat each agent turn like a graduate student's work: trust the execution, but stay in the loop to verify and redirect. Supervised mode gives you the frequent checkpoints that match that advisor role; graduate to Balanced once you trust GPD's boundary on your specific research.
 
 We welcome contributions and feedback via GitHub issues or pull requests; if GPD is useful in your work, please star the repo, and share it with colleagues who might benefit.
 
 ## Quick Start
 
-Install GPD:
+If you already know your runtime and are comfortable in a terminal, use this as the fast path. If not, go back to [Start Here](#start-here) and use the [Beginner Onboarding Hub](https://github.com/psi-oss/get-physics-done/tree/main/docs) instead.
 
-```bash
-npx get-physics-done
-```
+Canonical post-install order, shown as command names without runtime prefixes:
 
-**Next steps after install**
+<!-- gpd-public-surface:beginner-startup-ladder:start -->
+`help -> start -> tour -> new-project / map-research -> resume-work`
+<!-- gpd-public-surface:beginner-startup-ladder:end -->
 
-The installer adds GPD to your runtime config, but it does not launch the runtime for you.
+Run its help command first: Claude Code / Gemini CLI use `/gpd:help`. Codex uses `$gpd-help`, and GitHub Copilot CLI / OpenCode use `/gpd-help`.
 
-1. Open your chosen runtime from your normal system terminal (`claude` for Claude Code, `gemini` for Gemini CLI, `codex` for Codex, `opencode` for OpenCode).
-2. Run its help command first: Claude Code / Gemini CLI use `/gpd:help`, Codex uses `$gpd-help`, and OpenCode uses `/gpd-help`.
-3. Start with `new-project` for a fresh research project or `map-research` for an existing folder or project.
+Expert fast path:
 
-For best performance, run both this install step and your chosen runtime from your normal system terminal, not inside the VS Code, Cursor, or other AI runtime command/chat interface.
+- From inside the folder where your project should live, install GPD with the matching `npx -y get-physics-done` bootstrap command from [Start Here](#start-here), then launch `claude`, `codex`, `gemini`, `gh copilot`, or `opencode`.
+- Run the matching GPD help command shown in [Supported Runtimes](#supported-runtimes).
+- Then use `start` if you are not sure what fits this folder, `tour` for a read-only walkthrough, `new-project --minimal` for new work, `map-research` for existing work, or `resume-work` when you return later.
+- Treat the new-work choice as distinct from the existing-work choice; pick one, then follow it through.
+
+The bootstrap installer requires Node.js 20+, Python 3.11+ with `venv`, and one supported runtime (`claude`, `gemini`, `codex`, `gh copilot`, or `opencode`).
+
+If the install worked, both of these should be true:
+
+1. `gpd --help` works in your normal terminal.
+2. Your runtime-specific GPD help command works inside the runtime.
 
 Then choose the path that matches your starting point:
 
-| Starting point | First command | What it's for |
-|----------------|---------------|----------------|
-| New research project | `new-project` | Start a fresh GPD research workflow. |
-| Existing research folder or codebase | `map-research` | Map existing work before planning. |
-| Configure workflow and model defaults | `settings` | Set workflow toggles, tier models, and research preferences. |
+The table below uses canonical command names without runtime prefixes. Apply the
+prefix for your runtime from [Supported Runtimes](#supported-runtimes).
 
-Use the runtime-specific command syntax shown in [Supported Runtimes](#supported-runtimes), for example `/gpd:settings` or `/gpd:set-profile review`.
+| Starting point | Use this |
+|----------------|----------|
+| Not sure which path fits this folder | `start` |
+| Want a guided command walkthrough | `tour` |
+| New research project | `new-project --minimal` |
+| Existing research folder or codebase | `map-research` |
+| Current-workspace recovery snapshot | `gpd resume` |
+| Find a workspace to reopen first | `gpd resume --recent`, then `resume-work` |
+| Continue in an existing GPD project | `resume-work` |
 
-If you are starting from existing work, run `map-research` first to map the formalism, computations, conventions, validation status, and open questions before `new-project`.
+Use the generated recovery ladder for return-to-work cases:
 
-Typical new-project workflow:
+<!-- gpd-public-surface:recovery-note:start -->
+Recovery ladder: use `gpd resume` for the current-workspace read-only recovery snapshot. If that is the wrong workspace, use `gpd resume --recent` to find the workspace first, then continue inside that workspace with `resume-work`. After resuming, `suggest-next` is the fastest next command. Before stepping away mid-phase, run `pause-work` so that ladder has an explicit handoff to restore later. Fresh context resets are for context management, not as a recovery step; run `gpd resume` in your normal terminal only when workspace rediscovery is needed.
+<!-- gpd-public-surface:recovery-note:end -->
 
-`/gpd:new-project -> /gpd:discuss-phase 1 -> /gpd:plan-phase 1 -> /gpd:execute-phase 1 -> /gpd:verify-work 1`
+<details>
+<summary><strong>Optional Terminal-Side Readiness And Troubleshooting Reference</strong></summary>
+
+Use this when you want to verify install health, unattended readiness, paper-toolchain prerequisites, or local CLI surfaces from your normal terminal. If you want the full beginner path, stay with the onboarding hub and your selected OS/runtime guides.
+
+<!-- gpd-public-surface:local-cli-bridge-summary:start -->
+Use `gpd --help` from your normal terminal for the broader local CLI surface: install/readiness checks, typed command validation, permissions, observability, diagnostics, recovery, cost from recorded local telemetry, presets, and shared Wolfram integration.
+
+- `gpd --help`
+- `gpd doctor`
+- `gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>`
+- `gpd permissions status --runtime <runtime> --autonomy <mode>`
+- `gpd permissions sync --runtime <runtime> --autonomy <mode>`
+- `gpd resume`
+- `gpd resume --recent`
+- `gpd observe execution`
+- `gpd cost`
+- `gpd presets list`
+- `gpd validate plan-preflight <PLAN.md>`
+- `gpd integrations status wolfram`
+<!-- gpd-public-surface:local-cli-bridge-summary:end -->
+
+**Bootstrap hard blockers**
+
+- `node` / `npx` work in your normal system terminal
+- Python 3.11+ with the standard `venv` module is available in that same terminal
+- Your selected runtime is already installed and launchable there (`claude`, `gemini`, `codex`, or `opencode`)
+
+If any of those fail, fix them before troubleshooting GPD itself. These are bootstrap prerequisites for the matching installer command, not a claim that every local `gpd ...` command rechecks them.
+
+**Advisories**
+
+- Choose `--local` or `--global` explicitly if you do not want the installer's default path selection
+- Runtime permissions are runtime-owned permission alignment only; use the guided checks after startup to decide whether the runtime is ready.
+- Use your runtime-specific `settings` command after the first successful launch to review autonomy, workflow defaults, model-cost posture, runtime permission sync, and preset/tier overrides. Safest model-cost start: `review` plus runtime defaults.
+- Use `gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>` when you want a terminal-side unattended or overnight verdict. Use `supervised` unless you intentionally selected a different autonomy mode.
+- If you plan paper/manuscript work later, use `gpd doctor --runtime <runtime> --local` for the project-local target or `gpd doctor --runtime <runtime> --global` for the global target first. For the fuller preset catalog, shared Wolfram integration details, and plan-preflight boundaries, use `gpd presets list`, `gpd integrations status wolfram`, and `gpd validate plan-preflight <PLAN.md>` from your normal terminal.
+- Provider authentication is checked manually in the runtime itself; GPD will point this out, but it does not hard-block installation readiness on it
+- Use `--upgrade` only when you intentionally want the latest unreleased GitHub `main` snapshot
+
+**Quick verification path**
+
+1. Install with an explicit runtime when possible, for example use the matching bootstrap command with `--<runtime-flag> --local`.
+2. From the same terminal, run `gpd doctor --runtime <runtime> --local` and `gpd --help`. Add `--live-executable-probes` if you also want cheap local executable probes such as `pdflatex --version` or `wolframscript -version`. Here, `gpd doctor --runtime ...` is a runtime-readiness check for the selected runtime target. If you plan to use the paper/manuscript workflow preset later, treat the `Workflow Presets` and `LaTeX Toolchain` rows in this doctor report as paper-toolchain readiness signals for local smoke checks; `write-paper` can still proceed degraded, but `paper-build` is the build truth.
+3. Launch your selected runtime and run its GPD help command (`/gpd:help`, `$gpd-help`, or `/gpd-help`).
+4. If you want unattended execution, use your runtime-specific `settings` command as the guided configuration path and keep autonomy at Supervised (`supervised`) while you learn GPD's behavior; move to Balanced (`balanced`) when you want a lighter checkpoint cadence.
+5. Run `gpd permissions status --runtime <runtime> --autonomy <mode>` for the read-only runtime-owned permission snapshot, then run `gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>`. Use `supervised` if you kept the default. If it returns `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy <mode>`; if it returns `relaunch-required`, exit and relaunch the selected runtime before treating unattended use as ready.
+6. If those checks pass, continue with the runtime-specific `new-project`, `new-project --minimal`, `resume-work`, or `map-research` command.
+
+**Troubleshooting**
+
+- If the bootstrap installer fails before either `gpd doctor --runtime <runtime> --local` or `gpd doctor --runtime <runtime> --global` can run, fix Node / Python / `venv` bootstrap prerequisites first.
+- If the matching `gpd doctor --runtime <runtime> --local` or `gpd doctor --runtime <runtime> --global` command fails, fix the selected runtime's launcher / target / runtime-readiness issue first.
+- If that matching doctor command only warns about `Workflow Presets` or `LaTeX Toolchain`, the base install can still be fine; treat that as degraded readiness for `write-paper` and local smoke checks rather than a full install blocker. Use `gpd paper-build` to judge whether the manuscript scaffold is buildable.
+- If the runtime launches but GPD commands are missing, rerun the installer with an explicit runtime and explicit scope from your normal system terminal.
+- If you want the read-only runtime-owned permission snapshot first, run `gpd permissions status --runtime <runtime> --autonomy <mode>`. Use `supervised` unless you intentionally selected a different autonomy mode. If `gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>` returns `not-ready`, run `gpd permissions sync --runtime <runtime> --autonomy <mode>` and check again; if it returns `relaunch-required`, exit and relaunch the runtime before unattended use.
+- If the runtime itself cannot launch or is not authenticated, fix the runtime/provider setup outside GPD before retrying the GPD install.
+
+</details>
+
+Typical new-project workflow, shown as command names without runtime prefixes:
+
+`new-project -> discuss-phase 1 -> plan-phase 1 -> execute-phase 1 -> verify-work 1`
 
 <details>
 <summary><strong>Install options</strong></summary>
 
 | Flag | Meaning |
 |------|---------|
-| `--claude`, `--codex`, `--gemini`, `--opencode` | Select one runtime. `--claude-code` and `--gemini-cli` also work. |
+| `--claude`, `--codex`, `--gemini`, `--copilot`, `--opencode` | Select one runtime. `--claude-code`, `--gemini-cli`, and `--copilot-cli` also work. |
 | `--all` | Select all supported runtimes. |
 | `--local`, `-l` | Use the current project only. |
 | `--global`, `-g` | Use the global runtime config dir. |
 | `--uninstall` | Uninstall from the selected runtime config instead of installing. |
-| `--reinstall` | Reinstall the matching tagged GitHub source into `~/GPD/venv`. |
-| `--upgrade` | Upgrade `~/GPD/venv` from the latest GitHub `main` source. |
+| `--reinstall` | Reinstall `${GPD_HOME:-~/.gpd}/venv` from the PyPI pinned release first, with tagged GitHub release sources as fallback. |
+| `--upgrade` | Upgrade `${GPD_HOME:-~/.gpd}/venv` from the latest unreleased GitHub `main` source. |
 | `--target-dir <path>` | Override the runtime config directory; defaults to local scope unless the path resolves to that runtime's canonical global config dir. |
 | `--force-statusline` | Replace an existing runtime statusline during install. |
 | `--help`, `-h` | Show bootstrap help. |
 
-Ordinary installs stay pinned to the matching tagged release. Use `--upgrade` only when you intentionally want the latest unreleased `main` source.
+Ordinary installs and `--reinstall` use the PyPI pinned release first, then matching tagged GitHub release sources if PyPI is unavailable. Use `--upgrade` only when you intentionally want the latest unreleased GitHub `main` source.
 
 Install the unreleased GitHub `main` snapshot explicitly:
 
@@ -92,37 +237,19 @@ npx -y github:psi-oss/get-physics-done --upgrade
 
 ## Supported Runtimes
 
-GPD currently installs into four AI runtimes. To preselect one during install, use the matching `npx` flag, or use `--all` to install everything in one pass:
+GPD currently installs into five AI runtimes. To preselect one during install, use the matching `npx` flag, or use `--all` to install everything in one pass:
 
-| Runtime | `npx` flag | Help command | Start command |
-|---------|------------|--------------|---------------|
-| Claude Code | `--claude` | `/gpd:help` | `/gpd:new-project` |
-| Codex | `--codex` | `$gpd-help` | `$gpd-new-project` |
-| Gemini CLI | `--gemini` | `/gpd:help` | `/gpd:new-project` |
-| OpenCode | `--opencode` | `/gpd-help` | `/gpd-new-project` |
+<!-- gpd-public-surface:supported-runtimes-table:start -->
+| Runtime | `npx` flag | Help | Start | Tour | New work | Existing work | Return later |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Claude Code | `--claude` | `/gpd:help` | `/gpd:start` | `/gpd:tour` | `/gpd:new-project --minimal` | `/gpd:map-research` | `/gpd:resume-work` |
+| Gemini CLI | `--gemini` | `/gpd:help` | `/gpd:start` | `/gpd:tour` | `/gpd:new-project --minimal` | `/gpd:map-research` | `/gpd:resume-work` |
+| Codex | `--codex` | `$gpd-help` | `$gpd-start` | `$gpd-tour` | `$gpd-new-project --minimal` | `$gpd-map-research` | `$gpd-resume-work` |
+| OpenCode | `--opencode` | `/gpd-help` | `/gpd-start` | `/gpd-tour` | `/gpd-new-project --minimal` | `/gpd-map-research` | `/gpd-resume-work` |
+| GitHub Copilot CLI | `--copilot` | `/gpd-help` | `/gpd-start` | `/gpd-tour` | `/gpd-new-project --minimal` | `/gpd-map-research` | `/gpd-resume-work` |
+<!-- gpd-public-surface:supported-runtimes-table:end -->
 
-Each runtime uses its own command prefix, but the workflow is the same across all four. After installing GPD, open your chosen runtime normally from your system terminal and use the commands shown above.
-
-Notes:
-- Claude Code-specific note: GPD writes `.claude/settings.json` for hooks and statusline. MCP servers are added to project `.mcp.json` for local installs or `~/.claude.json` for global installs.
-- Codex-specific note: GPD writes `.codex/config.toml` during install, enables `features.multi_agent = true`, configures the required notify hook and built-in MCP servers, registers GPD agent roles in `[agents.*]`, and for local installs exposes only public `gpd-*` agents there as discoverable skills in repo-scoped `.agents/skills/`; the full agent catalog still installs under `.codex/agents/` for direct invocation.
-- Codex global skills use `CODEX_SKILLS_DIR` when set, or `~/.agents/skills/` by default.
-- Gemini-specific note: GPD writes `.gemini/settings.json` during install, enables `experimental.enableAgents`, configures the required hooks and built-in MCP servers, and installs `policies/gpd-auto-edit.toml` for Gemini auto-edit shell approvals.
-- OpenCode-specific note: GPD writes `.opencode/opencode.json` for local installs or `~/.config/opencode/opencode.json` for global installs, installs flat `command/gpd-*.md` files, configures built-in MCP servers under the `mcp` key, and manages GPD-owned `permission.read` / `permission.external_directory` entries.
-
-<details>
-<summary><strong>Config path overrides</strong></summary>
-
-| Runtime | Local config dir | Global config dir | Environment overrides |
-|---------|------------------|-------------------|-----------------------|
-| Claude Code | `./.claude/` | `~/.claude/` | `CLAUDE_CONFIG_DIR` |
-| Gemini CLI | `./.gemini/` | `~/.gemini/` | `GEMINI_CONFIG_DIR` |
-| Codex | `./.codex/` | `~/.codex/` | `CODEX_CONFIG_DIR`; discoverable global skills use `CODEX_SKILLS_DIR` |
-| OpenCode | `./.opencode/` | `~/.config/opencode/` | `OPENCODE_CONFIG_DIR`, `OPENCODE_CONFIG`, `XDG_CONFIG_HOME` |
-
-GPD respects these overrides during install, uninstall, and runtime detection.
-
-</details>
+Each runtime uses its own command prefix, but the workflow is the same across all five. For install-path details, runtime-specific hooks, and launcher notes, use the onboarding hub and the runtime guides in `docs/`.
 
 ## What GPD Does
 
@@ -170,65 +297,67 @@ Phase numbers continue across the whole project, so a new milestone may start at
 <details>
 <summary><strong>Conformal bootstrap workflow</strong></summary>
 
-The example below uses Claude Code / Gemini CLI syntax.
+The example below uses canonical command names without runtime prefixes.
 
 Suppose you want to use crossing symmetry and the numerical conformal bootstrap to bound low-lying operator dimensions in the 3D Ising CFT.
 
 ```text
-/gpd:new-project
+new-project
 > Use crossing symmetry and the numerical conformal bootstrap to bound low-lying operator dimensions in the 3D Ising CFT.
 ```
 
 GPD will:
 - ask clarifying questions about the correlator sector, conventions, target observables, numerical precision, and verification strategy
 - create `GPD/PROJECT.md`, `GPD/REQUIREMENTS.md`, `GPD/ROADMAP.md`, and `GPD/STATE.md`
-- break the work into phases such as crossing-equation setup, derivative-basis construction, semidefinite-program formulation, convergence checks, and interpretation of the resulting bounds
+- sketch the milestone shape (phases such as crossing-equation setup, derivative-basis construction, semidefinite-program formulation, convergence checks, and interpretation of the resulting bounds) with Phase 1 ready to execute; Phases 2+ stay as stubs that you flesh out on demand with `plan-phase N`
 
 Then continue with:
 
 ```text
-/gpd:plan-phase 1
-/gpd:execute-phase 1
-/gpd:verify-work 1
+plan-phase 1
+execute-phase 1
+verify-work 1
 ```
 
 Once the relevant phases are complete and verified, continue toward write-up with:
 
 ```text
-/gpd:write-paper "3D Ising bootstrap bounds"
-/gpd:arxiv-submission
-/gpd:peer-review
-/gpd:respond-to-referees
+write-paper
+peer-review
+respond-to-referees
+arxiv-submission
 ```
 
 Typical artifacts include derivation notes, numerical scripts, convergence studies, and phase-level planning and verification documents under `GPD/`.
 
 </details>
 
-## Key In-Runtime Commands
+## Key GPD Paths
 
-These commands run inside your installed AI runtime after GPD has been installed there. The examples below use Claude Code / Gemini CLI syntax.
+Most research actions run inside your installed AI runtime after GPD has been installed there. The table below uses prefixless command names unless a normal-terminal `gpd ...` command is shown.
 
-### Common Starting Points
+### Core Runtime Paths
 
-| Command | What it does |
-|---------|--------------|
-| `map-research` | Map an existing research project before `new-project` |
-| `new-project` | Start a new research project |
-| `plan-phase N` | Plan phase `N` with task breakdown and checkpoints |
-| `execute-phase N` | Execute all tasks in phase `N` |
-| `verify-work` | Run verification checks against current work |
-| `peer-review` | Run manuscript peer review inside the current project before submission |
-| `progress` | Show project state and recommend the next step |
-| `discuss-phase N` | Explore a phase before committing to a plan |
-| `quick` | Run a smaller task with a lighter workflow |
-| `write-paper` | Draft a manuscript from completed research artifacts |
-| `respond-to-referees` | Structure referee responses and revise the manuscript |
-| `arxiv-submission` | Validate and package the manuscript for arXiv |
+| Path | Use these commands |
+|------|--------------------|
+| Start or orient | `start`, `tour` |
+| Create or import work | `new-project`, `new-project --minimal`, `map-research` |
+| Leave or return after a break | `gpd resume`, `gpd resume --recent`, `resume-work`, `pause-work`, `suggest-next` |
+| Run the research loop | `discuss-phase N`, `plan-phase N`, `execute-phase N`, `verify-work`, `progress`, `quick` (add `gpd progress --watch` in a second terminal for a live heartbeat) |
+| Write and review | `write-paper`, `peer-review`, `respond-to-referees`, `arxiv-submission` |
+| Configure or branch | `settings`, `set-profile`, `set-tier-models`, `tangent`, `branch-hypothesis` |
 
-Typical research loop: `/gpd:new-project -> /gpd:discuss-phase 1 -> /gpd:plan-phase 1 -> /gpd:execute-phase 1 -> /gpd:verify-work -> repeat -> /gpd:complete-milestone`
+Typical research loop: `new-project -> discuss-phase 1 -> plan-phase 1 -> execute-phase 1 -> verify-work -> repeat -> complete-milestone`
 
-Typical publication loop: `/gpd:write-paper -> /gpd:peer-review -> /gpd:respond-to-referees -> /gpd:arxiv-submission`
+Typical publication loop: `write-paper -> peer-review -> respond-to-referees -> arxiv-submission`
+
+Publication boundary: `write-paper` supports current-project manuscripts plus one bounded external-authoring lane driven by an explicit intake manifest only. In that lane, `GPD/publication/{subject_slug}/manuscript` is the only manuscript/build root and `GPD/publication/{subject_slug}/intake/` keeps intake/provenance state only; it does not mine arbitrary folders or infer claim/evidence bindings from loose notes. `peer-review` can review the current project manuscript or one explicit manuscript/artifact path or paper directory target. `peer-review` remains the standalone follow-on command when the bounded external-authoring lane needs review. `respond-to-referees` stays tied to the resolved manuscript root, and `arxiv-submission` only packages a GPD-owned manuscript root or `.tex` entrypoint. Project-backed review/response/package outputs stay on the `GPD/` and `GPD/review/` paths; the subject-owned publication root at `GPD/publication/{subject_slug}` is only for the bounded external-authoring lane. This is not a full publication-root migration. See `help` Research Publishing for the full boundary.
+
+Leave / return path:
+
+<!-- gpd-public-surface:recovery-note:start -->
+Recovery ladder: use `gpd resume` for the current-workspace read-only recovery snapshot. If that is the wrong workspace, use `gpd resume --recent` to find the workspace first, then continue inside that workspace with `resume-work`. After resuming, `suggest-next` is the fastest next command. Before stepping away mid-phase, run `pause-work` so that ladder has an explicit handoff to restore later. Fresh context resets are for context management, not as a recovery step; run `gpd resume` in your normal terminal only when workspace rediscovery is needed.
+<!-- gpd-public-surface:recovery-note:end -->
 
 ### Command Context
 
@@ -236,219 +365,102 @@ Not every GPD command needs the same amount of project state.
 
 | Command type | Meaning | Examples |
 |--------------|---------|----------|
-| `Projectless` | Can run before `GPD/PROJECT.md` exists | `/gpd:new-project`, `/gpd:map-research`, `/gpd:add-todo` |
-| `Project-aware` | Uses project context when present, but can also run from explicit standalone inputs | `/gpd:discover "finite-temperature RG flow"`, `/gpd:explain "Ward identity"`, `/gpd:literature-review "axion monodromy"` |
-| `Project-required` | Requires initialized GPD project state | `/gpd:progress`, `/gpd:plan-phase`, `/gpd:write-paper`, `/gpd:peer-review` |
+| `Global` | Does not depend on the current workspace or project state | `help`, `update` |
+| `Projectless` | Can run before `GPD/PROJECT.md` exists | `start`, `tour`, `new-project`, `map-research`, `add-todo` |
+| `Project-aware` | Uses project context when present, but can also run from explicit current-workspace inputs without silently reentering another project | `compare-experiment predictions.csv data.csv`, `compare-results results/01-SUMMARY.md`, `discover "finite-temperature RG flow"`, `digest-knowledge 2401.12345v2`, `explain "Ward identity"`, `review-knowledge K-renormalization-group-fixed-points`, `literature-review "axion monodromy"`, `parameter-sweep results/mesh-study.py --param coupling --range 0:1:20`, `peer-review draft.pdf`, `write-paper --intake intake/write-paper-authoring-input.json` |
+| `Project-required` | Requires initialized GPD project state | `progress`, `plan-phase`, `execute-phase` |
 
-Passing a manuscript path to a project-required command such as `/gpd:peer-review paper/` selects the manuscript target, but does not bypass project initialization.
+Project-aware commands stay rooted in the current workspace: explicit inputs can define the subject, but GPD-authored outputs still land under that workspace's `GPD/` tree. Use the runtime help for the per-command target and output rules.
 
-The full command reference below uses Claude Code / Gemini CLI syntax. Codex uses `$gpd-...` and OpenCode uses `/gpd-...`.
+The relaxed technical-analysis lane lives here too: `derive-equation`, `dimensional-analysis`, `limiting-cases`, `numerical-convergence`, and `sensitivity-analysis` can run from explicit current-workspace targets or flags and still write GPD-authored durable outputs under that workspace's `GPD/analysis/` tree. `parameter-sweep` follows the same current-workspace rule with one explicit computation anchor plus `--param` and `--range`, and it keeps durable outputs under that workspace's `GPD/sweeps/` tree. Phase-number shortcuts remain project-backed, so standalone/current-workspace runs still need honest explicit subjects. `graph` and `error-propagation` are not part of this relaxed current-workspace lane.
+
+For `peer-review`, an explicit paper directory or manuscript/artifact path can satisfy the standalone input requirement, so it can run outside an initialized GPD project. With no argument, it uses the current project manuscript when one exists and otherwise asks for one explicit manuscript target.
+
+For the compact publication-root boundary, see **Key GPD Paths** above. External-authoring starts with one explicit intake: `write-paper --intake intake/write-paper-authoring-input.json`. The later publication commands stay stricter: they continue from the resolved manuscript root; `arxiv-submission` is not a generic external-directory packager.
+
+The full in-runtime reference is runtime-specific; the shared examples here stay prefixless.
 
 <details>
-<summary><strong>Full Command Reference (61 Commands)</strong></summary>
+<summary><strong>Where To Find The Full Runtime Command Reference</strong></summary>
 
-#### Project Initialization
+This README is the onboarding and orientation surface, not the complete in-runtime command manual.
 
-| Command | What it does |
-|---------|--------------|
-| `/gpd:new-project` | Initialize a new physics research project with deep context gathering and `PROJECT.md` |
-| `/gpd:map-research` | Map existing research project — theoretical framework, computations, conventions, and open questions |
+- For the full in-runtime command reference, examples, and per-command usage details, run your runtime's help command such as `/gpd:help --all`, `$gpd-help --all`, or `/gpd-help --all`.
+For normal-terminal local CLI commands:
 
-#### Phase Planning
+<!-- gpd-public-surface:local-cli-bridge-summary:start -->
+Use `gpd --help` from your normal terminal for the broader local CLI surface: install/readiness checks, typed command validation, permissions, observability, diagnostics, recovery, cost from recorded local telemetry, presets, and shared Wolfram integration.
 
-| Command | What it does |
-|---------|--------------|
-| `/gpd:discuss-phase <number>` | Gather phase context through adaptive questioning before planning |
-| `/gpd:research-phase <number>` | Research how to tackle a phase (standalone - usually use `/gpd:plan-phase` instead) |
-| `/gpd:list-phase-assumptions <number>` | Surface the AI's assumptions about a phase approach before planning |
-| `/gpd:discover [phase or topic] [--depth {quick,medium,deep}]` | Run discovery phase to investigate methods, literature, and approaches before planning |
-| `/gpd:show-phase <number>` | Inspect a single phase's artifacts, status, and results |
-| `/gpd:plan-phase <number>` | Create detailed execution plan for a phase (`PLAN.md`) with verification loop |
+- `gpd --help`
+- `gpd doctor`
+- `gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>`
+- `gpd permissions status --runtime <runtime> --autonomy <mode>`
+- `gpd permissions sync --runtime <runtime> --autonomy <mode>`
+- `gpd resume`
+- `gpd resume --recent`
+- `gpd observe execution`
+- `gpd cost`
+- `gpd presets list`
+- `gpd validate plan-preflight <PLAN.md>`
+- `gpd integrations status wolfram`
+<!-- gpd-public-surface:local-cli-bridge-summary:end -->
 
-#### Execution
+#### Tangents & Hypothesis Branches
 
-| Command | What it does |
-|---------|--------------|
-| `/gpd:execute-phase <phase-number>` | Execute all plans in a phase with wave-based parallelization |
-
-#### Derivation
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:derive-equation` | Perform a rigorous physics derivation with systematic verification at each step |
-
-#### Quick Mode
+Tangents and alternative paths live primarily in `tangent`, `branch-hypothesis`, and `compare-branches`.
 
 | Command | What it does |
 |---------|--------------|
-| `/gpd:quick` | Execute a quick research task with GPD guarantees (atomic commits, state tracking) but skip optional agents |
+| `tangent [description]` | Choose whether to stay on the main line, run a quick tangent, defer it, or escalate to a git-backed hypothesis branch |
+| `branch-hypothesis <description>` | Create a hypothesis branch for parallel investigation of an alternative approach |
+| `compare-branches` | Compare results across hypothesis branches side-by-side |
 
-#### Roadmap Management
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:add-phase <description>` | Add research phase to end of current milestone in roadmap |
-| `/gpd:insert-phase <after> <description>` | Insert urgent research work as decimal phase (for example, `72.1`) between existing phases |
-| `/gpd:remove-phase <number>` | Remove a future phase from roadmap and renumber subsequent phases |
-| `/gpd:revise-phase <number> "<reason>"` | Supersede a completed phase and create a replacement for iterative revision |
-| `/gpd:merge-phases <source> <target>` | Merge results from one phase into another |
-
-#### Milestone Management
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:new-milestone <name>` | Start a new research milestone cycle — update `PROJECT.md` and route to requirements |
-| `/gpd:complete-milestone <version>` | Archive completed research milestone and prepare for next phase of investigation |
-
-#### Progress Tracking
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:progress` | Check research progress, show context, and route to the next action (execute or plan) |
-| `/gpd:suggest-next` | Suggest the most impactful next action based on current project state |
-
-#### Research Support
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:explain [concept]` | Explain a physics concept rigorously in the context of the active project or standalone question |
-
-#### Session Management
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:resume-work` | Resume research from the previous session with full context restoration |
-| `/gpd:pause-work` | Create a context handoff when pausing research mid-phase |
-
-#### Todo Management
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:add-todo [description]` | Capture an idea or task as a todo from current research conversation context |
-| `/gpd:check-todos [area]` | List pending research todos and select one to work on |
-
-#### Validation
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:verify-work [phase]` | Verify research results through physics consistency checks |
-
-#### Debugging
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:debug [issue description]` | Systematic debugging of physics calculations with persistent state across context resets |
-
-#### Physics Validation
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:dimensional-analysis` | Systematic dimensional analysis audit on all equations in a derivation or phase |
-| `/gpd:limiting-cases` | Systematically identify and verify all relevant limiting cases for a result or phase |
-| `/gpd:numerical-convergence` | Systematic convergence testing for numerical physics computations |
-| `/gpd:compare-experiment` | Systematically compare theoretical predictions with experimental or observational data |
-| `/gpd:validate-conventions [phase]` | Validate convention consistency across all phases |
-| `/gpd:regression-check [phase]` | Scan-only audit for convention conflicts and verification-state regressions in completed phase summaries and verifications |
-
-#### Quantitative Analysis
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:parameter-sweep [phase]` | Systematic parameter sweep with parallel execution and result aggregation |
-| `/gpd:sensitivity-analysis` | Systematic sensitivity analysis — which parameters matter most and how uncertainties propagate |
-| `/gpd:error-propagation` | Track how uncertainties propagate through multi-step calculations across phases |
-| `/gpd:compare-results [phase, artifact, or comparison target]` | Compare internal results, baselines, or methods and emit decisive verdicts |
-
-#### Research Publishing
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:write-paper [title or topic] [--from-phases 1,2,3]` | Structure and write a physics paper from research results |
-| `/gpd:peer-review [paper directory or manuscript path]` | Conduct a staged six-pass peer review of a manuscript and supporting research artifacts in the current GPD project |
-| `/gpd:respond-to-referees` | Structure a point-by-point response to referee reports and update the manuscript |
-| `/gpd:arxiv-submission` | Prepare a paper for arXiv submission with validation and packaging |
-| `/gpd:literature-review [topic]` | Structured literature review for a physics research topic with citation network analysis and open question identification |
-
-#### Hypothesis Branches
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:branch-hypothesis <description>` | Create a hypothesis branch for parallel investigation of an alternative approach |
-| `/gpd:compare-branches` | Compare results across hypothesis branches side-by-side |
-
-#### Decision Tracking
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:decisions [phase or keyword]` | Display and search the cumulative decision log |
-
-#### Visualization & Export
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:graph` | Visualize dependency graph across phases and identify gaps |
-| `/gpd:slides [topic]` | Create presentation slides from a GPD project or the current folder |
-| `/gpd:export [--format {html,latex,zip,all}]` | Export research results to HTML, LaTeX, or ZIP package |
-| `/gpd:error-patterns [category]` | View accumulated physics error patterns for this project |
-| `/gpd:record-insight [description]` | Record a project-specific learning or pattern to the insights ledger |
-
-#### Milestone Auditing
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:audit-milestone [version]` | Audit research milestone completion against original research goals |
-| `/gpd:plan-milestone-gaps` | Create phases to close all gaps identified by research milestone audit |
-
-#### Configuration
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:settings` | Configure GPD workflow toggles, tier models, and physics research preferences |
-| `/gpd:set-profile <profile>` | Switch research profile for GPD agents (`deep-theory`, `numerical`, `exploratory`, `review`, `paper-writing`) |
-
-#### Utility Commands
-
-| Command | What it does |
-|---------|--------------|
-| `/gpd:compact-state` | Archive historical entries from `STATE.md` to keep it under the 150-line target |
-| `/gpd:sync-state` | Reconcile diverged `STATE.md` and `state.json` after manual edits or corruption |
-| `/gpd:undo` | Roll back the last GPD operation with a safety checkpoint |
-| `/gpd:update` | Update GPD to the latest version with changelog display |
-| `/gpd:reapply-patches` | Reapply local modifications after a GPD update |
-| `/gpd:health` | Run project health checks and optionally auto-fix issues |
-| `/gpd:help` | Show available GPD commands and usage guide |
-
-For full per-command detail and examples inside your runtime, run `/gpd:help --all` or the equivalent runtime-specific help command.
+- Use the matching `branch-hypothesis` command only when you want the explicit git-backed alternative path.
+- If `gpd observe execution` surfaces an alternative-path follow-up or `branch later` recommendation, route it through the runtime `tangent` command first.
 
 </details>
 
 ## Optional: Model Profiles And Tier Overrides
 
-GPD maps runtime-specific model names onto three capability tiers. Most users can leave this at the runtime default and only adjust it if they want to tune planning, execution, or verification behavior.
+GPD maps runtime-specific model names onto three capability tiers. Most users should leave runtime defaults alone and only adjust this if they want to tune planning, execution, or verification behavior.
+
+If you are choosing a posture for the first time:
+
+- `Max quality` means keep the highest-capability options available and pin explicit tiers only when you need consistency.
+- `Balanced` model-cost posture means keep the default profile and let the runtime use its own defaults unless you have a reason to override them.
+- `Budget-aware` means prefer lighter tiers and only pin explicit runtime models when you need to control cost or access.
+
+Use posture as the starting heuristic, not as a pricing promise. If you need the detailed recorded usage / cost view and advisory USD budget comparison for the workspace, use `gpd cost`.
+
+If you want the simplest direct path for concrete tier ids, use your runtime's `set-tier-models` command. Use `set-profile` for abstract behavior changes, and `settings` for the broader unattended/configuration bundle.
 
 | Tier | Meaning |
 |------|---------|
 | `tier-1` | Highest capability |
-| `tier-2` | Balanced default |
+| `tier-2` | Middle/default capability tier |
 | `tier-3` | Fastest / most economical |
 
 Available profiles are `deep-theory`, `numerical`, `exploratory`, `review`, and `paper-writing`.
 
-| Runtime | Set profile | Open settings |
-|---------|-------------|---------------|
-| Claude Code / Gemini CLI | `/gpd:set-profile review` | `/gpd:settings` |
-| Codex | `$gpd-set-profile review` | `$gpd-settings` |
-| OpenCode | `/gpd-set-profile review` | `/gpd-settings` |
+| Runtime | Set profile | Set tier models | Open settings |
+|---------|-------------|-----------------|---------------|
+| Claude Code / Gemini CLI | `/gpd:set-profile review` | `/gpd:set-tier-models` | `/gpd:settings` |
+| Codex | `$gpd-set-profile review` | `$gpd-set-tier-models` | `$gpd-settings` |
+| GitHub Copilot CLI | `/gpd-set-profile review` | `/gpd-set-tier-models` | `/gpd-settings` |
+| OpenCode | `/gpd-set-profile review` | `/gpd-set-tier-models` | `/gpd-settings` |
 
 <details>
 <summary><strong>Runtime-specific model string examples</strong></summary>
 
-When you set explicit tier overrides, the model string is runtime-native. GPD passes it through unchanged, so it must match what that runtime already accepts:
+When you set explicit tier overrides, the model string is runtime-native. GPD passes it through unchanged, so it must match what that runtime already accepts.
 
-- **Claude Code**: aliases like `opus`, `sonnet`, `haiku`, `default`, `sonnet[1m]`, or a provider-native pinned model ID. If your Claude Code install is backed by Bedrock, Vertex, or Foundry, use that provider's deployment/version identifier.
-- **Codex**: the exact string Codex accepts for its `model` setting. If you configured a non-default Codex `model_provider`, keep that provider's exact model ID format. For OpenAI-hosted Codex tiers, the recommended mapping is `tier-1 = gpt-5.4`, `tier-2 = gpt-5.4-mini`, `tier-3 = gpt-5.4-nano`.
-- **Gemini CLI**: an exact Gemini model name accepted by your installed Gemini runtime. Prefer exact model names for GPD tier overrides rather than the interactive Auto picker.
-- **OpenCode**: a full `provider/model` string such as `anthropic/<model>`, `openai/<model>`, or `google/<model>`.
+- **Claude Code**: use the exact model or deployment identifier accepted by your install.
+- **Codex**: use the exact `model` string accepted by your configured provider.
+- **Gemini CLI**: use the exact Gemini model name accepted by your install.
+- **GitHub Copilot CLI**: use the exact model identifier accepted by your install.
+- **OpenCode**: use the exact `provider/model` string accepted by your install.
+
+If you are unsure, keep the runtime defaults and tune tiers later through your runtime's `set-tier-models` command.
 
 </details>
 
@@ -462,25 +474,35 @@ Per-project tier settings live in `GPD/config.json` under `model_overrides`:
   "model_profile": "review",
   "model_overrides": {
     "codex": {
-      "tier-1": "gpt-5.4",
-      "tier-2": "gpt-5.4-mini",
-      "tier-3": "gpt-5.4-nano"
+      "tier-1": "<runtime-native-model-id>",
+      "tier-2": "<runtime-native-model-id>",
+      "tier-3": "<runtime-native-model-id>"
     },
     "claude-code": {
-      "tier-1": "opus",
-      "tier-2": "sonnet",
-      "tier-3": "haiku"
+      "tier-1": "<runtime-native-model-id>",
+      "tier-2": "<runtime-native-model-id>",
+      "tier-3": "<runtime-native-model-id>"
     },
     "gemini": {
-      "tier-1": "your-tier-1-gemini-model",
-      "tier-2": "your-tier-2-gemini-model",
-      "tier-3": "your-tier-3-gemini-model"
+      "tier-1": "<runtime-native-model-id>",
+      "tier-2": "<runtime-native-model-id>",
+      "tier-3": "<runtime-native-model-id>"
+    },
+    "copilot-cli": {
+      "tier-1": "<runtime-native-model-id>",
+      "tier-2": "<runtime-native-model-id>",
+      "tier-3": "<runtime-native-model-id>"
+    },
+    "opencode": {
+      "tier-1": "<runtime-native-model-id>",
+      "tier-2": "<runtime-native-model-id>",
+      "tier-3": "<runtime-native-model-id>"
     }
   }
 }
 ```
 
-Valid runtime keys are `claude-code`, `codex`, `gemini`, and `opencode`. If no override is set for the active runtime, GPD uses that runtime's default model.
+Valid runtime keys are `claude-code`, `codex`, `gemini`, `copilot-cli`, and `opencode`. If no override is set for the active runtime, GPD uses that runtime's default model.
 
 </details>
 
@@ -488,19 +510,23 @@ Valid runtime keys are `claude-code`, `codex`, `gemini`, and `opencode`. If no o
 
 The `gpd` CLI also includes machine-readable validation, observability, and tracing commands for automation, review-grade checks, and debugging.
 
+Typed command metadata is not review-only. `gpd validate command-context` exposes the shared command applicability surface for public commands, while `gpd validate review-contract` and `gpd validate review-preflight` are the current specialized typed surfaces for commands that expose review/publication contracts.
+
 <details>
 <summary><strong>Validation commands</strong></summary>
 
 | Command | What it does |
 |---------|--------------|
 | `gpd validate consistency` | Run cross-phase consistency and project health checks for the current workspace |
-| `gpd validate command-context <command> [arguments]` | Report whether a command is global, projectless, project-aware, or project-required in the current workspace |
-| `gpd validate project-contract <file.json or -> [--mode approved|draft]` | Validate a project-scoping contract before downstream artifact generation |
-| `gpd validate review-contract <command>` | Show the typed review contract for publication and review workflows |
-| `gpd validate review-preflight <command> [subject] --strict` | Check state integrity, manuscript or artifact presence, and review prerequisites |
+| `gpd validate command-context <command> [arguments]` | Show the shared typed command context policy: whether a command is global, projectless, project-aware, or project-required in the current workspace |
+| `gpd validate unattended-readiness --runtime <runtime> [--autonomy <mode>]` | Return the unattended or overnight verdict for runtime permission alignment without replacing `gpd doctor` or plan preflight |
+| `gpd validate project-contract <file.json|-> [--mode approved|draft]` | Validate a project-scoping contract before downstream artifact generation |
+| `gpd validate review-contract <command>` | Show the specialized typed review/publication contract for commands that expose one |
+| `gpd validate review-preflight <command> [subject] --strict` | Run the specialized review/publication preflight for commands that expose a typed review contract against a resolved subject |
 | `gpd validate paper-quality <file.json>` | Score a structured paper-quality manifest and fail on blocking issues |
 | `gpd validate paper-quality --from-project .` | Build paper-quality input from project artifacts, then score it conservatively |
 | `gpd validate plan-contract <PLAN.md>` | Validate PLAN frontmatter, including the embedded contract block and ID cross-links |
+| `gpd validate plan-preflight <PLAN.md>` | Check optional machine-checkable specialized tool requirements declared by a plan before execution |
 | `gpd validate summary-contract <SUMMARY.md>` | Validate summary frontmatter plus contract-result / comparison alignment |
 | `gpd validate verification-contract <VERIFICATION.md>` | Validate verification frontmatter plus contract-result / comparison alignment |
 | `gpd validate review-ledger <file.json>` | Validate the final staged peer-review issue ledger |
@@ -518,11 +544,19 @@ GPD stores project-local observability under `GPD/observability/` and detailed p
 |---------|--------------|
 | `gpd observe sessions [--status ...] [--command ...] [--last N]` | List recorded observability sessions |
 | `gpd observe show [--session ...] [--category ...] [--name ...] [--action ...] [--status ...] [--command ...] [--phase ...] [--plan ...] [--last N]` | Show logged observability events with filters |
+| `gpd observe export [--format {jsonl,json,markdown}] [--session ...] [--command ...] [--phase ...] [--last N] [--no-traces] [--output-dir ...]` | Export filtered observability sessions, events, and optional traces to files |
+| `gpd observe execution` | Show read-only live execution status for the current workspace, including progress / waiting state, conservative `possibly stalled` wording, and the next read-only checks to run |
+| `gpd cost` | Show the read-only machine-local usage / cost summary from recorded local telemetry, optional USD budget guardrails, and the current profile tier mix; advisory only, not live budget enforcement or provider billing truth. If telemetry is missing, the USD view stays partial or estimated rather than exact |
 | `gpd observe event <category> <name> [--action ...] [--status ...] [--command ...] [--phase ...] [--plan ...] [--session ...] [--data <json>]` | Append an explicit observability event with optional structured metadata |
 | `gpd trace start <phase> <plan>` | Start a plan-local trace session |
 | `gpd trace log <event> [--data <json>]` | Append an event to the active trace |
 | `gpd trace stop` | Stop the active trace session |
 | `gpd trace show [--phase ...] [--plan ...] [--type ...] [--last N]` | Inspect plan-local trace events |
+
+For read-only long-run visibility from your normal system terminal, use `gpd observe execution`.
+When the status is uncertain, conservatively say `possibly stalled` instead of relying on runtime hotkeys.
+Start with `gpd observe show --last 20` when you need the recent event trail.
+If `gpd observe execution` surfaces an alternative-path follow-up or `branch later` recommendation, route it through the runtime `tangent` command first; use the matching `branch-hypothesis` command only when you want the explicit git-backed alternative path.
 
 | Path | What it stores |
 |------|----------------|
@@ -540,15 +574,15 @@ Low-level function and span calls are not recorded automatically. Observability 
 
 | Command | What it does |
 |---------|--------------|
-| `gpd paper-build [PAPER-CONFIG.json] [--output-dir <dir>]` | Materialize the canonical manuscript scaffold from `paper/PAPER-CONFIG.json`, emit `main.tex`, bibliography artifacts, and the paper artifact manifest |
+| `gpd paper-build [PAPER-CONFIG.json] [--output-dir <dir>]` | Materialize the canonical manuscript scaffold from `paper/PAPER-CONFIG.json`, emit `{topic_specific_stem}.tex`, bibliography artifacts, and the paper artifact manifest |
 
 </details>
 
 ## System Requirements
 
-- Node.js with `npm`/`npx`
-- Python 3.11+ with the standard `venv` module (install a newer version with `brew install python@3.13` on macOS, `pyenv install 3.13` on Linux, or from [python.org](https://www.python.org/downloads/) on Windows)
-- Network access to npm and GitHub for the bootstrap installer
+- Node.js with `npm`/`npx` (see the `Need Node.js?` note above if Node.js is missing)
+- Python 3.11+ with the standard `venv` module (see the OS guides above for beginner setup steps on macOS, Linux, and Windows)
+- Network access to npm and PyPI for ordinary bootstrap installs; GitHub is needed for tagged-source fallback and `--upgrade`
 - One of: Claude Code, Gemini CLI, Codex, or OpenCode
 - API access for the model provider used by your selected runtime
 
@@ -558,15 +592,15 @@ Low-level function and span calls are not recorded automatically. Observability 
 
 ## Uninstall
 
-Run `npx -y get-physics-done --uninstall` for interactive uninstall. The equivalent subcommand form `npx -y get-physics-done uninstall` also works, and you can add the runtime and scope flags above for a non-interactive uninstall.
+Run `npx -y get-physics-done --uninstall` for interactive uninstall. For non-interactive uninstall, select both the runtime and scope explicitly, for example `npx -y get-physics-done --uninstall --codex --local` or `npx -y get-physics-done --uninstall --claude --global`.
 
-Uninstall removes GPD from the selected runtime config only. It does not delete project `GPD/` artifacts or shared files under `~/GPD`; remove `~/GPD/` manually, or `GPD_HOME` if you used it, for a full wipe after uninstalling from all runtimes.
+Uninstall removes GPD from the selected runtime config only. It does not delete project `GPD/` artifacts or shared files under the resolved GPD home/data roots; remove `${GPD_HOME:-~/.gpd}` and, if configured separately, `GPD_DATA_DIR` for a full wipe after uninstalling from all runtimes.
 
 ## Inspiration
 
-GPD takes its name in explicit analogy with [GSD (Get Shit Done)](https://github.com/gsd-build/get-shit-done), whose adoption demonstrates how AI-native command workflows can be genuinely useful. GPD takes inspiration from that system to build a sophisticated prompt-engineered agentic system specifically designed for physics research.
+GPD takes its name in analogy with [GSD](https://github.com/gsd-build/get-shit-done), whose adoption demonstrates how AI-native command workflows can be genuinely useful. GPD adapts that command-workflow idea into a rigorous agentic system designed specifically for physics research.
 
-## Citation
+## Citation and Acknowledgement
 
 If GPD contributes to published research, please cite the software using [`CITATION.cff`](https://github.com/psi-oss/get-physics-done/blob/main/CITATION.cff). Copy-ready formats:
 
@@ -574,7 +608,7 @@ If GPD contributes to published research, please cite the software using [`CITAT
 @software{physical_superintelligence_2026_gpd,
   author = {{Physical Superintelligence PBC}},
   title = {Get Physics Done (GPD)},
-  version = {1.1.0},
+  version = {1.2.2},
   year = {2026},
   url = {https://github.com/psi-oss/get-physics-done},
   license = {Apache-2.0}
@@ -582,13 +616,22 @@ If GPD contributes to published research, please cite the software using [`CITAT
 ```
 
 ```text
-Physical Superintelligence PBC (2026). Get Physics Done (GPD) (Version 1.1.0). https://github.com/psi-oss/get-physics-done
+Physical Superintelligence PBC (2026). Get Physics Done (GPD) (Version 1.2.2). https://github.com/psi-oss/get-physics-done
+```
+
+If your paper includes an acknowledgements section, use:
+
+```text
+This research made use of Get Physics Done (GPD), developed by Physical Superintelligence PBC (PSI).
 ```
 
 ## Papers Using GPD
 
-Papers that cite or acknowledge use of GPD. If your paper should be listed here, open a pull request.
+Papers that cite or acknowledge use of GPD. If your paper should be listed here, please open a pull request.
 
+- C. Ferko, S. Frank, J. Halverson and V. Jejjala, *Anomalies in Neural Network Field Theory* (2026), [arXiv:2605.12488](https://arxiv.org/abs/2605.12488).
+- L. Eberhardt, *The Super Virasoro Minimal String from 3d Supergravity* (2026), [arXiv:2604.26038](https://arxiv.org/abs/2604.26038).
+- V. G. Filev, *Holographic entanglement entropy, Wilson loops, and neural networks* (2026), [arXiv:2604.05970](https://arxiv.org/abs/2604.05970).
 - C. Ferko, J. Halverson, V. Jejjala and B. Robinson, *Topological Effects in Neural Network Field Theory* (2026), [arXiv:2604.02313](https://arxiv.org/abs/2604.02313).
 
 ## Star History

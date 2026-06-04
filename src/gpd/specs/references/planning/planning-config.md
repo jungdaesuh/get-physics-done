@@ -8,12 +8,12 @@ Configuration options for `GPD/` directory behavior in physics research projects
 "planning": {
   "commit_docs": true
 },
-"autonomy": "balanced",
+"autonomy": "supervised",
 "execution": {
-  "review_cadence": "adaptive",
-  "max_unattended_minutes_per_plan": 45,
-  "max_unattended_minutes_per_wave": 90,
-  "checkpoint_after_n_tasks": 3,
+  "review_cadence": "dense",
+  "max_unattended_minutes_per_plan": 15,
+  "max_unattended_minutes_per_wave": 30,
+  "checkpoint_after_n_tasks": 1,
   "checkpoint_after_first_load_bearing_result": true,
   "checkpoint_before_downstream_dependent_tasks": true
 },
@@ -35,11 +35,11 @@ Configuration options for `GPD/` directory behavior in physics research projects
 | Option                          | Default                      | Description                                                                                    |
 | ------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
 | `planning.commit_docs`          | `true`                       | Whether to commit planning artifacts to git                                                    |
-| `autonomy`                      | `"balanced"`                 | Human-in-the-loop level: `"supervised"`, `"balanced"`, `"yolo"`                                    |
-| `execution.review_cadence`      | `"adaptive"`                 | How aggressively long-running execution injects bounded review points                            |
-| `execution.max_unattended_minutes_per_plan` | `45`             | Wall-clock budget before a bounded continuation segment must be created, even if the run feels smooth |
-| `execution.max_unattended_minutes_per_wave` | `90`             | Wave-level unattended budget before forcing a bounded review                                     |
-| `execution.checkpoint_after_n_tasks` | `3`                    | Task budget before forcing a bounded continuation segment                                        |
+| `autonomy`                      | `"supervised"`               | Human-in-the-loop level: `"supervised"`, `"balanced"`, `"yolo"`                                    |
+| `execution.review_cadence`      | `"dense"`                    | How aggressively long-running execution injects bounded review points                            |
+| `execution.max_unattended_minutes_per_plan` | `15`             | Wall-clock budget before a bounded continuation segment must be created, even if the run feels smooth |
+| `execution.max_unattended_minutes_per_wave` | `30`             | Wave-level unattended budget before forcing a bounded review                                     |
+| `execution.checkpoint_after_n_tasks` | `1`                    | Task budget before forcing a bounded continuation segment                                        |
 | `execution.checkpoint_after_first_load_bearing_result` | `true` | Require a first-result sanity gate before fanout, especially when decisive evidence is not yet in hand |
 | `execution.checkpoint_before_downstream_dependent_tasks` | `true` | Require review before dependent downstream work unlocks when later tasks would assume unresolved decisive evidence |
 | `research_mode`                 | `"balanced"`                 | Research strategy: `"explore"` (breadth), `"balanced"`, `"exploit"` (depth), `"adaptive"`       |
@@ -70,6 +70,11 @@ Configuration options for `GPD/` directory behavior in physics research projects
 - Useful for: private research notes, draft calculations, preliminary explorations
 - The settings workflow exposes this as the explicit `planning.commit_docs` toggle
 
+**When `planning.commit_docs: true`:**
+
+- Keep `GPD/` tracked
+- Add `GPD/state.json.bak` and `GPD/state.json.lock` to `.gitignore`; they are local recovery/coordination files, not durable project artifacts
+
 **Using gpd CLI (preferred):**
 
 ```bash
@@ -77,11 +82,11 @@ Configuration options for `GPD/` directory behavior in physics research projects
 gpd commit "docs: update state" --files GPD/STATE.md
 
 # Load config via init progress (returns JSON):
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 # planning.commit_docs is available in the JSON output
 
 # Or use init commands which include planning.commit_docs:
-INIT=$(gpd init execute-phase "1")
+INIT=$(gpd --raw init execute-phase "1")
 # planning.commit_docs is included in all init command outputs
 ```
 
@@ -103,11 +108,11 @@ The CLI checks `planning.commit_docs` config and gitignore status internally -- 
 
 | Value        | Behavior |
 | ------------ | -------- |
-| `"dense"`    | Frequent bounded review points and short unattended segments |
-| `"adaptive"` | Default. Insert first-result and risky-fanout gates automatically when results become load-bearing or decisive evidence remains unresolved |
+| `"dense"`    | Default. Force first-result and pre-fanout gates on every wave, regardless of the risk classifier |
+| `"adaptive"` | Insert first-result and risky-fanout gates automatically when results become load-bearing or decisive evidence remains unresolved |
 | `"sparse"`   | Fewest review stops, but required correctness gates still run when a result becomes load-bearing, decisive evidence is still missing, or a wall-clock/task budget trips |
 
-This knob is surfaced directly in `/gpd:settings` as `execution.review_cadence`.
+This knob is surfaced directly in `gpd:settings` as `execution.review_cadence`.
 
 `autonomy` and `execution.review_cadence` are separate axes:
 
@@ -142,7 +147,7 @@ Notation, unit systems, metric signatures, Fourier conventions, and similar phys
 Manage those values with:
 
 - `gpd convention set <key> <value>`
-- `/gpd:validate-conventions`
+- `gpd:validate-conventions`
 - the notation-coordinator / convention-establishment workflow during project setup
 
 Keep `config.json` focused on workflow orchestration: autonomy, research mode, review cadence, runtime/model overrides, branching, and agent toggles. Do **not** introduce a `physics` block there.
@@ -218,14 +223,14 @@ To use uncommitted mode:
 Use `init execute-phase` which returns all config as JSON:
 
 ```bash
-INIT=$(gpd init execute-phase "1")
+INIT=$(gpd --raw init execute-phase "1")
 # JSON output includes: branching_strategy, phase_branch_template, milestone_branch_template
 ```
 
 Or use `init progress` for the config values:
 
 ```bash
-INIT=$(gpd init progress --include state,config)
+INIT=$(gpd --raw init progress --include state,config)
 # Parse branching_strategy, phase_branch_template, milestone_branch_template from JSON
 ```
 

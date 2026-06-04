@@ -1,0 +1,54 @@
+"""Prompt budget assertions for the `resume-work` startup surface."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from tests.prompt_metrics_support import measure_prompt_surface
+from tests.workflow_authority_support import workflow_authority_text
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+COMMANDS_DIR = REPO_ROOT / "src" / "gpd" / "commands"
+WORKFLOWS_DIR = REPO_ROOT / "src" / "gpd" / "specs" / "workflows"
+SOURCE_ROOT = REPO_ROOT / "src" / "gpd"
+PATH_PREFIX = "/runtime/"
+
+
+def test_resume_work_command_stays_thin_and_only_eagerly_loads_the_workflow() -> None:
+    command_text = (COMMANDS_DIR / "resume-work.md").read_text(encoding="utf-8")
+    metrics = measure_prompt_surface(
+        COMMANDS_DIR / "resume-work.md",
+        src_root=SOURCE_ROOT,
+        path_prefix=PATH_PREFIX,
+    )
+    bootstrap = measure_prompt_surface(
+        WORKFLOWS_DIR / "resume-work" / "resume-bootstrap.md",
+        src_root=SOURCE_ROOT,
+        path_prefix=PATH_PREFIX,
+    )
+
+    assert metrics.raw_include_count == 1
+    assert "@{GPD_INSTALL_DIR}/workflows/resume-work/resume-bootstrap.md" in command_text
+    assert "@{GPD_INSTALL_DIR}/workflows/resume-work.md" not in command_text
+    assert "Resume research from the selected project's canonical state." in command_text
+    assert "Read the included resume-work bootstrap authority first." in command_text
+    assert "requires:" in command_text
+    assert 'files: ["GPD/ROADMAP.md"]' in command_text
+    assert "GPD/STATE.md" not in command_text
+    assert "resume-vocabulary.md" not in command_text
+    assert "STATE.md loading (or reconstruction if missing)" not in command_text
+    assert "Context-aware option offering" not in command_text
+    assert metrics.expanded_line_count > bootstrap.expanded_line_count
+    assert metrics.expanded_char_count > bootstrap.expanded_char_count
+    assert metrics.expanded_line_count < bootstrap.expanded_line_count + 80
+    assert metrics.expanded_char_count < bootstrap.expanded_char_count + 5000
+    assert metrics.expanded_char_count < 9000
+
+
+def test_resume_work_uses_adapter_neutral_handoff_language_for_recovery() -> None:
+    workflow_text = workflow_authority_text(WORKFLOWS_DIR, "resume-work")
+
+    assert "Task tool with resume parameter" not in workflow_text
+    assert "task tool (resume parameter with agent ID)" not in workflow_text
+    assert "fresh handoff built from the interrupted-agent record" in workflow_text
+    assert "continue the canonical bounded segment when one exists" in workflow_text

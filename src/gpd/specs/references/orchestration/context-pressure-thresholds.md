@@ -1,15 +1,8 @@
 # Context Pressure Thresholds
 
-Standardized context pressure monitoring thresholds for all GPD agents. This file covers per-agent threshold calibration. For workflow-level context budgeting (how to segment plans, when to /clear, token cost estimates), see `references/orchestration/context-budget.md`.
+Standardized context pressure monitoring thresholds for all GPD agents. This file covers per-agent threshold calibration. For workflow-level context budgeting (how to segment plans, when to reset context, token cost estimates), see `references/orchestration/context-budget.md`.
 
-**Default thresholds** (from `references/orchestration/agent-infrastructure.md`):
-
-| Level | Threshold | Action |
-|---|---|---|
-| GREEN | < 40% | Proceed normally |
-| YELLOW | 40-60% | Prioritize remaining work, skip optional depth |
-| ORANGE | 60-75% | Complete current unit of work only, write checkpoint, prepare handoff |
-| RED | > 75% | STOP immediately, write checkpoint with progress so far, return with CHECKPOINT status |
+**Default thresholds:** use `references/orchestration/agent-infrastructure.md` §Context Pressure Management as the canonical GREEN/YELLOW/ORANGE/RED table. This file only lists per-agent overrides and calibration notes.
 
 ## Per-Agent Thresholds
 
@@ -24,11 +17,12 @@ Agents override defaults based on their context consumption patterns. Agents tha
 | gpd-phase-researcher | < 35% | 35-50% | 50-65% | > 65% | research area | web_search results ~2-4% each; synthesize after 8-10 searches |
 | gpd-project-researcher | < 35% | 35-50% | 50-65% | > 65% | research area | Same as phase-researcher; limit to 10-15 searches before synthesizing |
 | gpd-planner | < 35% | 35-50% | 50-65% | > 65% | plan file | Large plan output (~5-8% per plan); keep plans concise |
-| gpd-plan-checker | < 35% | 35-50% | 50-65% | > 65% | plan check | Each verification dimension ~2-3%; exploratory (8 dims) vs comprehensive (15 dims) |
+| gpd-plan-checker | < 35% | 35-50% | 50-65% | > 65% | plan check | Each verification dimension ~2-3%; exploratory mode abbreviates optional depth while comprehensive checks use the full matrix |
 | gpd-executor | < 40% | 40-55% | 55-70% | > 70% | task | Tracks both input and output; forced checkpoint at 50% regardless of task status |
 | gpd-review-reader | < 35% | 35-50% | 50-65% | > 65% | manuscript section | Full-manuscript reading stage; summarize claims early rather than hoarding text |
 | gpd-review-literature | < 35% | 35-50% | 50-60% | > 60% | claim cluster | Literature search results accumulate quickly; synthesize overlap after each claim cluster |
 | gpd-review-math | < 35% | 35-50% | 50-60% | > 60% | equation cluster | Keep only the 3-5 claim-central equations live; externalize side calculations immediately |
+| gpd-check-proof | < 35% | 35-50% | 50-60% | > 60% | proof inventory slice | Keep only the active theorem inventory, proof skeleton, and adversarial probe live; externalize side lemmas immediately |
 | gpd-review-physics | < 35% | 35-50% | 50-60% | > 60% | physical claim cluster | Focus on regime-of-validity and claim-support tables rather than full derivation history |
 | gpd-review-significance | < 35% | 35-50% | 50-60% | > 60% | venue-fit dimension | Compare contribution vs venue bar explicitly; avoid retaining unnecessary derivation detail |
 | gpd-referee | < 40% | 40-50% | 50-65% | > 65% | evaluation dimension | Start with 5 critical dimensions, expand if budget allows |

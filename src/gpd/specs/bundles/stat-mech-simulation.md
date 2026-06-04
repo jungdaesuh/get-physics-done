@@ -42,8 +42,11 @@ assets:
   protocols_optional:
     - path: references/protocols/statistical-inference.md
     - path: references/protocols/renormalization-group.md
+  planning_guides:
+    - path: references/planning/statistical-mechanics.md
+      note: Use the ensemble, scaling, thermalization, and benchmark-before-production skeleton when planning simulation phases.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/stat-mech-simulation.md
 anchor_prompts:
   - Surface an exact solution, trusted literature benchmark, or known thermodynamic limit before scaling up production runs.
   - Ask which observable definitions and finite-size conventions are decisive if multiple normalizations exist.

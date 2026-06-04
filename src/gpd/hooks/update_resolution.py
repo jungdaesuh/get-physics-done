@@ -1,0 +1,306 @@
+"""Shared update-cache resolution for hook surfaces."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from pathlib import Path
+
+import gpd.hooks.install_context as hook_layout
+from gpd.adapters.install_utils import CACHE_DIR_NAME, UPDATE_CACHE_FILENAME
+from gpd.hooks.install_metadata import (
+    InstallManifestSnapshot,
+    build_runtime_install_repair_command,
+    load_install_manifest_snapshot,
+)
+
+DebugLogger = Callable[[str], None]
+
+
+def _read_update_cache(cache_file: Path, *, debug: DebugLogger) -> dict[str, object] | None:
+    if not cache_file.exists():
+        return None
+    try:
+        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        debug(f"Failed to parse update cache {cache_file}: {exc}")
+        return None
+    if not isinstance(cache, dict):
+        debug(f"Ignoring non-object update cache {cache_file}")
+        return None
+    return cache
+
+
+def resolve_update_cache_inputs(
+    *,
+    cwd: str | Path | None,
+    home: str | Path | None = None,
+    active_installed_runtime: str | None = None,
+    preferred_runtime: str | None = None,
+) -> tuple[Path | None, Path, str | None, str | None]:
+    """Return the shared runtime-preference inputs for update-cache lookup."""
+    lookup = hook_layout.resolve_hook_lookup_context(
+        cwd=cwd,
+        home=home,
+        active_installed_runtime=active_installed_runtime,
+        preferred_runtime=preferred_runtime,
+    )
+    return lookup.lookup_cwd, lookup.resolved_home, lookup.active_runtime, lookup.preferred_runtime
+
+
+def ordered_update_cache_candidates(
+    *,
+    cwd: str | Path | None,
+    home: str | Path | None = None,
+    active_installed_runtime: str | None = None,
+    preferred_runtime: str | None = None,
+) -> list[object]:
+    """Return update-cache candidates in the shared precedence order."""
+    from gpd.hooks.runtime_detect import (
+        RUNTIME_UNKNOWN,
+        get_update_cache_candidates,
+        normalize_runtime_name,
+        should_consider_update_cache_candidate,
+        supported_runtime_names,
+    )
+
+    workspace_path, resolved_home, active_runtime, resolved_preferred_runtime = resolve_update_cache_inputs(
+        cwd=cwd,
+        home=home,
+        active_installed_runtime=active_installed_runtime,
+        preferred_runtime=preferred_runtime,
+    )
+    cache_candidates = get_update_cache_candidates(
+        cwd=workspace_path,
+        home=resolved_home,
+        preferred_runtime=resolved_preferred_runtime,
+    )
+    relevant_candidates = [
+        candidate
+        for candidate in cache_candidates
+        if should_consider_update_cache_candidate(
+            candidate,
+            active_installed_runtime=active_runtime,
+            cwd=workspace_path,
+            home=resolved_home,
+        )
+    ]
+    runtime_names = supported_runtime_names()
+    explicit_active_runtime = normalize_runtime_name(active_installed_runtime)
+    no_active_runtime = (
+        explicit_active_runtime is None
+        if active_installed_runtime is not None
+        else active_runtime in (None, "", RUNTIME_UNKNOWN)
+    )
+    if no_active_runtime and resolved_preferred_runtime in runtime_names:
+        preferred_candidates = [
+            candidate
+            for candidate in relevant_candidates
+            if getattr(candidate, "runtime", None) == resolved_preferred_runtime
+        ]
+        if preferred_candidates:
+            fallback_candidates = [
+                candidate for candidate in relevant_candidates if getattr(candidate, "runtime", None) is None
+            ]
+            seen_paths: set[Path] = set()
+            preferred_first: list[object] = []
+            for candidate in [*preferred_candidates, *fallback_candidates]:
+                candidate_path = getattr(candidate, "path", None)
+                if not isinstance(candidate_path, Path) or candidate_path in seen_paths:
+                    continue
+                seen_paths.add(candidate_path)
+                preferred_first.append(candidate)
+            relevant_candidates = preferred_first
+    return relevant_candidates
+
+
+def primary_update_cache_file(candidates: list[object], *, home: str | Path | None = None) -> Path:
+    """Return the cache file that should receive the next background update result."""
+    if candidates:
+        candidate_path = getattr(candidates[0], "path", None)
+        if isinstance(candidate_path, Path):
+            return candidate_path
+    from gpd.hooks.runtime_detect import home_update_cache_file
+
+    return home_update_cache_file(home=home)
+
+
+def _candidate_config_dir(candidate_path: object) -> Path | None:
+    """Return the runtime config dir for a standard runtime update-cache path."""
+    if not isinstance(candidate_path, Path):
+        return None
+    if candidate_path.name != UPDATE_CACHE_FILENAME or candidate_path.parent.name != CACHE_DIR_NAME:
+        return None
+    return candidate_path.parent.parent
+
+
+def _update_command_from_install_facts(
+    *,
+    config_dir: Path,
+    runtime: str | None,
+    install_scope: str | None,
+    explicit_target: bool | None,
+) -> str | None:
+    """Return the installed update command from already-trusted manifest identity facts."""
+    if runtime is None or install_scope not in {"local", "global"} or explicit_target is None:
+        return None
+    try:
+        return build_runtime_install_repair_command(
+            runtime,
+            install_scope=install_scope,
+            target_dir=config_dir,
+            explicit_target=explicit_target,
+        )
+    except KeyError:
+        return None
+
+
+def _update_command_from_manifest_snapshot(manifest: InstallManifestSnapshot) -> str | None:
+    """Return the update command described by a trusted manifest snapshot."""
+    if manifest.runtime_state != "ok" or manifest.scope_state != "ok" or manifest.explicit_target_state != "ok":
+        return None
+    return _update_command_from_install_facts(
+        config_dir=manifest.config_dir,
+        runtime=manifest.runtime,
+        install_scope=manifest.install_scope,
+        explicit_target=manifest.explicit_target,
+    )
+
+
+def _manifest_matches_candidate(candidate: object, *, manifest: InstallManifestSnapshot) -> bool:
+    """Return whether candidate metadata agrees with an authoritative install manifest."""
+    from gpd.hooks.runtime_detect import RUNTIME_UNKNOWN, normalize_runtime_name
+
+    candidate_runtime = normalize_runtime_name(getattr(candidate, "runtime", None))
+    if candidate_runtime in (None, RUNTIME_UNKNOWN):
+        candidate_runtime = None
+    candidate_scope = getattr(candidate, "scope", None)
+
+    if manifest.runtime_state != "ok" or manifest.runtime is None:
+        return False
+    if candidate_runtime is not None and candidate_runtime != manifest.runtime:
+        return False
+
+    if manifest.scope_state != "ok" or manifest.install_scope is None:
+        return False
+    return candidate_scope is None or candidate_scope == manifest.install_scope
+
+
+def latest_update_cache(
+    *,
+    hook_file: str | Path,
+    cwd: str | Path | None,
+    debug: DebugLogger,
+) -> tuple[dict[str, object] | None, object | None]:
+    """Return the highest-priority valid update cache and its candidate metadata."""
+    from gpd.hooks.runtime_detect import (
+        RUNTIME_UNKNOWN,
+        detect_runtime_install_target,
+    )
+
+    workspace_path, resolved_home, active_installed_runtime, preferred_runtime = resolve_update_cache_inputs(cwd=cwd)
+    self_install = hook_layout.detect_self_owned_install(hook_file)
+    active_install_target = (
+        detect_runtime_install_target(active_installed_runtime, cwd=workspace_path, home=resolved_home)
+        if active_installed_runtime not in (None, "", RUNTIME_UNKNOWN)
+        else None
+    )
+    self_candidate = None
+    if hook_layout.should_prefer_self_owned_install(
+        self_install,
+        active_install_target=active_install_target,
+        active_runtime=active_installed_runtime,
+        workspace_path=workspace_path,
+    ):
+        if self_install is not None:
+            self_candidate = hook_layout.self_owned_update_cache_candidate(self_install)
+            cache = _read_update_cache(self_candidate.path, debug=debug)
+            if cache is not None:
+                return cache, self_candidate
+
+    fallback_hit: tuple[dict[str, object], object] | None = None
+    for candidate in ordered_update_cache_candidates(
+        cwd=workspace_path,
+        home=resolved_home,
+        preferred_runtime=preferred_runtime,
+        active_installed_runtime=active_installed_runtime,
+    ):
+        cache = _read_update_cache(candidate.path, debug=debug)
+        if cache is None:
+            continue
+        if getattr(candidate, "runtime", None):
+            return cache, candidate
+        if fallback_hit is None:
+            fallback_hit = (cache, candidate)
+
+    if fallback_hit is not None:
+        return fallback_hit
+    if self_candidate is not None:
+        return None, self_candidate
+    return None, None
+
+
+def update_command_for_candidate(
+    candidate: object | None,
+    *,
+    hook_file: str | Path,
+    cwd: str | Path | None,
+) -> str | None:
+    """Return the repair/update command for one resolved update-cache candidate."""
+    from gpd.hooks.install_metadata import installed_update_command
+    from gpd.hooks.runtime_detect import (
+        RUNTIME_UNKNOWN,
+        detect_active_runtime_with_gpd_install,
+        detect_runtime_install_target,
+        normalize_runtime_name,
+        runtime_has_gpd_install,
+        supported_runtime_names,
+    )
+
+    def _trusted_live_install_command(runtime: object, *, lookup_cwd: Path | None, home: Path) -> str | None:
+        normalized_runtime = normalize_runtime_name(runtime if isinstance(runtime, str) else None)
+        if normalized_runtime not in supported_runtime_names():
+            return None
+        install_target = detect_runtime_install_target(normalized_runtime, cwd=lookup_cwd, home=home)
+        if install_target is None:
+            return None
+        return _update_command_from_install_facts(
+            config_dir=install_target.config_dir,
+            runtime=getattr(install_target, "runtime", None),
+            install_scope=getattr(install_target, "install_scope", None),
+            explicit_target=getattr(install_target, "explicit_target", None),
+        ) or installed_update_command(install_target.config_dir)
+
+    candidate_path = getattr(candidate, "path", None)
+    candidate_config_dir = _candidate_config_dir(candidate_path)
+    if candidate_config_dir is not None:
+        manifest = load_install_manifest_snapshot(candidate_config_dir)
+        if manifest.parse_state != "missing":
+            if not _manifest_matches_candidate(candidate, manifest=manifest):
+                return None
+            return _update_command_from_manifest_snapshot(manifest)
+        if getattr(candidate, "runtime", None) is not None:
+            return None
+
+    self_install = hook_layout.detect_self_owned_install(hook_file)
+    if self_install is not None and candidate_path == self_install.cache_file:
+        return _update_command_from_install_facts(
+            config_dir=self_install.config_dir,
+            runtime=self_install.runtime,
+            install_scope=self_install.install_scope,
+            explicit_target=getattr(self_install, "explicit_target", None),
+        ) or installed_update_command(self_install.config_dir)
+
+    lookup = hook_layout.resolve_hook_lookup_context(cwd=cwd)
+    workspace_path = lookup.lookup_cwd
+    scope_lookup_cwd = workspace_path if cwd is not None else None
+    runtime = getattr(candidate, "runtime", None) or RUNTIME_UNKNOWN
+    if runtime != RUNTIME_UNKNOWN and not runtime_has_gpd_install(
+        runtime,
+        cwd=workspace_path,
+        home=lookup.resolved_home,
+    ):
+        runtime = RUNTIME_UNKNOWN
+    if runtime == RUNTIME_UNKNOWN:
+        runtime = detect_active_runtime_with_gpd_install(cwd=scope_lookup_cwd, home=lookup.resolved_home)
+    return _trusted_live_install_command(runtime, lookup_cwd=scope_lookup_cwd, home=lookup.resolved_home)

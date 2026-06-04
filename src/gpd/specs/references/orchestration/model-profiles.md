@@ -2,6 +2,8 @@
 
 Model profiles control which model tier each GPD agent uses. This allows balancing quality vs token spend.
 
+For first-touch setup, treat `review` plus runtime defaults as the recommended starting point. If a user wants to think in plain language instead of tiers, frame the choice as `Max quality`, `Balanced`, or `Budget-aware`, then let `gpd:settings` map that posture onto the existing profile and runtime-specific tier override machinery. Use `gpd:set-tier-models` when the user wants the direct concrete path for `tier-1`, `tier-2`, and `tier-3` ids without the broader settings flow. Keep explicit tier IDs as an intentional override path.
+
 ## Tier System
 
 GPD uses capability tiers instead of platform-specific model names:
@@ -36,6 +38,7 @@ If no override is configured for the active runtime, `gpd resolve-model` returns
 | gpd-review-reader        | tier-2        | tier-2      | tier-2        | tier-2   | tier-2          |
 | gpd-review-literature    | tier-1        | tier-2      | tier-1        | tier-1   | tier-2          |
 | gpd-review-math          | tier-1        | tier-1      | tier-2        | tier-1   | tier-1          |
+| gpd-check-proof          | tier-1        | tier-1      | tier-2        | tier-1   | tier-1          |
 | gpd-review-physics       | tier-1        | tier-1      | tier-2        | tier-1   | tier-1          |
 | gpd-review-significance  | tier-2        | tier-2      | tier-2        | tier-1   | tier-1          |
 | gpd-referee              | tier-1        | tier-2      | tier-2        | tier-1   | tier-1          |
@@ -100,7 +103,7 @@ Profiles affect agent behavior, not just model selection. When a profile is acti
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **deep-theory** | All 16 verification dimensions checked at maximum rigor. Requires explicit justification for every approximation. Flags any task without a validation step.                                       |
 | **numerical**   | Emphasizes dimensions 5 (computational feasibility), 7 (numerical stability), 8 (error budgets), 9 (dependencies), 16 (environment validation). Requires convergence testing plan for every numerical task. |
-| **exploratory** | Reduces to 9 core dimensions: Dim 1 (Research Question Coverage), 2 (Task Completeness), 4 (Approximation Validity), 5 (Computational Feasibility), 8 (Result Wiring), 9 (Dependency Correctness), 10 (Scope Sanity), 11 (Deliverable Derivation), 16 (Environment Validation). Skips: Dim 3, 6, 7, 12, 13, 14, 15. |
+| **exploratory** | Reduces optional depth while preserving the exploratory core: Dim 1 (Research Question Coverage), 2 (Task Completeness), 4 (Approximation Validity), 5 (Computational Feasibility), 8 (Result Wiring), 9 (Dependency Correctness), 10 (Scope Sanity), 11 (Deliverable Derivation), and 16 (Environment Validation). |
 | **review**      | All 16 dimensions plus additional checks: does the plan reference specific literature results for comparison? Are all claims testable?                                                            |
 | **paper-writing** | All 16 dimensions with emphasis on Dim 12 (Publication Readiness), Dim 8 (Result Wiring), Dim 11 (Deliverable Derivation). Verify plans map to paper sections, figures, and tables. Check notation consistency tasks exist. |
 
@@ -248,7 +251,7 @@ Orchestrators resolve tier and optional concrete model before spawning:
 
 ## Switching Profiles
 
-Runtime: `/gpd:set-profile <profile>`
+Runtime: `gpd:set-profile <profile>`
 
 Per-project default: Set in `GPD/config.json`:
 

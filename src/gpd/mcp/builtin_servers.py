@@ -15,8 +15,18 @@ import subprocess
 import sys
 from copy import deepcopy
 
+from gpd.mcp.descriptor_text import SKILLS_SERVER_DESCRIPTION
+from gpd.mcp.servers.arxiv_bridge import ADVERTISED_TOOL_NAMES, DOWNLOAD_SOURCE_TOOL_NAME, UPSTREAM_CORE_TOOL_NAMES
+from gpd.mcp.verification_contract_policy import verification_server_description
+
 logger = logging.getLogger(__name__)
 
+_PYTHON_COMMAND_SENTINEL = "__GPD_PYTHON__"
+_PUBLIC_PYTHON_PLACEHOLDER = "${GPD_PYTHON}"
+_PYTHON_LAUNCH_NOTES = (
+    f"Replace `{_PUBLIC_PYTHON_PLACEHOLDER}` with a Python >=3.11 interpreter that has GPD installed."
+)
+_OPTIONAL_MODULE_CHECK_TIMEOUT_SECONDS = 5
 
 # Canonical definition of all GPD built-in MCP servers.
 # Mirrors infra/*.json but lives inside the package so it ships with the wheel.
@@ -24,43 +34,43 @@ _ServerDef = dict[str, str | list[str] | dict[str, str] | bool]
 
 _BUILTIN_SERVERS: dict[str, _ServerDef] = {
     "gpd-conventions": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.conventions_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-errors": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.errors_mcp"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-patterns": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.patterns_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-protocols": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.protocols_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-skills": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.skills_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-state": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.state_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-verification": {
-        "command": "python",
+        "command": _PYTHON_COMMAND_SENTINEL,
         "args": ["-m", "gpd.mcp.servers.verification_server"],
         "env": {"LOG_LEVEL": "${LOG_LEVEL:-WARNING}"},
     },
     "gpd-arxiv": {
-        "command": "python",
-        "args": ["-m", "arxiv_mcp_server"],
+        "command": _PYTHON_COMMAND_SENTINEL,
+        "args": ["-m", "gpd.mcp.servers.arxiv_bridge"],
         "env": {},
         "optional": True,
         "module_check": "arxiv_mcp_server",
@@ -68,21 +78,13 @@ _BUILTIN_SERVERS: dict[str, _ServerDef] = {
 }
 
 _PUBLIC_BOOTSTRAP_PREREQUISITE = "Install GPD before enabling built-in MCP servers."
-_ENTRY_POINT_NOTES = "Requires gpd package installed and Python >=3.11"
-
-
-class _VersionedPythonLauncher(str):
-    """Human-readable launcher label that compares equal to legacy bare-python descriptors."""
-
-    def __new__(cls, display_value: str = "python3") -> _VersionedPythonLauncher:
-        return str.__new__(cls, display_value)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, str) and other in {"python", str(self)}:
-            return True
-        return str.__eq__(self, other)
-
-    __hash__ = None
+_ARXIV_EXTRA_PREREQUISITE = (
+    "Install GPD with the `arxiv` Python extra in the same environment before enabling gpd-arxiv."
+)
+_ENTRY_POINT_NOTES = _PYTHON_LAUNCH_NOTES
+_ARXIV_UPSTREAM_CAPABILITIES = list(UPSTREAM_CORE_TOOL_NAMES)
+_ARXIV_LOCAL_CAPABILITIES = [DOWNLOAD_SOURCE_TOOL_NAME]
+_ARXIV_CAPABILITIES = list(ADVERTISED_TOOL_NAMES)
 
 _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     "gpd-conventions": {
@@ -102,6 +104,7 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_conventions",
         "health_check": {
+            "probe_kind": "schema_valid",
             "tool": "subfield_defaults",
             "input": {"domain": "qft"},
             "expect": "contains metric_signature",
@@ -121,6 +124,7 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_errors",
         "health_check": {
+            "probe_kind": "schema_valid",
             "tool": "list_error_classes",
             "input": {},
             "expect": "count >= 100 error classes loaded",
@@ -140,6 +144,7 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_patterns",
         "health_check": {
+            "probe_kind": "schema_valid",
             "tool": "list_domains",
             "input": {},
             "expect": "contains qft",
@@ -148,7 +153,8 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     "gpd-protocols": {
         "description": (
             "Physics computation protocols for GPD research workflows. Provides step-by-step methodology, "
-            "verification checkpoints, and auto-routing across the live protocol catalog."
+            "verification checkpoints, and auto-routing across the live protocol catalog. Use them as rigor-first "
+            "procedural guidance; do not invent missing evidence, artifacts, or completion state."
         ),
         "capabilities": [
             "get_protocol",
@@ -158,16 +164,14 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_protocols",
         "health_check": {
+            "probe_kind": "schema_valid",
             "tool": "list_protocols",
             "input": {},
             "expect": "count >= 40 protocols loaded",
         },
     },
     "gpd-skills": {
-        "description": (
-            "GPD skill discovery and routing. Tools for listing, retrieving, auto-routing, "
-            "and indexing GPD workflow skills for agent prompt injection."
-        ),
+        "description": SKILLS_SERVER_DESCRIPTION,
         "capabilities": [
             "list_skills",
             "get_skill",
@@ -176,9 +180,10 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_skills",
         "health_check": {
+            "probe_kind": "schema_valid",
             "tool": "list_skills",
             "input": {},
-            "expect": "contains gpd-execute-phase",
+            "expect": "contains gpd-execute-phase and gpd-research-phase",
         },
     },
     "gpd-state": {
@@ -188,6 +193,7 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ),
         "capabilities": [
             "get_state",
+            "suggest_next",
             "get_phase_info",
             "advance_plan",
             "get_progress",
@@ -195,27 +201,20 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
             "run_health_check",
             "get_config",
         ],
+        "mutating_capabilities": [
+            "advance_plan",
+            "run_health_check",
+        ],
         "registry_prefix": "gpd_state",
         "health_check": {
-            "tool": "get_config",
-            "input": {"project_dir": "/tmp/test"},
-            "expect": "contains model_profile",
+            "probe_kind": "expected_error",
+            "tool": "get_state",
+            "input": {},
+            "expect": "returns a stable validation error envelope for missing required project_dir",
         },
     },
     "gpd-verification": {
-        "description": (
-            "GPD physics verification checks. Tools for running contract-aware checks, "
-            "dimensional analysis, domain and bundle-specific checklists, limiting case checks, "
-            "symmetry verification, and coverage gap analysis. Contract-aware tools accept "
-            "structured request objects or schema_version=1 contract payloads, expose the exact "
-            "request shape through `required_request_fields`, `optional_request_fields`, and "
-            "`request_template`, and surface the supported binding fields `binding.observable_id(s)`, "
-            "`binding.claim_id(s)`, `binding.deliverable_id(s)`, `binding.acceptance_test_id(s)`, "
-            "`binding.reference_id(s)`, and `binding.forbidden_proxy_id(s)`. These live semantic "
-            "integrity rules reject target IDs reused across contract kinds when that makes target "
-            "resolution ambiguous, and treat `references[].carry_forward_to` entries as workflow "
-            "scope labels only, never contract IDs."
-        ),
+        "description": verification_server_description(),
         "capabilities": [
             "run_check",
             "run_contract_check",
@@ -229,6 +228,7 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
         ],
         "registry_prefix": "gpd_verification",
         "health_check": {
+            "probe_kind": "schema_valid",
             "tool": "get_checklist",
             "input": {"domain": "qft"},
             "expect": "contains Ward identities",
@@ -236,18 +236,22 @@ _PUBLIC_DESCRIPTOR_METADATA: dict[str, dict[str, object]] = {
     },
     "gpd-arxiv": {
         "description": (
-            "Optional/conditional arXiv paper search and retrieval via arxiv-mcp-server. "
-            "Available only when the optional arxiv-mcp-server dependency is installed; "
-            "search for physics papers, fetch abstracts, and download full text."
+            "Optional arXiv bridge for arxiv-mcp-server. Advertises the baseline upstream tools "
+            f"{', '.join(_ARXIV_UPSTREAM_CAPABILITIES)}, forwards only tools exposed "
+            f"by the live upstream server, and adds GPD {DOWNLOAD_SOURCE_TOOL_NAME} for raw source archives."
         ),
-        "capabilities": [
-            "search_papers",
-            "download_paper",
-            "list_papers",
-            "read_paper",
-        ],
+        "capability_surface": "baseline_dynamic_upstream",
+        "dynamic_upstream_capabilities": True,
+        "baseline_upstream_capabilities": _ARXIV_UPSTREAM_CAPABILITIES,
+        "local_capabilities": _ARXIV_LOCAL_CAPABILITIES,
+        "capabilities": _ARXIV_CAPABILITIES,
         "registry_prefix": "gpd_arxiv",
+        "prerequisites": [
+            _PUBLIC_BOOTSTRAP_PREREQUISITE,
+            _ARXIV_EXTRA_PREREQUISITE,
+        ],
         "health_check": {
+            "probe_kind": "network_required",
             "tool": "search_papers",
             "input": {"query": "quantum field theory", "max_results": 1},
             "expect": "contains paper",
@@ -291,22 +295,21 @@ def _is_module_available(module_name: str, *, python_path: str | None = None) ->
             check=False,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
+            timeout=_OPTIONAL_MODULE_CHECK_TIMEOUT_SECONDS,
         ).returncode == 0
-    except (FileNotFoundError, ModuleNotFoundError, OSError, ValueError):
+    except (FileNotFoundError, ModuleNotFoundError, OSError, ValueError, subprocess.TimeoutExpired):
         return False
 
 
 def _build_public_alternatives(name: str) -> dict[str, dict[str, object]] | None:
     """Build fallback launch alternatives for a public built-in server descriptor."""
-    if name == "gpd-arxiv":
-        return None
     if not name.startswith("gpd-"):
         return None
     raw = _BUILTIN_SERVERS[name]
     args = list(raw.get("args", [])) if isinstance(raw.get("args"), list) else []
     return {
         "python_module": {
-            "command": _VersionedPythonLauncher(),
+            "command": _PUBLIC_PYTHON_PLACEHOLDER,
             "args": args,
             "notes": _ENTRY_POINT_NOTES,
         }
@@ -321,9 +324,11 @@ def build_public_descriptor(name: str) -> dict[str, object]:
     env = dict(raw.get("env", {})) if isinstance(raw.get("env"), dict) else {}
     command = str(raw["command"])
     args = default_args
-    if name != "gpd-arxiv" and name.startswith("gpd-"):
+    if name.startswith("gpd-"):
         command = f"gpd-mcp-{name.removeprefix('gpd-')}"
         args = []
+    elif command == _PYTHON_COMMAND_SENTINEL:
+        command = _PUBLIC_PYTHON_PLACEHOLDER
     descriptor: dict[str, object] = {
         "name": name,
         "description": str(metadata["description"]),
@@ -336,6 +341,15 @@ def build_public_descriptor(name: str) -> dict[str, object]:
         "prerequisites": list(metadata.get("prerequisites", [_PUBLIC_BOOTSTRAP_PREREQUISITE])),
         "health_check": dict(metadata["health_check"]) if isinstance(metadata["health_check"], dict) else {},
     }
+    for optional_key in (
+        "mutating_capabilities",
+        "capability_surface",
+        "dynamic_upstream_capabilities",
+        "baseline_upstream_capabilities",
+        "local_capabilities",
+    ):
+        if optional_key in metadata:
+            descriptor[optional_key] = deepcopy(metadata[optional_key])
     alternatives = _build_public_alternatives(name)
     if alternatives:
         descriptor["alternatives"] = alternatives
@@ -347,6 +361,8 @@ def build_public_descriptor(name: str) -> dict[str, object]:
             descriptor["availability_condition"] = (
                 f"Available only when the optional Python module '{module_check}' is installed."
             )
+    if command == _PUBLIC_PYTHON_PLACEHOLDER:
+        descriptor["notes"] = _PYTHON_LAUNCH_NOTES
     return descriptor
 
 
@@ -441,7 +457,7 @@ def build_mcp_servers_dict(
                 continue
 
         cmd = str(raw["command"])
-        if cmd == "python":
+        if cmd == _PYTHON_COMMAND_SENTINEL:
             cmd = python_path
 
         raw_args = raw.get("args", [])

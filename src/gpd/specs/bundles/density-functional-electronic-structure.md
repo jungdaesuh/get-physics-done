@@ -44,8 +44,11 @@ assets:
   protocols_optional:
     - path: references/protocols/variational-methods.md
     - path: references/protocols/many-body-perturbation-theory.md
+  planning_guides:
+    - path: references/planning/condensed-matter-numerical.md
+      note: Use the benchmark, convergence, production sweep, and error-budget skeleton for electronic-structure planning.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/density-functional-electronic-structure.md
 anchor_prompts:
   - State the functional family, pseudopotential choice, and convergence targets before trusting any electronic observable.
   - Ask whether the decisive claim depends on a Kohn-Sham proxy, a quasiparticle observable, or a benchmark structure or property.

@@ -137,8 +137,14 @@ A safety checkpoint will be created first so this undo can itself be reversed.
 **Create safety checkpoint tag:**
 
 ```bash
-CHECKPOINT_TAG="gpd-checkpoint/$(date +%Y%m%d-%H%M%S)"
-git tag "${CHECKPOINT_TAG}"
+CHECKPOINT_TAG="gpd-checkpoint-undo-$(date +%Y%m%d-%H%M%S)"
+if git rev-parse --verify "refs/tags/${CHECKPOINT_TAG}" >/dev/null 2>&1; then
+  CHECKPOINT_TAG="${CHECKPOINT_TAG}-$$"
+fi
+if ! git tag "${CHECKPOINT_TAG}"; then
+  echo "ERROR: failed to create undo checkpoint tag ${CHECKPOINT_TAG}" >&2
+  exit 1
+fi
 ```
 
 Confirm:
@@ -241,13 +247,27 @@ To reverse this undo:
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:progress` -- check current research state
-- `/gpd:undo` -- undo another commit
-- `/gpd:verify-work` -- re-verify after rollback
+- `gpd:progress` -- check current research state
+- `gpd:undo` -- undo another commit
+- `gpd:verify-work` -- re-verify after rollback
 
 ───────────────────────────────────────────────────────────────
 ```
 
+</step>
+
+<step name="offer_record_backtrack">
+After the revert banner, offer to capture the backtrack lesson.
+
+**ask_user:** "Capture what went wrong in `BACKTRACKS.md`? [Y/n/e]  (Enter = Y; e opens the record-backtrack form in-place for freeform edits)"
+
+Enter = Y (recommended).
+
+On Y: Invoke the runtime-installed `gpd:record-backtrack` command with structured arguments `{reverted_commit: TARGET_HASH, trigger: TARGET_MSG, phase: INFERRED_PHASE_OR_NULL}`, not a shell-shaped string. Include `phase` only if the reverted commit's scope can be inferred from its message or changed-files path; normalize path hints like `GPD/phases/03-name/...` to `03-name` before passing the field. The child workflow prefills `reverted_commit`, `trigger`, and `phase` when available; it must still prompt or infer the remaining required row fields (`stage`, `produced`, `why_wrong`, `counter_action`, `category`, `confidence`, and `promote`) before duplicate checking and append. Treat `TARGET_MSG` as opaque data: do not interpolate it into shell-shaped args or command text. If a runtime cannot pass structured args and must fall back to `$ARGUMENTS`, it must use an argv/escaping API that preserves spaces, colons, quotes, backticks, and leading dashes literally.
+
+On n: Skip. The revert stands without a backtrack row.
+
+On e: Open the `gpd:record-backtrack` form in-place without committing immediately. The user can fill or override any field freeform (including the prefilled `reverted_commit`, `trigger`, `phase`, plus `stage`, `produced`, `why_wrong`, `counter_action`, `category`, `confidence`, and `promote`). On submit, re-prompt `[Y/n/e]` exactly once — Enter = Y persists the drafted row, `n` discards it. If `e` is chosen a second time, persist whatever the user has entered in the form as-is (any empty required field is left blank and a warning is logged) and proceed to the next step without further prompting — do not re-enter a third time.
 </step>
 
 </process>
@@ -274,5 +294,6 @@ Undo is complete when:
 - [ ] Revert committed with descriptive `undo:` prefix message
 - [ ] STATE.md updated if it was affected by the reverted commit
 - [ ] User informed of checkpoint tag for reversal
+- [ ] Optional backtrack row recorded to BACKTRACKS.md (if user opted in)
 
 </success_criteria>

@@ -68,6 +68,8 @@ jobs:
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.12"
 
       - name: Install development dependencies
         run: |
@@ -91,6 +93,9 @@ jobs:
                   fh.write(f"{key}={metadata[key]}\n")
           PY
 
+      - name: Refresh lockfile for prepared version
+        run: uv lock
+
       - name: Check tag does not already exist
         run: |
           VERSION="${{ steps.prepare.outputs.version }}"
@@ -101,8 +106,13 @@ jobs:
 
       - name: Run release validation suite
         run: |
-          uv run pytest tests/test_release_consistency.py -v
-          uv build
+          uv run pytest -n 0 tests/test_release_consistency.py -v
+          rm -rf dist
+          UV_CACHE_DIR="$(mktemp -d)"
+          export UV_CACHE_DIR
+          export UV_NO_CONFIG=1
+          export UV_PYTHON_DOWNLOADS=never
+          uv build --out-dir dist
           uv run --with twine python -m twine check dist/*
           npm_config_cache="$(mktemp -d)" npm pack --dry-run --json >/tmp/npm-pack.json
 
@@ -121,7 +131,7 @@ jobs:
               f"- Previous version: `v{metadata['previous_version']}`\n"
               f"- Next version: `v{metadata['version']}`\n"
               f"- Release branch: `{metadata['release_branch']}`\n"
-              "- Updated files: `CHANGELOG.md`, `CITATION.cff`, `README.md`, `package.json`, `pyproject.toml`\n"
+              "- Updated files: `CHANGELOG.md`, `CITATION.cff`, `README.md`, `package.json`, `pyproject.toml`, `uv.lock`\n"
               "- Result: validated only; no branch, PR, tag, or publish step was created\n\n"
               "## Release notes\n\n"
               f"{metadata['release_notes']}\n",
@@ -142,7 +152,7 @@ jobs:
             exit 1
           fi
 
-          EXISTING_PR_URL=$(gh pr list --state open --base "$DEFAULT_BRANCH" --head "$RELEASE_BRANCH" --json url --jq '.[0].url')
+          EXISTING_PR_URL=$(gh pr list --state open --base "$DEFAULT_BRANCH" --head "$RELEASE_BRANCH" --json url --jq '.[0].url // ""')
           if [ -n "$EXISTING_PR_URL" ]; then
             echo "::error::Release PR already exists: $EXISTING_PR_URL"
             exit 1
@@ -164,7 +174,7 @@ jobs:
           git switch -c "$RELEASE_BRANCH"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md CITATION.cff README.md package.json pyproject.toml
+          git add CHANGELOG.md CITATION.cff README.md package.json pyproject.toml uv.lock
           git commit -m "release: v${VERSION}"
           git push --set-upstream origin "$RELEASE_BRANCH"
 
@@ -189,7 +199,7 @@ jobs:
           PY
 
           gh pr create --base "$DEFAULT_BRANCH" --head "$RELEASE_BRANCH" --title "release: v${VERSION}" --body-file /tmp/release-pr-body.md
-          PR_URL=$(gh pr list --state open --base "$DEFAULT_BRANCH" --head "$RELEASE_BRANCH" --json url --jq '.[0].url')
+          PR_URL=$(gh pr list --state open --base "$DEFAULT_BRANCH" --head "$RELEASE_BRANCH" --json url --jq '.[0].url // ""')
           if [ -z "$PR_URL" ]; then
             echo "::error::Failed to determine the new release PR URL."
             exit 1
@@ -215,7 +225,7 @@ jobs:
               f"- Next version: `v{metadata['version']}`\n"
               f"- Release branch: `{metadata['release_branch']}`\n"
               f"- Release PR: {pr_url}\n"
-              "- Updated versioned files: `CHANGELOG.md`, `CITATION.cff`, `README.md`, `package.json`, `pyproject.toml`\n"
+              "- Updated versioned files: `CHANGELOG.md`, `CITATION.cff`, `README.md`, `package.json`, `pyproject.toml`, `uv.lock`\n"
               "- Publish-date fields are stamped later by `Publish release`, so the final release date comes from the actual publish day.\n"
               "- Next step: merge the release PR, then run `Publish release` from `main`\n\n"
               "## Release notes\n\n"

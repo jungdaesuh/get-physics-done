@@ -4,12 +4,12 @@ template_version: 1
 
 # Research Verification Template
 
-Template for `GPD/phases/XX-name/{phase}-VERIFICATION.md` -- persistent research verification session tracking.
+Template for `GPD/phases/01-benchmark/{phase}-VERIFICATION.md` -- persistent research verification session tracking.
 
 A conversational walkthrough of research results, checking derivation logic, physical intuition, edge cases, and overall soundness.
-Use `@{GPD_INSTALL_DIR}/templates/verification-report.md` for the canonical verification frontmatter contract. This template adds the researcher-session body scaffold (`Current Check`, conversational logs, and diagnosis flow) on top of that same verification ledger.
-The verification-side `suggested_contract_checks` entries are part of the same canonical schema surface, so the body scaffold must stay aligned with the frontmatter contract rather than inventing a parallel checklist format.
-The contract-backed frontmatter example below keeps `uncertainty_markers` explicit and non-empty so the strict contract-results validator sees unresolved anchors before the report is written.
+Use `{GPD_INSTALL_DIR}/templates/verification-report.md` for the canonical verification frontmatter contract. Use `{GPD_INSTALL_DIR}/templates/contract-results-schema.md` for the canonical ledger field rules. This template only adds the researcher-session body scaffold (`Current Check`, conversational logs, and diagnosis flow), so its verification-side `suggested_contract_checks` entries are part of the same canonical schema surface and must stay aligned with that shared schema instead of inventing a second checklist format.
+Keep the contract-backed frontmatter explicit: `uncertainty_markers` stay non-empty, theorem/proof claims remain `partial` or `blocked` until the proof audit is complete and every declared proof-specific acceptance test passes, and any active convention lock still requires a machine-readable `ASSERT_CONVENTION` comment after the YAML frontmatter.
+Non-canonical frontmatter aliases are forbidden in model-facing output; use only the canonical contract-ledger fields from `contract_results`.
 
 ---
 
@@ -17,17 +17,38 @@ The contract-backed frontmatter example below keeps `uncertainty_markers` explic
 
 ```markdown
 ---
-phase: XX-name
-verified: [ISO timestamp of latest ledger update]
-status: passed | gaps_found | expert_needed | human_needed
-score: [N]/[M] contract targets verified
-plan_contract_ref: GPD/phases/XX-name/{phase}-{plan}-PLAN.md#/contract
+phase: 01-benchmark
+verified: 2026-04-06T00:00:00Z
+status: gaps_found
+# Allowed status values: passed|gaps_found|expert_needed|human_needed
+score: 3/4 contract targets verified
+plan_contract_ref: GPD/phases/01-benchmark/01-plan-PLAN.md#/contract
 contract_results:
   claims:
     claim-main:
       status: not_attempted
-      summary: "[verification not started yet]"
+      summary: "Verification has not started yet."
       linked_ids: [deliverable-main, acceptance-test-main, reference-main]
+      proof_audit:
+        completeness: incomplete
+        reviewed_at: null
+        reviewer: gpd-check-proof
+        summary: "[what the adversarial proof review concluded]"
+        proof_artifact_path: derivations/main-proof.tex
+        proof_artifact_sha256: null
+        audit_artifact_path: GPD/phases/01-benchmark/01-PROOF-REDTEAM.md
+        audit_artifact_sha256: null
+        claim_statement_sha256: null
+        covered_hypothesis_ids: []
+        missing_hypothesis_ids: []
+        covered_parameter_symbols: []
+        missing_parameter_symbols: []
+        uncovered_quantifiers: []
+        uncovered_conclusion_clause_ids: []
+        quantifier_status: unclear
+        scope_status: unclear
+        counterexample_status: not_attempted
+        stale: false
       evidence:
         - verifier: gpd-verifier
           method: benchmark reproduction
@@ -37,28 +58,30 @@ contract_results:
           acceptance_test_id: acceptance-test-main
           reference_id: reference-main
           forbidden_proxy_id: forbidden-proxy-main
-          evidence_path: "GPD/phases/XX-name/{phase}-VERIFICATION.md"
+          evidence_path: "GPD/phases/01-benchmark/01-VERIFICATION.md"
+          # Example path template: evidence_path: "GPD/phases/XX-name/{phase}-VERIFICATION.md"
+          # Copy-safe placeholder: evidence_path: "[artifact path or expected evidence path]"
   deliverables:
     deliverable-main:
       status: not_attempted
-      path: path/to/artifact
-      summary: "[verification not started yet]"
+      path: derivations/main-derivation.tex
+      summary: "The main derivation file exists but has not been verified yet."
       linked_ids: [claim-main, acceptance-test-main]
   acceptance_tests:
     acceptance-test-main:
       status: not_attempted
-      summary: "[verification not started yet]"
+      summary: "The decisive benchmark test has not been run yet."
       linked_ids: [claim-main, deliverable-main, reference-main]
   references:
     reference-main:
       status: missing
       completed_actions: []
       missing_actions: [read]
-      summary: "[verification not started yet]"
+      summary: "The benchmark reference has not been loaded yet."
   forbidden_proxies:
     forbidden-proxy-main:
       status: unresolved
-      notes: "[verification not started yet]"
+      notes: "The proxy has not yet been checked against the contract."
   uncertainty_markers:
     weakest_anchors: [anchor-1]
     unvalidated_assumptions: [assumption-1]
@@ -73,165 +96,134 @@ comparison_verdicts:
     metric: relative_error
     threshold: "<= 0.01"
     verdict: inconclusive
-    recommended_action: "[close the decisive benchmark once the evidence is written]"
-    notes: "[template placeholder; replace with the first decisive verdict]"
+    recommended_action: "collect one more benchmark point before marking the claim as passed"
+    notes: "The benchmark evidence is close but not yet decisive."
 suggested_contract_checks:
-  - check: "[missing decisive benchmark comparison]"
-    reason: "[why the missing check matters]"
+  - check: "missing decisive benchmark comparison"
+    reason: "The contract still needs a named benchmark check for the main claim."
     suggested_subject_kind: acceptance_test
     suggested_subject_id: acceptance-test-main
-    evidence_path: "[artifact path or expected evidence path]"
-  - check: "[missing decisive reference comparison]"
-    reason: "[why the missing compare-required reference matters]"
+    evidence_path: "GPD/phases/01-benchmark/benchmark-comparison.csv"
+  - check: "missing decisive reference comparison"
+    reason: "The reference-backed comparison is still missing."
     suggested_subject_kind: reference
     suggested_subject_id: reference-main
-    evidence_path: "[artifact path or expected evidence path]"
+    evidence_path: "GPD/phases/01-benchmark/reference-comparison.csv"
 source:
   - "[SUMMARY.md file validated]"
-  - "[additional SUMMARY.md file validated]"
 started: "ISO timestamp"
 updated: "ISO timestamp"
-session_status: validating | completed | diagnosed
+session_status: validating
+# Allowed session_status values: validating|completed|diagnosed
 ---
+
+<!-- ASSERT_CONVENTION: natural_units=natural, metric_signature=mostly-minus, fourier_convention=physics -->
 
 ## Current Check
 
 <!-- OVERWRITE each check - shows where we are -->
+<!-- Include only the ID keys that actually bind this check; omit unused `subject_id`, `claim_id`, `deliverable_id`, `acceptance_test_id`, and `forbidden_proxy_id` fields instead of leaving blank placeholders. -->
+<!-- Allowed body enum values: `check_subject_kind` and `suggested_subject_kind` use `claim|deliverable|acceptance_test|reference`; `comparison_kind`: benchmark|prior_work|experiment|cross_method|baseline|other. -->
 
 number: 1
-name: "[check name]"
-check_subject_kind: [claim | deliverable | acceptance_test | reference]
-subject_id: "contract id or \"\""
-claim_id: "claim-id or \"\""
-deliverable_id: "deliverable-id or \"\""
-acceptance_test_id: "acceptance-test-id or \"\""
-reference_ids: ["reference-id", "..."]
-forbidden_proxy_id: "forbidden-proxy-id or \"\""
-comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
-comparison_reference_id: "reference-id"
+name: "benchmark comparison"
+check_subject_kind: claim
+subject_id: "claim-main"
+claim_id: "claim-main"
+reference_ids: ["reference-main"]
+comparison_kind: benchmark
+comparison_reference_id: "reference-main"
 # If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
 expected: |
-  [what the researcher should confirm or evaluate]
-# Use `comparison_kind: benchmark` for benchmark acceptance tests and
-# `comparison_kind: cross_method` for cross-method acceptance tests.
-suggested_contract_checks:
-  # If you cannot bind the gap to a known contract target yet, omit both
-  # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
-  - check: "missing decisive check"
-    reason: "why the missing check matters"
-    suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
-    suggested_subject_id: "matching contract id"
-    evidence_path: "artifact path or expected evidence path"
-  # Add a reference-backed decisive gap here whenever a benchmark reference or
-  # a reference with required_actions including `compare` is still incomplete.
+  The derived benchmark should match the reference within 1%.
+# Use `comparison_kind: benchmark` for benchmark acceptance tests and `comparison_kind: cross_method` for cross-method acceptance tests.
 awaiting: researcher response
 
 ## Checks
 
-### 1. [Check Name]
+### 1. Benchmark Comparison
 
-check_subject_kind: [claim | deliverable | acceptance_test | reference]
-subject_id: "contract id or \"\""
-claim_id: "claim-id or \"\""
-deliverable_id: "deliverable-id or \"\""
-acceptance_test_id: "acceptance-test-id or \"\""
-reference_ids: ["reference-id", "..."]
-forbidden_proxy_id: "forbidden-proxy-id or \"\""
-comparison_kind: [benchmark | prior_work | experiment | cross_method | baseline | other]
-comparison_reference_id: "reference-id"
-# If this check is not comparison-backed yet, omit both `comparison_kind` and `comparison_reference_id` instead of leaving blank placeholders.
-expected: "what should hold - physical reasoning, derivation step, or result property"
-suggested_contract_checks:
-  # If you cannot bind the gap to a known contract target yet, omit both
-  # `suggested_subject_kind` and `suggested_subject_id` instead of leaving one blank.
-  - check: "missing decisive check"
-    reason: "why the missing check matters"
-    suggested_subject_kind: [claim | deliverable | acceptance_test | reference]
-    suggested_subject_id: "matching contract id"
-    evidence_path: "artifact path or expected evidence path"
+check_subject_kind: claim
+subject_id: "claim-main"
+claim_id: "claim-main"
+reference_ids: ["reference-main"]
+comparison_kind: benchmark
+comparison_reference_id: "reference-main"
+expected: "The benchmark comparison should land within the 1% tolerance."
 result: "pending"
 
-### 2. [Check Name]
+### 2. Benchmark Pass
 
-expected: "what should hold"
+expected: "The benchmark comparison should land within the 1% tolerance."
 result: pass
 
-### 3. [Check Name]
+### 3. Benchmark Issue
 
-expected: "what should hold"
+expected: "The benchmark comparison is close but not yet decisive."
 result: issue
-reported: "[verbatim researcher response]"
+reported: "The benchmark comparison still needs one more reference point."
 severity: major
 
-### 4. [Check Name]
+### 4. Benchmark Skip
 
-expected: "what should hold"
+expected: "The benchmark comparison is not needed for this check."
 result: skipped
-reason: "why skipped"
+reason: "The researcher confirmed this check was outside the current scope."
 
 ...
 
 ## Summary
 
-total: [N]
-passed: [N]
-issues: [N]
-pending: [N]
-skipped: [N]
-comparison_verdicts_recorded: [N]
-forbidden_proxies_rejected: [N]
+total: 4
+passed: 1
+issues: 1
+pending: 1
+skipped: 1
+comparison_verdicts_recorded: 0
+forbidden_proxies_rejected: 0
 
 ## Comparison Verdicts
 
 <!-- APPEND decisive benchmark / prior-work / experiment / cross-method outcomes.
-The frontmatter `comparison_verdicts` ledger is authoritative; this section is a readable mirror. -->
+The frontmatter `comparison_verdicts` ledger is authoritative; this section is a readable summary. -->
 
-- subject_kind: claim | deliverable | acceptance_test | reference
-  subject_id: "contract-id"
-  subject_role: decisive | supporting | supplemental | other
-  reference_id: "reference-id"
-  comparison_kind: benchmark | prior_work | experiment | cross_method | baseline | other
-  verdict: pass | tension | fail | inconclusive
-  metric: ""
-  threshold: ""
-  notes: ""
+- subject_kind: claim
+  subject_id: "claim-main"
+  subject_role: decisive
+  reference_id: "reference-main"
+  comparison_kind: benchmark
+  verdict: inconclusive
+  metric: "relative_error"
+  threshold: "<= 0.01"
+  notes: "The benchmark evidence is close but not yet decisive."
+
+Allowed `subject_kind` values: `claim|deliverable|acceptance_test|reference`.
+Allowed `subject_role` values: `decisive|supporting|supplemental|other`.
+Allowed `comparison_kind` values: `benchmark|prior_work|experiment|cross_method|baseline|other`.
+Allowed `verdict` values: `pass|tension|fail|inconclusive`.
 
 Only `subject_role: decisive` closes a required decisive comparison; the other roles are informative context only.
 
-## Suggested Contract Checks
-
-<!-- APPEND if the verifier finds missing decisive checks that should be added to the contract -->
-
-- check: "Add decisive normalization benchmark comparison"
-  reason: "The phase conclusion depends on an explicit benchmark acceptance test that is not yet named in the contract."
-  suggested_subject_kind: acceptance_test
-  suggested_subject_id: "acceptance-test-main"
-  evidence_path: "GPD/phases/01-benchmark/benchmark-comparison.csv"
-
 ## Gaps
 
-<!-- YAML format for plan-phase --gaps consumption -->
+<!-- YAML format for plan-phase --gaps consumption. Keep this export surface schema-tight. -->
 
-- gap_subject_kind: "claim | deliverable | acceptance_test | reference"
-  subject_id: "contract-id"
-  expectation: "[expected physics property from check]"
-  expected_check: "[expected physics property from check]"
-  claim_id: "claim-id"
-  deliverable_id: "deliverable-id"
-  acceptance_test_id: "acceptance-test-id"
-  reference_ids: ["reference-id"]
-  forbidden_proxy_id: "forbidden-proxy-id"
-  comparison_kind: "benchmark | prior_work | experiment | cross_method | baseline | other"
-  comparison_reference_id: "reference-id"
+<!-- Include only the ID keys that actually bind the gap.
+Omit unused `subject_id`, `claim_id`, `deliverable_id`, `acceptance_test_id`,
+and `forbidden_proxy_id` fields instead of leaving blanks. -->
+
+- gap_subject_kind: "claim"
+  subject_id: "claim-main"
+  expectation: "The benchmark comparison should land within the 1% tolerance."
+  expected_check: "The independent calculation should reproduce the same sign and scale."
+  claim_id: "claim-main"
+  reference_ids: ["reference-main"]
+  comparison_kind: "benchmark"
+  comparison_reference_id: "reference-main"
   status: failed
-  reason: "Researcher reported: [verbatim response]"
-  suggested_contract_checks: []
-  severity: blocker | major | minor | cosmetic
+  reason: "Researcher reported: the benchmark comparison still needs one more reference point."
+  severity: major
   check: 1
-  root_cause: "" # Filled by diagnosis
-  artifacts: [] # Filled by diagnosis
-  missing: [] # Filled by diagnosis
-  debug_session: "" # Filled by diagnosis
 ```
 
 ---
@@ -240,15 +232,15 @@ Only `subject_role: decisive` closes a required decisive comparison; the other r
 
 **Frontmatter:**
 
-- `status`: OVERWRITE using verification-report vocabulary - `passed | gaps_found | expert_needed | human_needed`
+- `status`: use verification-report vocabulary - `passed|gaps_found|expert_needed|human_needed`
 - `phase`: IMMUTABLE - set on creation
 - `verified`: OVERWRITE - latest verification timestamp
 - `score`: OVERWRITE - contract-backed verification progress summary
-- `plan_contract_ref`, `contract_results`, `comparison_verdicts`, `suggested_contract_checks`: must follow `verification-report.md` / `contract-results-schema.md`
+- `plan_contract_ref`, `contract_results`, `comparison_verdicts`, `suggested_contract_checks`: must follow `verification-report.md` / `contract-results-schema.md`; do not restate their closed schema here
 - `source`: IMMUTABLE - SUMMARY files being validated; keep this as a YAML list even when only one SUMMARY path is present
 - `started`: IMMUTABLE - set on creation
 - `updated`: OVERWRITE - update on every change
-- `session_status`: optional session-progress field for `validating | completed | diagnosed`
+- `session_status`: optional session-progress field for `validating|completed|diagnosed`
 
 **Current Check:**
 
@@ -268,7 +260,7 @@ Only `subject_role: decisive` closes a required decisive comparison; the other r
 - Use `forbidden_proxy_id` for explicit proxy-rejection checks
 - Use `comparison_kind` / `comparison_reference_id` when the check should later emit a comparison verdict
 - Use `suggested_contract_checks` only when the verifier believes the contract omitted a decisive check, or when a decisive benchmark / cross-method check remains partial, not attempted, or still lacks a decisive verdict
-- Keep `suggested_contract_checks` schema-tight: only `check`, `reason`, `suggested_subject_kind`, `suggested_subject_id`, and `evidence_path` are valid keys
+- Keep `suggested_contract_checks` schema-tight by following `contract-results-schema.md`; when the entry comes from `suggest_contract_checks(contract)`, the frontmatter `check` value must copy the returned `check_key`
 - `suggested_subject_kind` and `suggested_subject_id` travel together; if the missing check is not bound to a known contract target yet, omit both keys instead of leaving one blank
 
 **Summary:**
@@ -293,10 +285,10 @@ Only `subject_role: decisive` closes a required decisive comparison; the other r
 **Gaps:**
 
 - APPEND only when issue found (YAML format)
-- Use `gap_subject_kind` for the body scaffold that feeds `/gpd:plan-phase --gaps`; reserve bare `subject_kind` for canonical frontmatter ledgers such as `comparison_verdicts`
-- Keep `gap_subject_kind` to `claim | deliverable | acceptance_test | reference`; use `forbidden_proxy_id` for explicit proxy-rejection gaps and `suggested_contract_checks` for missing decisive work
-- After diagnosis: fill `root_cause`, `artifacts`, `missing`, `debug_session`
-- This section feeds directly into /gpd:plan-phase --gaps
+- Use `gap_subject_kind` for the body scaffold that feeds `gpd:plan-phase --gaps`; reserve bare `subject_kind` for canonical frontmatter ledgers such as `comparison_verdicts`
+- Keep `gap_subject_kind` to `claim|deliverable|acceptance_test|reference`; use `forbidden_proxy_id` for explicit proxy-rejection gaps and `suggested_contract_checks` for missing decisive work
+- This export surface feeds directly into gpd:plan-phase --gaps
+- Keep diagnosis-only detail (`root_cause`, `artifacts`, `missing`, `debug_session`) in the surrounding diagnosis notes or a debug artifact, not in the export snippet above
 
 </section_rules>
 
@@ -363,38 +355,17 @@ Probe how sensitive results are to assumptions and approximations.
 1. Researcher triggers diagnosis (from verify-work offer or manually)
 2. debug workflow spawns parallel debug agents
 3. Each agent investigates one gap, returns root cause
-4. VERIFICATION.md Gaps section updated with diagnosis:
-   - Each gap gets `root_cause`, `artifacts`, `missing`, `debug_session` filled
+4. Diagnosis details are recorded in the session narrative or linked debug artifact, while the `gpd:plan-phase --gaps` export stays on the canonical gap keys
 5. `session_status` -> "diagnosed" while final `status` stays in verification-report vocabulary (typically `gaps_found` until every gap is explicitly closed)
-6. Ready for /gpd:plan-phase --gaps with root causes
+6. Ready for gpd:plan-phase --gaps without schema drift
 
-**After diagnosis:**
-
-```yaml
-## Gaps
-
-- gap_subject_kind: "claim"
-  subject_id: "claim-critical-decay"
-  expectation: "Correlation function decays as power law at criticality"
-  expected_check: "Correlation function decays as power law at criticality"
-  status: failed
-  reason: "Researcher reported: decay looks exponential, not power-law - probably not at the critical point"
-  severity: major
-  check: 4
-  root_cause: "Critical temperature T_c computed with wrong normalization of coupling constant"
-  artifacts:
-    - path: "src/critical_point.py"
-      issue: "J_eff = J / sqrt(N) but should be J / sqrt(N-1) for this convention"
-  missing:
-    - "Correct T_c calculation with proper coupling normalization"
-  debug_session: "GPD/debug/wrong-critical-temp.md"
-```
+If you also keep richer local diagnosis notes, keep them explicitly separate from the `gpd:plan-phase --gaps` export.
 
 </diagnosis_lifecycle>
 
 <lifecycle>
 
-**Creation:** When /gpd:verify-work starts new verification session
+**Creation:** When gpd:verify-work starts new verification session
 
 - Extract checks from the PLAN `contract` first, then use SUMMARY.md files and verification report as evidence maps
 - Use PLAN `contract` IDs as canonical check names. SUMMARY `contract_results` tells you where evidence lives, not what counts as success.
@@ -422,7 +393,7 @@ Probe how sensitive results are to assumptions and approximations.
 - Commit file
 - Present summary with next steps
 
-**Resume after /clear:**
+**Resume after a fresh context reset:**
 
 1. Read frontmatter -> know phase and status
 2. Read Current Check -> know where we are
@@ -446,117 +417,11 @@ Default: **major** (safe default, researcher can clarify if wrong)
 
 </severity_guide>
 
-<good_example>
-
-```markdown
----
-status: gaps_found
-verified: 2026-03-15T14:45:00Z
-score: 3/4 contract targets verified
-phase: 03-phase-diagram
+Multi-source `source` frontmatter stays a YAML list:
 source:
   - "03-01-SUMMARY.md"
   - "03-02-SUMMARY.md"
   - "03-03-SUMMARY.md"
-started: 2026-03-15T14:00:00Z
-updated: 2026-03-15T14:45:00Z
-session_status: diagnosed
----
-
-## Current Check
-
-[verification complete]
-
-## Checks
-
-### 1. Derivation: Effective action saddle-point validity
-
-expected: The saddle-point approximation for the partition function requires large N. For our N=32, the correction should be O(1/N) ~ 3%. Is the 5% discrepancy with exact diag consistent with this?
-result: pass
-note: "Researcher confirmed: 5% is within expected 1/N corrections plus statistical error from disorder averaging"
-
-### 2. Intuition: Order parameter behavior near T_c
-
-expected: The order parameter should vanish continuously at T_c (second-order transition) with mean-field exponent beta=1/2 or appropriate universality class exponent
-result: pass
-
-### 3. Limiting case: High-temperature limit of susceptibility
-
-expected: chi(T) ~ 1/T (Curie law) for T >> T_c
-result: pass
-
-### 4. Limiting case: Zero-temperature order parameter
-
-expected: Order parameter should saturate to maximum value at T=0
-result: issue
-reported: "Order parameter at T=0 is 0.87, but for this model the exact ground state has order parameter 1.0. Something is off - maybe not enough cooling in the Monte Carlo?"
-severity: major
-
-### 5. Edge case: Behavior at phase boundary for large system
-
-expected: Finite-size scaling collapse should work with known critical exponents
-result: pass
-
-### 6. Consistency: Specific heat from energy vs from partition function
-
-expected: C_v computed as dE/dT should match C_v = -T d^2F/dT^2
-result: pass
-
-### 7. Robustness: Sensitivity to Monte Carlo equilibration
-
-expected: Results should be insensitive to doubling the equilibration time
-result: issue
-reported: "When I doubled equilibration from 10^4 to 2x10^4 sweeps, the order parameter at T=0 changed from 0.87 to 0.94. Not equilibrated."
-severity: blocker
-
-## Summary
-
-total: 7
-passed: 5
-issues: 2
-pending: 0
-skipped: 0
-comparison_verdicts_recorded: 0
-forbidden_proxies_rejected: 0
-
-## Gaps
-
-- gap_subject_kind: "claim"
-  subject_id: "claim-order-parameter-zero-T"
-  expectation: "Order parameter reaches saturation value 1.0 at T=0"
-  expected_check: "Order parameter reaches saturation value 1.0 at T=0"
-  status: failed
-  reason: "Researcher reported: Order parameter at T=0 is 0.87 but exact is 1.0. Not fully equilibrated."
-  severity: major
-  check: 4
-  root_cause: "Monte Carlo equilibration too short - 10^4 sweeps insufficient for low-T phase"
-  artifacts:
-
-  - path: "src/monte_carlo.py"
-    issue: "N_equil = 10000 is too few sweeps at low temperature"
-    missing:
-  - "Increase equilibration to 10^5 sweeps minimum, add autocorrelation analysis"
-    debug_session: "GPD/debug/mc-equilibration.md"
-
-- gap_subject_kind: "acceptance_test"
-  subject_id: "test-equilibration-convergence"
-  expectation: "Results are insensitive to doubling the equilibration time"
-  expected_check: "Results are insensitive to doubling the equilibration time"
-  status: failed
-  reason: "Researcher reported: doubling equilibration changed order parameter from 0.87 to 0.94"
-  severity: blocker
-  check: 7
-  root_cause: "Same root cause as check 4 - insufficient equilibration at low T"
-  artifacts:
-  - path: "src/monte_carlo.py"
-    issue: "Fixed equilibration length doesn't adapt to critical slowing down near T_c"
-    missing:
-  - "Implement adaptive equilibration with autocorrelation time measurement"
-  - "Add convergence diagnostic: run until autocorrelation time is measured and N_equil > 20 \* tau_auto"
-    debug_session: "GPD/debug/mc-equilibration.md"
-```
-
-</good_example>
 
 <guidelines>
 

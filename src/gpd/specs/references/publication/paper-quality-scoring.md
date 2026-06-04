@@ -1,6 +1,8 @@
 # Paper Quality Scoring System
 
-Quantitative readiness score (0-100) for physics manuscripts. Used by `/gpd:write-paper` to determine if the paper is ready for submission packaging. Each category is scored independently; the total is a weighted sum.
+Quantitative readiness score (0-100) for physics manuscripts. Used by `gpd:write-paper` to determine if the paper is ready for submission packaging. Each category is scored independently; the total is a weighted sum.
+
+The score threshold is necessary but not sufficient. `ready_for_submission` also requires zero blocking issues, including a passed verification report when verification applies; paper quality cannot bypass verification, staged review, or artifact preflight gates.
 
 This is **not** the final referee-decision policy. A manuscript can score well on packaging/readiness and still deserve `major_revision` or `reject` if its novelty, significance, venue fit, or claim-evidence proportionality are weak. Those publication-judgment gates belong to the staged peer-review policy and `validate referee-decision`.
 
@@ -21,7 +23,7 @@ This is **not** the final referee-decision policy. A manuscript can score well o
 
 | Check | Points | How to verify |
 |-------|--------|---------------|
-| Decisive figures/tables labeled with units | 3 | Read `GPD/paper/FIGURE_TRACKER.md` `figure_registry` and verify `has_units: true` for decisive artifacts |
+| Decisive figures/tables labeled with units | 3 | Read the manuscript-root `FIGURE_TRACKER.md` `figure_registry` and verify `has_units: true` for decisive artifacts |
 | Decisive figures/tables carry uncertainty bands or error bars | 4 | Use the tracker `has_uncertainty` field for decisive artifacts |
 | Decisive figures/tables referenced in text and role is clear | 4 | Use the tracker `referenced_in_text` field and verify the `role` is not `other` |
 | Captions are self-contained (understandable without reading text) | 3 | Read each caption in isolation |
@@ -41,7 +43,7 @@ This is **not** the final referee-decision policy. A manuscript can score well o
 | Check | Points | How to verify |
 |-------|--------|---------------|
 | Convention lock complete (all relevant fields set) | 5 | `gpd convention check` returns complete: true |
-| ASSERT_CONVENTION in all derivation files | 5 | Search derivation files for `ASSERT_CONVENTION:` and compare against the convention lock; `gpd pre-commit-check` does not currently validate these assertions |
+| ASSERT_CONVENTION in all derivation files | 5 | Check project-wide derivation coverage against the convention lock. `gpd pre-commit-check` blocks changed derivation and phase verification artifacts, but the paper-readiness audit still needs the full-project count |
 | Notation consistent across all sections | 5 | Same symbol = same meaning throughout |
 
 ### 5. Verification (20 points)
@@ -74,7 +76,7 @@ This is **not** the final referee-decision policy. A manuscript can score well o
 
 | Score | Status | Action |
 |-------|--------|--------|
-| **90-100** | Publication ready | Submit to target journal |
+| **90-100** | Quality ready | Continue only if verification, review, and artifact preflight gates have no blockers |
 | **80-89** | Nearly ready | Fix specific deficiencies, then submit |
 | **70-79** | Needs work | Address all items scoring 0; re-score after fixes |
 | **60-69** | Significant gaps | Multiple categories need attention; plan revision phase |
@@ -82,7 +84,7 @@ This is **not** the final referee-decision policy. A manuscript can score well o
 
 ## Automated Scoring Protocol
 
-When invoked during `/gpd:write-paper` (step: quality_assessment), prefer the artifact-driven path:
+When invoked during `gpd:write-paper` (step: quality_assessment), prefer the artifact-driven path:
 
 ```bash
 gpd --raw validate paper-quality --from-project .
@@ -90,15 +92,19 @@ gpd --raw validate paper-quality --from-project .
 
 This path derives the machine-readable `PaperQualityInput` from the manuscript, bibliography audit, figure tracker, comparison artifacts, and contract-backed summary / verification ledgers before scoring it.
 
+For the artifact-driven `--from-project` path, the resolved journal only comes from supported builder keys already surfaced by `${PAPER_DIR}/ARTIFACT-MANIFEST.json` or `${PAPER_DIR}/PAPER-CONFIG.json`. Today those supported keys are `prl`, `apj`, `mnras`, `nature`, `jhep`, and `jfm`. Unsupported artifact journals do not silently select a nearby profile; they fall back to the `generic` scorer.
+
 If you need to provide a manual JSON instead, use `@{GPD_INSTALL_DIR}/templates/paper/paper-quality-input-schema.md` as the schema source of truth.
+
+Manual JSON is also the only supported path today for scoring-only profiles that do not have builder-backed manuscript scaffolds yet, including `prd`, `prb`, `prc`, and `nature_physics`.
 
 The artifact-driven path is intentionally conservative: it can infer many figure, citation, verification, completeness, and comparison checks, but equation and convention evidence may still need explicit manual review. Do not paper over missing evidence by inventing perfect scores.
 
 ## Integration Points
 
-- **`/gpd:write-paper`**: Runs quality scoring after all sections drafted, before generating submission package
-- **`/gpd:arxiv-submission`**: Requires score ≥ 80 to proceed (override with `--force`)
-- **`/gpd:respond-to-referees`**: Re-scores after revision to track improvement
+- **`gpd:write-paper`**: Runs quality scoring after all sections drafted, before generating submission package
+- **`gpd:arxiv-submission`**: Requires the resolved journal profile's `minimum_submission_score` and strict publication preflight to proceed; no paper-quality score or manual override bypasses verification, review, or artifact blockers
+- **`gpd:respond-to-referees`**: Re-scores after revision to track improvement
 - **VERIFICATION.md**: Quality score recorded in paper section of verification report
 
 ## Confidence-to-Score Mapping
@@ -124,7 +130,7 @@ Different journals emphasize different quality dimensions. Apply these multiplie
 - **Extra check (+5 points):** Does the abstract convey significance to non-specialists?
 - **Minimum for submission:** 85
 
-### PRD/PRB/PRC (Thorough Technical Paper)
+### PRD/PRB/PRC (Manual `PaperQualityInput` Profiles Until Builder Support Exists)
 
 - Equations: **1.2x** (full derivation expected — more equations to check)
 - Verification: **1.3x** (complete error analysis required)
@@ -140,7 +146,7 @@ Different journals emphasize different quality dimensions. Apply these multiplie
 - **Extra check (+5 points):** Are all Feynman diagrams listed at the relevant loop order?
 - **Minimum for submission:** 80
 
-### Nature Physics (Accessibility + Impact)
+### Nature Physics (Manual `PaperQualityInput` Profile Until Builder Support Exists)
 
 - Results Presentation: **1.5x** (physical interpretation is paramount)
 - Completeness: **1.3x** (Methods section must be self-contained)
@@ -155,6 +161,11 @@ Different journals emphasize different quality dimensions. Apply these multiplie
 - Figures: **1.3x** (data visualization is central to astro papers)
 - **Extra check (+3 points):** Is a `\software{}` statement present?
 - **Minimum for submission:** 75
+
+### Generic Fallback Profiles
+
+- `mnras` and `jfm` currently use the generic weighting profile unless a dedicated journal-specific scorer is added.
+- The scorer still emits a per-journal `minimum_submission_score`, and `gpd:arxiv-submission` uses that surfaced minimum instead of a universal 80-point threshold.
 
 ## Scoring Summary Report Template
 

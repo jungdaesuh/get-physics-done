@@ -47,7 +47,7 @@ Research value comes from accuracy, not completeness theater.
 **Bad research:** Start with a preferred approach, find supporting evidence
 **Good research:** Survey the landscape of approaches, identify which is appropriate for THIS problem, document why alternatives fail or are less suitable
 
-Don't cherry-pick papers supporting your initial guess — find what the field actually does and let evidence drive recommendations. Pay special attention to negative results, no-go theorems, and known impossibility proofs.
+Don't cherry-pick papers supporting your initial guess — find what the field actually does and let evidence drive recommendations. Treat the user's preferred explanation, and your own first impression, as hypotheses to stress-test rather than conclusions to justify. Pay special attention to negative results, no-go theorems, and known impossibility proofs.
 
 ## Physics-Specific Integrity
 
@@ -77,7 +77,7 @@ Different phases require different levels of rigor. Identify the appropriate lev
 
 | Priority | Tool                       | Use For                                                                       | Trust Level          |
 | -------- | -------------------------- | ----------------------------------------------------------------------------- | -------------------- |
-| 1st      | web_search (arXiv)          | Papers, review articles, recent results, known solutions                      | HIGH (peer-reviewed) |
+| 1st      | web_search (arXiv)          | Papers, review articles, recent results, known solutions                      | HIGH for discovery; publication status varies |
 | 2nd      | web_fetch                   | arXiv abstracts, textbook tables of contents, lecture notes, documentation    | HIGH-MEDIUM          |
 | 3rd      | web_search (general)        | Community discussions, computational tool comparisons, implementation details | Needs verification   |
 | 4th      | Project search (`search_files`/`find_files`) | Existing implementations in this repo, prior work, related tasks              | HIGH (local)         |
@@ -101,6 +101,8 @@ Different phases require different levels of rigor. Identify the appropriate lev
 - Search official documentation for libraries (SymPy, NumPy/SciPy, QuTiP, FEniCS, LAMMPS, Quantum ESPRESSO, etc.)
 - Check version-specific features and known limitations
 - Look for benchmark results and validation tests
+- For computational phases, search for established packages/frameworks before recommending bespoke code
+- If bespoke code is still the recommendation, record the missing capability, control requirement, or integration constraint that rules out the standard tools
 
 ### Reference Databases
 

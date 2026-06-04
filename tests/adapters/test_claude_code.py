@@ -3,14 +3,26 @@
 from __future__ import annotations
 
 import json
-import sys
+import os
+import shlex
+import shutil
 from pathlib import Path
 
 import pytest
 
 from gpd.adapters.claude_code import ClaudeCodeAdapter
-from gpd.adapters.install_utils import build_runtime_cli_bridge_command
+from gpd.adapters.install_utils import hook_python_interpreter
+from gpd.hooks.install_metadata import assess_install_target
 from gpd.version import __version__, version_for_gpd_root
+from tests.adapters.projection_test_utils import runtime_bridge_command
+from tests.adapters.review_contract_test_utils import (
+    assert_review_contract_prompt_surface,
+    compile_review_contract_fixture_for_runtime,
+)
+
+WOLFRAM_MANAGED_SERVER_KEY = "gpd-wolfram"
+WOLFRAM_MCP_API_KEY_ENV_VAR = "GPD_WOLFRAM_MCP_API_KEY"
+WOLFRAM_MCP_ENDPOINT_ENV_VAR = "GPD_WOLFRAM_MCP_ENDPOINT"
 
 
 @pytest.fixture()
@@ -19,13 +31,15 @@ def adapter() -> ClaudeCodeAdapter:
 
 
 def expected_claude_bridge(target: Path) -> str:
-    return build_runtime_cli_bridge_command(
-        "claude-code",
-        target_dir=target,
-        config_dir_name=".claude",
-        is_global=False,
-        explicit_target=False,
-    )
+    return runtime_bridge_command("claude-code", target)
+
+
+def _assert_no_manifestless_gpd_artifacts(target: Path) -> None:
+    assert not (target / "gpd-file-manifest.json").exists()
+    assert not (target / "get-physics-done").exists()
+    assert not (target / "commands" / "gpd").exists()
+    assert not (target / "agents").exists()
+    assert not (target / "hooks").exists()
 
 
 def _make_checkout(tmp_path: Path, version: str) -> Path:
@@ -70,6 +84,15 @@ def _make_checkout(tmp_path: Path, version: str) -> Path:
     return gpd_root
 
 
+def _make_managed_home_python(tmp_path: Path) -> Path:
+    managed_home = tmp_path / "managed-home"
+    python_relpath = Path("Scripts/python.exe") if os.name == "nt" else Path("bin/python")
+    managed_python = managed_home / "venv" / python_relpath
+    managed_python.parent.mkdir(parents=True, exist_ok=True)
+    managed_python.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    return managed_python
+
+
 class TestProperties:
     """Test adapter properties match expected values."""
 
@@ -89,6 +112,11 @@ class TestProperties:
 class TestInstall:
     """Test full install flow."""
 
+    def test_compile_markdown_prepends_review_contract_to_prompt(self) -> None:
+        content = compile_review_contract_fixture_for_runtime("claude-code")
+
+        assert_review_contract_prompt_surface(content)
+
     def test_install_creates_all_dirs(self, adapter: ClaudeCodeAdapter, gpd_root: Path, tmp_path: Path) -> None:
         target = tmp_path / "target" / ".claude"
         target.mkdir(parents=True)
@@ -102,6 +130,178 @@ class TestInstall:
         # settings.json is written by finish_install(), not install()
         # install() returns the settings dict for the caller to pass to finish_install()
 
+    def test_install_completeness_requires_settings_json_after_finalize(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+
+        adapter.install(gpd_root, target)
+
+        assert adapter.missing_install_artifacts(target) == ("settings.json",)
+        assert adapter.missing_install_verification_artifacts(target) == ()
+
+    def test_install_completeness_requires_catalog_command_surface(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        adapter.install(gpd_root, target)
+
+        shutil.rmtree(target / "commands" / "gpd")
+
+        assert "commands/gpd" in adapter.missing_install_artifacts(target)
+
+    def test_install_completeness_requires_catalog_agent_surface(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        adapter.install(gpd_root, target)
+
+        shutil.rmtree(target / "agents")
+
+        assert "agents/gpd-*.md" in adapter.missing_install_artifacts(target)
+
+    def test_install_fails_closed_for_malformed_settings_json(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        settings_path = target / "settings.json"
+        settings_path.write_text('{"hooks": [\n', encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+        _assert_no_manifestless_gpd_artifacts(target)
+
+    def test_install_fails_closed_for_structurally_invalid_settings_json(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        settings_path = target / "settings.json"
+        settings_path.write_text(json.dumps({"hooks": []}), encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+        _assert_no_manifestless_gpd_artifacts(target)
+
+    def test_install_fails_closed_for_malformed_managed_mcp_config(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        mcp_config_path = target.parent / ".mcp.json"
+        mcp_config_path.write_text('{"mcpServers": [\n', encoding="utf-8")
+        before = mcp_config_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert mcp_config_path.read_text(encoding="utf-8") == before
+        _assert_no_manifestless_gpd_artifacts(target)
+
+    def test_install_fails_closed_for_structurally_invalid_managed_mcp_config(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        mcp_config_path = target.parent / ".mcp.json"
+        mcp_config_path.write_text(json.dumps({"mcpServers": []}), encoding="utf-8")
+        before = mcp_config_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.install(gpd_root, target)
+
+        assert mcp_config_path.read_text(encoding="utf-8") == before
+        _assert_no_manifestless_gpd_artifacts(target)
+
+    def test_install_rolls_back_mcp_config_when_manifest_write_fails(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        mcp_config_path = target.parent / ".mcp.json"
+        mcp_config_path.write_text(
+            json.dumps({"mcpServers": {"custom-server": {"command": "node", "args": ["custom.js"]}}}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        before_mcp = mcp_config_path.read_text(encoding="utf-8")
+
+        def fail_manifest(*args, **kwargs):
+            raise RuntimeError("manifest boom")
+
+        monkeypatch.setattr("gpd.adapters.base.write_manifest", fail_manifest)
+
+        with pytest.raises(RuntimeError, match="manifest boom"):
+            adapter.install(gpd_root, target)
+
+        assert mcp_config_path.read_text(encoding="utf-8") == before_mcp
+        _assert_no_manifestless_gpd_artifacts(target)
+
+    def test_install_rollback_restores_symlinked_mcp_config_referent_when_manifest_write_fails(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        real_mcp_config = tmp_path / "real-mcp.json"
+        real_mcp_config.write_text(
+            json.dumps({"mcpServers": {"custom-server": {"command": "node", "args": ["custom.js"]}}}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        mcp_config_path = target.parent / ".mcp.json"
+        mcp_config_path.symlink_to(real_mcp_config)
+        before_mcp = real_mcp_config.read_text(encoding="utf-8")
+
+        def fail_manifest(*args, **kwargs):
+            raise RuntimeError("manifest boom")
+
+        monkeypatch.setattr("gpd.adapters.base.write_manifest", fail_manifest)
+
+        with pytest.raises(RuntimeError, match="manifest boom"):
+            adapter.install(gpd_root, target)
+
+        assert mcp_config_path.is_symlink()
+        assert mcp_config_path.resolve(strict=True) == real_mcp_config
+        assert real_mcp_config.read_text(encoding="utf-8") == before_mcp
+        _assert_no_manifestless_gpd_artifacts(target)
+
     def test_install_commands_have_placeholder_replacement(
         self, adapter: ClaudeCodeAdapter, gpd_root: Path, tmp_path: Path
     ) -> None:
@@ -114,6 +314,7 @@ class TestInstall:
         assert help_file.exists()
         content = help_file.read_text(encoding="utf-8")
         assert "{GPD_INSTALL_DIR}" not in content
+        assert "## Scientific Rigor Guardrails" in content
 
     def test_install_agents_have_placeholder_replacement(
         self, adapter: ClaudeCodeAdapter, gpd_root: Path, tmp_path: Path
@@ -183,18 +384,26 @@ class TestInstall:
         expected_bridge = expected_claude_bridge(target)
         command = (target / "commands" / "gpd" / "settings.md").read_text(encoding="utf-8")
         workflow = (target / "get-physics-done" / "workflows" / "set-profile.md").read_text(encoding="utf-8")
-        execute_phase = (target / "get-physics-done" / "workflows" / "execute-phase.md").read_text(encoding="utf-8")
+        execute_phase = (
+            target / "get-physics-done" / "workflows" / "execute-phase" / "phase-bootstrap.md"
+        ).read_text(encoding="utf-8")
         agent = (target / "agents" / "gpd-planner.md").read_text(encoding="utf-8")
+        planner_procedure = (
+            target / "get-physics-done" / "references" / "planning" / "planner-execution-procedure.md"
+        ).read_text(encoding="utf-8")
 
-        assert f"{expected_bridge} convention set" in command
-        assert expected_bridge + " init progress --include state,config" in workflow
-        assert 'echo "ERROR: gpd initialization failed: $INIT"' in workflow
+        assert "`gpd convention set <key> <value>`" in command
+        assert expected_bridge + " config ensure-section" in workflow
+        assert expected_bridge + ' config set model_profile "$PROFILE"' in workflow
+        assert expected_bridge + " --raw init progress --include state,config" not in workflow
+        assert 'echo "ERROR: gpd initialization failed: $INIT"' not in workflow
         assert f'if ! {expected_bridge} verify plan "$plan"; then' in execute_phase
-        assert f'INIT=$({expected_bridge} init plan-phase "${{PHASE}}")' in agent
-        assert "`gpd convention set`" not in command
-        assert "gpd init progress --include state,config" not in workflow
+        assert f'INIT=$({expected_bridge} --raw init plan-phase "${{PHASE}}")' in planner_procedure
+        assert f"`{expected_bridge} convention set" not in command
+        assert "gpd --raw init progress --include state,config" not in workflow
         assert 'if ! gpd verify plan "$plan"; then' not in execute_phase
-        assert 'INIT=$(gpd init plan-phase "${PHASE}")' not in agent
+        assert 'INIT=$(gpd --raw init plan-phase "${PHASE}")' not in planner_procedure
+        assert 'INIT=$(gpd --raw init plan-phase "${PHASE}")' not in agent
 
     def test_install_configures_update_hook(self, adapter: ClaudeCodeAdapter, gpd_root: Path, tmp_path: Path) -> None:
         target = tmp_path / "target" / ".claude"
@@ -225,7 +434,7 @@ class TestInstall:
         assert "  - AskUserQuestion" in content
         assert "  - shell" not in content
 
-    def test_install_preserves_jsonc_settings_and_uses_current_interpreter(
+    def test_install_preserves_jsonc_settings_and_uses_managed_home_interpreter(
         self,
         adapter: ClaudeCodeAdapter,
         gpd_root: Path,
@@ -238,8 +447,14 @@ class TestInstall:
             '{\n  // keep user settings\n  "theme": "solarized",\n}\n',
             encoding="utf-8",
         )
+        managed_python = _make_managed_home_python(tmp_path)
+        monkeypatch.delenv("GPD_PYTHON", raising=False)
+        monkeypatch.setenv("GPD_HOME", str(tmp_path / "managed-home"))
         monkeypatch.setattr("gpd.adapters.install_utils.sys.executable", "/custom/venv/bin/python")
+        monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
+        selected_python = hook_python_interpreter()
+        assert selected_python == str(managed_python)
         result = adapter.install(gpd_root, target)
         adapter.finish_install(
             result["settingsPath"],
@@ -250,10 +465,10 @@ class TestInstall:
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         assert settings["theme"] == "solarized"
-        assert settings["statusLine"]["command"] == "/custom/venv/bin/python .claude/hooks/statusline.py"
+        assert settings["statusLine"]["command"] == f"{shlex.quote(selected_python)} .claude/hooks/statusline.py"
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
-        assert "/custom/venv/bin/python .claude/hooks/check_update.py" in cmds
+        assert f"{shlex.quote(selected_python)} .claude/hooks/check_update.py" in cmds
 
     def test_reinstall_rewrites_stale_managed_update_hook(
         self,
@@ -277,8 +492,14 @@ class TestInstall:
             ),
             encoding="utf-8",
         )
+        managed_python = _make_managed_home_python(tmp_path)
+        monkeypatch.delenv("GPD_PYTHON", raising=False)
+        monkeypatch.setenv("GPD_HOME", str(tmp_path / "managed-home"))
         monkeypatch.setattr("gpd.adapters.install_utils.sys.executable", "/custom/venv/bin/python")
+        monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
+        selected_python = hook_python_interpreter()
+        assert selected_python == str(managed_python)
         result = adapter.install(gpd_root, target)
         adapter.finish_install(
             result["settingsPath"],
@@ -290,7 +511,7 @@ class TestInstall:
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
-        assert cmds.count("/custom/venv/bin/python .claude/hooks/check_update.py") == 1
+        assert cmds.count(f"{shlex.quote(selected_python)} .claude/hooks/check_update.py") == 1
         assert "python3 .claude/hooks/check_update.py" not in cmds
 
     def test_install_preserves_non_gpd_check_update_hook(
@@ -345,10 +566,14 @@ class TestInstall:
         )
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
-        assert settings["statusLine"]["command"] == f"{sys.executable or 'python3'} {(target / 'hooks' / 'statusline.py')}"
+        hook_python = hook_python_interpreter()
+        expected_statusline_path = str(target / "hooks" / "statusline.py").replace("\\", "/")
+        assert settings["statusLine"]["command"] == f"{shlex.quote(hook_python)} {expected_statusline_path}"
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
-        assert f"{sys.executable or 'python3'} {(target / 'hooks' / 'check_update.py')}" in cmds
+        expected_check_update_path = str(target / "hooks" / "check_update.py").replace("\\", "/")
+        expected_check_update_cmd = f"{shlex.quote(hook_python)} {expected_check_update_path}"
+        assert expected_check_update_cmd in cmds
 
     def test_install_preserves_existing_mcp_overrides(
         self,
@@ -384,7 +609,8 @@ class TestInstall:
         adapter.install(gpd_root, target)
 
         parsed = json.loads(mcp_config.read_text(encoding="utf-8"))
-        expected = build_mcp_servers_dict(python_path=sys.executable)["gpd-state"]
+        hook_python = hook_python_interpreter()
+        expected = build_mcp_servers_dict(python_path=hook_python)["gpd-state"]
         server = parsed["mcpServers"]["gpd-state"]
         assert server["command"] == expected["command"]
         assert server["args"] == expected["args"]
@@ -393,6 +619,125 @@ class TestInstall:
         assert server["cwd"] == "/tmp/custom-gpd"
         assert server["type"] == "stdio"
         assert parsed["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+
+    def test_install_projects_wolfram_mcp_server_and_preserves_overrides(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from gpd.mcp.builtin_servers import build_mcp_servers_dict
+
+        target = tmp_path / "workspace" / ".claude"
+        target.mkdir(parents=True)
+        mcp_config = target.parent / ".mcp.json"
+        mcp_config.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        WOLFRAM_MANAGED_SERVER_KEY: {
+                            "command": "python3",
+                            "args": ["-m", "legacy.wolfram"],
+                            "cwd": "/tmp/custom-wolfram",
+                            "type": "stdio",
+                            "env": {"EXTRA_FLAG": "1"},
+                        },
+                        "custom-server": {"command": "node", "args": ["custom.js"]},
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv(WOLFRAM_MCP_API_KEY_ENV_VAR, "claude-test-key")
+        monkeypatch.setenv(WOLFRAM_MCP_ENDPOINT_ENV_VAR, "https://example.invalid/api/mcp")
+
+        result = adapter.install(gpd_root, target)
+
+        parsed = json.loads(mcp_config.read_text(encoding="utf-8"))
+        server = parsed["mcpServers"][WOLFRAM_MANAGED_SERVER_KEY]
+        assert server["command"] == hook_python_interpreter()
+        assert server["args"] == ["-m", "gpd.mcp.integrations.wolfram_bridge"]
+        assert server["cwd"] == "/tmp/custom-wolfram"
+        assert server["type"] == "stdio"
+        assert server["env"] == {
+            "EXTRA_FLAG": "1",
+            WOLFRAM_MCP_ENDPOINT_ENV_VAR: "https://example.invalid/api/mcp",
+        }
+        assert parsed["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+        assert "claude-test-key" not in mcp_config.read_text(encoding="utf-8")
+        assert result["mcpServers"] == len(build_mcp_servers_dict(python_path=hook_python_interpreter())) + 1
+
+    def test_install_omits_managed_wolfram_when_project_override_disables_it(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "integrations.json").write_text('{"wolfram":{"enabled":false}}', encoding="utf-8")
+        monkeypatch.setenv(WOLFRAM_MCP_API_KEY_ENV_VAR, "claude-test-key")
+
+        adapter.install(gpd_root, target)
+
+        parsed = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
+        assert WOLFRAM_MANAGED_SERVER_KEY not in parsed.get("mcpServers", {})
+
+    def test_install_fails_closed_for_malformed_project_integrations_before_copying_artifacts(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        (tmp_path / "GPD").mkdir()
+        (tmp_path / "GPD" / "integrations.json").write_text('{"wolfram":', encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="Malformed integrations config"):
+            adapter.install(gpd_root, target)
+
+        assert not (tmp_path / ".mcp.json").exists()
+        _assert_no_manifestless_gpd_artifacts(target)
+
+    def test_install_translates_tool_references_in_agent_body(
+        self,
+        adapter: ClaudeCodeAdapter,
+        tmp_path: Path,
+    ) -> None:
+        gpd_root = _make_checkout(tmp_path, "9.9.9")
+        (gpd_root / "agents" / "gpd-body-checker.md").write_text(
+            "---\n"
+            "name: gpd-body-checker\n"
+            "description: Check body translation\n"
+            "allowed-tools:\n"
+            "  - file_read\n"
+            "  - shell\n"
+            "---\n"
+            "Use `file_read` to inspect the repo, then `shell` to run `gpd status`.\n"
+            "If needed, ask_user and web_search before finishing.\n",
+            encoding="utf-8",
+        )
+
+        target = tmp_path / "target" / ".claude"
+        target.mkdir(parents=True)
+        adapter.install(gpd_root, target)
+
+        body = (target / "agents" / "gpd-body-checker.md").read_text(encoding="utf-8").split("---", 2)[2]
+
+        assert "file_read" not in body
+        assert "shell" not in body
+        assert "ask_user" not in body
+        assert "web_search" not in body
+        assert "Read" in body
+        assert "Bash" in body
+        assert "AskUserQuestion" in body
+        assert "WebSearch" in body
 
     def test_global_install_scopes_claude_json_to_target_parent(
         self,
@@ -446,11 +791,10 @@ class TestInstall:
         assert not (agents_dir / "gpd-old-agent.md").exists()
         assert (agents_dir / "custom-agent.md").exists()
 
-
     def test_install_agents_replace_runtime_placeholders(
         self, adapter: ClaudeCodeAdapter, gpd_root: Path, tmp_path: Path
     ) -> None:
-        """Regression: _copy_agents_native must pass runtime='claude-code' to replace_placeholders."""
+        """Assert _copy_agents_native passes runtime='claude-code' to replace_placeholders."""
         target = tmp_path / "target" / ".claude"
         target.mkdir(parents=True)
         adapter.install(gpd_root, target)
@@ -515,6 +859,23 @@ class TestInstall:
 
 
 class TestRuntimePermissions:
+    def test_runtime_permissions_status_marks_yolo_as_relaunch_required(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+        adapter.sync_runtime_permissions(target, autonomy="yolo")
+
+        status = adapter.runtime_permissions_status(target, autonomy="yolo")
+
+        assert status["config_aligned"] is True
+        assert status["requires_relaunch"] is True
+        assert "Restart the Claude Code session" in str(status["next_step"])
+
     def test_sync_runtime_permissions_yolo_sets_bypass_permissions(
         self,
         adapter: ClaudeCodeAdapter,
@@ -559,6 +920,124 @@ class TestRuntimePermissions:
         assert "gpd_runtime_permissions" not in manifest
         assert result["sync_applied"] is True
 
+    def test_malformed_settings_json_fails_closed_for_status_and_sync(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        adapter.install(gpd_root, target)
+
+        settings_path = target / "settings.json"
+        settings_path.write_text('{"permissions": [\n', encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        status = adapter.runtime_permissions_status(target, autonomy="yolo")
+        result = adapter.sync_runtime_permissions(target, autonomy="yolo")
+
+        assert status["config_valid"] is False
+        assert status["configured_mode"] == "malformed"
+        assert status["config_aligned"] is False
+        assert "malformed" in str(status["message"]).lower()
+        assert result["config_valid"] is False
+        assert result["changed"] is False
+        assert result["sync_applied"] is False
+        assert result["requires_relaunch"] is False
+        assert "malformed" in str(result["warning"]).lower()
+        assert settings_path.read_text(encoding="utf-8") == before
+
+    def test_finalize_install_fails_closed_for_malformed_settings_json(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+
+        settings_path = target / "settings.json"
+        settings_path.write_text('{"permissions": [\n', encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.finalize_install(result)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+        assessment = assess_install_target(target, expected_runtime=adapter.runtime_name)
+        assert assessment.state == "owned_incomplete"
+        assert "settings.json" in assessment.missing_install_artifacts
+
+    @pytest.mark.parametrize("missing_field", ["settingsPath", "settings", "statuslineCommand"])
+    def test_finalize_install_fails_closed_for_missing_deferred_payload_field(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        missing_field: str,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+        result.pop(missing_field)
+
+        with pytest.raises(RuntimeError, match="deferred install result is malformed"):
+            adapter.finalize_install(result)
+
+        assert not (target / "settings.json").exists()
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [
+            ("settingsPath", ["settings.json"]),
+            ("settings", []),
+            ("settings", {"hooks": []}),
+            ("statuslineCommand", 123),
+            ("shouldInstallStatusline", "yes"),
+        ],
+    )
+    def test_finalize_install_fails_closed_for_invalid_deferred_payload_field(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        field: str,
+        value: object,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+        result[field] = value
+
+        with pytest.raises(RuntimeError, match="deferred install result is malformed"):
+            adapter.finalize_install(result)
+
+        assert not (target / "settings.json").exists()
+
+    def test_finalize_install_fails_closed_for_structurally_invalid_settings_json(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+
+        settings_path = target / "settings.json"
+        settings_path.write_text(json.dumps({"permissions": []}), encoding="utf-8")
+        before = settings_path.read_text(encoding="utf-8")
+
+        with pytest.raises(RuntimeError, match="malformed"):
+            adapter.finalize_install(result)
+
+        assert settings_path.read_text(encoding="utf-8") == before
+        assessment = assess_install_target(target, expected_runtime=adapter.runtime_name)
+        assert assessment.state == "owned_incomplete"
+        assert "settings.json" in assessment.missing_install_artifacts
+
 
 class TestUninstall:
     """Test uninstall cleans up GPD artifacts."""
@@ -594,7 +1073,7 @@ class TestUninstall:
             json.dumps(
                 {
                     "mcpServers": {
-                        **build_mcp_servers_dict(python_path=sys.executable),
+                        **build_mcp_servers_dict(python_path=hook_python_interpreter()),
                         "custom-server": {"command": "node", "args": ["custom.js"]},
                     }
                 }
@@ -653,7 +1132,9 @@ class TestUninstall:
         assert "custom-server" in workspace_cleaned["mcpServers"]
         assert "MCP servers from .mcp.json" not in result["removed"]
 
-    def test_local_uninstall_cleans_jsonc_workspace_mcp_config(self, adapter: ClaudeCodeAdapter, tmp_path: Path) -> None:
+    def test_local_uninstall_cleans_jsonc_workspace_mcp_config(
+        self, adapter: ClaudeCodeAdapter, tmp_path: Path
+    ) -> None:
         target = tmp_path / "workspace" / ".claude"
         target.mkdir(parents=True)
 
@@ -665,7 +1146,7 @@ class TestUninstall:
                 "{\n"
                 "  // local workspace servers\n"
                 '  "mcpServers": {\n'
-                f'    "gpd-state": {json.dumps(build_mcp_servers_dict(python_path=sys.executable)["gpd-state"])},\n'
+                f'    "gpd-state": {json.dumps(build_mcp_servers_dict(python_path=hook_python_interpreter())["gpd-state"])},\n'
                 '    "custom-server": {"command": "node", "args": ["custom.js"]},\n'
                 "  },\n"
                 "}\n"
@@ -677,6 +1158,43 @@ class TestUninstall:
 
         cleaned = json.loads(mcp_config.read_text(encoding="utf-8"))
         assert "gpd-state" not in cleaned["mcpServers"]
+        assert cleaned["mcpServers"] == {"custom-server": {"command": "node", "args": ["custom.js"]}}
+        assert "MCP servers from .mcp.json" in result["removed"]
+
+    def test_local_uninstall_removes_wolfram_mcp_server_from_workspace_mcp_config(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        target = tmp_path / "workspace" / ".claude"
+        target.mkdir(parents=True)
+        mcp_config = target.parent / ".mcp.json"
+        mcp_config.write_text(
+            json.dumps(
+                {
+                    "mcpServers": {
+                        WOLFRAM_MANAGED_SERVER_KEY: {
+                            "command": "python3",
+                            "args": ["-m", "legacy.wolfram"],
+                            "cwd": "/tmp/custom-wolfram",
+                        },
+                        "custom-server": {"command": "node", "args": ["custom.js"]},
+                    }
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv(WOLFRAM_MCP_API_KEY_ENV_VAR, "claude-test-key")
+
+        adapter.install(gpd_root, target)
+        result = adapter.uninstall(target)
+
+        cleaned = json.loads(mcp_config.read_text(encoding="utf-8"))
+        assert WOLFRAM_MANAGED_SERVER_KEY not in cleaned["mcpServers"]
         assert cleaned["mcpServers"] == {"custom-server": {"command": "node", "args": ["custom.js"]}}
         assert "MCP servers from .mcp.json" in result["removed"]
 
@@ -759,7 +1277,9 @@ class TestUninstall:
         settings = json.loads(settings_path.read_text(encoding="utf-8"))
         settings["statusLine"] = {"type": "command", "command": "python3 /tmp/third-party/hooks/statusline.py"}
         session_start = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
-        session_start.append({"hooks": [{"type": "command", "command": "python3 /tmp/third-party/hooks/check_update.py"}]})
+        session_start.append(
+            {"hooks": [{"type": "command", "command": "python3 /tmp/third-party/hooks/check_update.py"}]}
+        )
         session_start.append({"hooks": [{"type": "command", "command": "python3 .claude/hooks/check_update.py"}]})
         settings_path.write_text(json.dumps(settings), encoding="utf-8")
 
@@ -777,3 +1297,46 @@ class TestUninstall:
         ]
         assert "python3 /tmp/third-party/hooks/check_update.py" in commands
         assert "python3 .claude/hooks/check_update.py" not in commands
+
+    def test_uninstall_preserves_unmanaged_hooks_inside_mixed_sessionstart_entries(
+        self,
+        adapter: ClaudeCodeAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        target = tmp_path / ".claude"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+        adapter.finish_install(
+            result["settingsPath"],
+            result["settings"],
+            result["statuslineCommand"],
+            True,
+        )
+
+        settings_path = target / "settings.json"
+        settings = json.loads(settings_path.read_text(encoding="utf-8"))
+        session_start = settings.setdefault("hooks", {}).setdefault("SessionStart", [])
+        session_start[0]["hooks"].append({"type": "command", "command": "echo keep-mixed-update-peer"})
+        session_start.append(
+            {
+                "hooks": [
+                    {"type": "command", "command": "python3 .claude/hooks/statusline.py"},
+                    {"type": "command", "command": "echo keep-mixed-statusline-peer"},
+                ]
+            }
+        )
+        settings_path.write_text(json.dumps(settings), encoding="utf-8")
+
+        adapter.uninstall(target)
+
+        cleaned = json.loads(settings_path.read_text(encoding="utf-8"))
+        session_start = cleaned.get("hooks", {}).get("SessionStart", [])
+        commands = [
+            hook["command"]
+            for entry in session_start
+            if isinstance(entry, dict)
+            for hook in entry.get("hooks", [])
+            if isinstance(hook, dict) and isinstance(hook.get("command"), str)
+        ]
+        assert commands == ["echo keep-mixed-update-peer", "echo keep-mixed-statusline-peer"]

@@ -1,9 +1,9 @@
-"""Test that build_paper catches OSError from figure preparation.
+"""Assert build_paper catches OSError from figure preparation.
 
-Regression test for a bug where the exception handler around
-``_prepare_figures_with_sources`` only caught ``(ValueError, RuntimeError)``
-but not ``OSError``, causing unhandled crashes on permission errors or
-missing-file OS-level failures during figure processing.
+The exception handler around ``_prepare_figures_with_sources`` must cover
+``OSError`` in addition to ``(ValueError, RuntimeError)`` so that permission
+errors and missing-file OS-level failures during figure processing are
+surfaced rather than crashing the build.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def _minimal_config(tmp_path: Path) -> PaperConfig:
         authors=[Author(name="A. Tester")],
         abstract="Abstract text.",
         sections=[Section(title="Introduction", content="Hello world.")],
-        figures=[FigureRef(path=fig_path, caption="A figure", label="fig:test")],
+        figures=[FigureRef(path=fig_path, caption="A figure", label="test")],
         journal="prl",
     )
 

@@ -47,8 +47,11 @@ assets:
     - path: references/protocols/variational-methods.md
   protocols_optional:
     - path: references/protocols/exact-diagonalization.md
+  planning_guides:
+    - path: references/planning/condensed-matter-numerical.md
+      note: Use the benchmark, convergence, sweep, and finite-size/bond-dimension skeleton for tensor-network planning.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/tensor-network-dynamics.md
 anchor_prompts:
   - State the tensor-network ansatz, bond-dimension schedule, and whether entanglement growth or finite-size effects are the hard limit.
   - Surface the decisive ED, Bethe-ansatz, CFT, or published tensor-network benchmark before extrapolating results.

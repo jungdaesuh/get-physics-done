@@ -1,7 +1,7 @@
 <purpose>
 Systematic uncertainty propagation through a derivation chain. Traces how input uncertainties flow through intermediate results to final quantities, identifies dominant error sources, and produces error budgets.
 
-Called from /gpd:error-propagation command. Complements /gpd:numerical-convergence (which establishes error bars on individual computations) by tracing how those errors combine through multi-step derivation chains.
+Called from gpd:error-propagation command. Complements gpd:numerical-convergence (which establishes error bars on individual computations) by tracing how those errors combine through multi-step derivation chains.
 
 A numerical result without error bars is not a result. But error bars on a final quantity are only meaningful if the propagation from input uncertainties through every intermediate step is tracked systematically. An error bar that ignores the dominant uncertainty source is worse than no error bar at all -- it provides false confidence.
 </purpose>
@@ -35,10 +35,10 @@ Determine what final result needs error bars.
 **Load project state:**
 
 ```bash
-INIT=$(gpd init progress --include state,roadmap,config)
+INIT=$(gpd --raw init progress --include state,roadmap,config)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -60,7 +60,7 @@ fi
 ERROR: No project state found.
 
 Error propagation requires intermediate_results tracked in STATE.md.
-Run /gpd:new-project first, then complete phases with tracked results.
+Run gpd:new-project first, then complete phases with tracked results.
 ```
 
 Exit.
@@ -71,7 +71,7 @@ Read STATE.md to identify:
 - The phase range containing the derivation chain
 - Any existing `propagated_uncertainties` entries
 
-If the target is not found in STATE.md intermediate_results, check SUMMARY.md files across phases for the quantity name.
+If the target is not found in `STATE.md` `intermediate_results`, first use `gpd result search` to look for the canonical result by identifier, equation, or description. Once you have the canonical `result_id`, use `gpd result show "{result_id}"` for the direct stored-result view before `gpd result deps "{result_id}"` to recover the recorded dependency tree before reconstructing it manually. If the target still is not found, check SUMMARY.md files across phases for the quantity name.
 </step>
 
 <step name="trace_derivation_chain">
@@ -81,7 +81,7 @@ Build the complete dependency tree from inputs to the target quantity.
 
 **From state.json:**
 
-Read `intermediate_results` and follow `depends_on` chains backward from the target:
+If the target has a canonical `result_id`, run `gpd result show "{result_id}"` first for the direct stored-result view, then run `gpd result deps "{result_id}"` and use that direct/transitive chain as the authoritative starting point. Then read `intermediate_results` to confirm details and fill any missing mathematical expressions or uncertainty annotations. If no canonical `result_id` is available, read `intermediate_results` and follow `depends_on` chains backward from the target manually:
 
 ```
 target_quantity
@@ -146,7 +146,7 @@ For each node in the dependency tree, catalog all uncertainty sources.
 gpd --raw state validate
 ```
 
-If validation reports divergence or a parse error, stop here and run `/gpd:sync-state` (or the authoritative `save_state_markdown()` recovery path used there) before trusting uncertainty values. If recovery is blocked, fall back to `STATE.md`'s `## Intermediate Results` and `## Propagated Uncertainties` sections, and clearly label the result as markdown-recovered rather than JSON-backed.
+If validation reports divergence or a parse error, stop here and run `gpd:sync-state` (or the authoritative `save_state_markdown()` recovery path used there) before trusting uncertainty values. If recovery is blocked, fall back to `STATE.md`'s `## Intermediate Results` and `## Propagated Uncertainties` sections, and clearly label the result as markdown-recovered rather than JSON-backed.
 
 Read `propagated_uncertainties` in state.json for existing uncertainty values on input parameters. For each leaf input:
 
@@ -174,7 +174,7 @@ From SUMMARY.md computational results and any CONVERGENCE.md reports:
 - Discretization errors (from finite grid spacing or time step)
 - Convergence errors (from iterative solvers or Monte Carlo statistics)
 
-If /gpd:numerical-convergence has been run, read the convergence report for error estimates. If not, flag these as "numerical uncertainty not yet quantified" and recommend running convergence tests.
+If gpd:numerical-convergence has been run, read the convergence report for error estimates. If not, flag these as "numerical uncertainty not yet quantified" and recommend running convergence tests.
 
 ### 3d. Model uncertainties
 
@@ -303,6 +303,8 @@ Extract `target_phase_dir` (the `directory` field) from the JSON result.
 
 Save to: `${target_phase_dir}/ERROR-BUDGET.md`.
 
+Do not create a second per-target `GPD/analysis/error-budget-{target}.md` report for this workflow. The project-wide record for propagated uncertainty stays in authoritative state (`propagated_uncertainties`) and any maintained `GPD/analysis/UNCERTAINTY-BUDGET.md` ledger.
+
 </step>
 
 <step name="update_state">
@@ -311,8 +313,8 @@ Save to: `${target_phase_dir}/ERROR-BUDGET.md`.
 Add the final result with error bars to `propagated_uncertainties` in state.json:
 
 ```bash
-gpd uncertainty add \
-  --quantity "{symbol}" --value "{central_value}" \
+gpd uncertainty add "{symbol}" \
+  --value "{central_value}" \
   --uncertainty "{delta}" --phase "{phase}" --method "error-propagation"
 ```
 
@@ -347,9 +349,9 @@ Error budget: ${target_phase_dir}/ERROR-BUDGET.md
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:numerical-convergence` -- refine error bars on individual computations
-- `/gpd:verify-work` -- verify the full phase including error analysis
-- `/gpd:regression-check` -- check that error budgets remain valid after changes
+- `gpd:numerical-convergence` -- refine error bars on individual computations
+- `gpd:verify-work` -- verify the full phase including error analysis
+- `gpd:regression-check` -- check that error budgets remain valid after changes
 
 ───────────────────────────────────────────────────────────────
 ```
@@ -363,7 +365,7 @@ Error budget: ${target_phase_dir}/ERROR-BUDGET.md
 - **Dependency tree cannot be traced:** If `depends_on` chains are missing or incomplete in state.json, fall back to reading SUMMARY.md `provides`/`requires` sections across phases. If the chain still has gaps, report the incomplete tree to the user and ask them to identify the missing links before proceeding.
 - **Numerical sensitivity diverges:** If a finite-difference derivative yields Inf or NaN, reduce the perturbation step size by 10x and retry. If it still diverges, the computation is at or near a singularity -- flag the parameter and phase, report the divergence, and exclude it from the quadrature sum (treat it as a separate critical warning in the error budget).
 - **Target quantity not found:** If the target is not present in `intermediate_results`, `propagated_uncertainties`, or any phase SUMMARY.md, report which phases were searched and prompt the user to specify the quantity's location or run the relevant computation first.
-- **State files missing:** If STATE.md or state.json does not exist, error immediately with a clear message: "No project state found. Run `/gpd:new-project` or `/gpd:execute-phase` first to establish project state before running error propagation."
+- **State files missing:** If STATE.md or state.json does not exist, error immediately with a clear message: "No project state found. Run `gpd:new-project` or `gpd:execute-phase` first to establish project state before running error propagation."
 
 </failure_handling>
 

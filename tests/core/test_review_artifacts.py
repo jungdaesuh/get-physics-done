@@ -11,6 +11,8 @@ from gpd.mcp.paper.models import (
     ClaimIndex,
     ClaimRecord,
     ClaimType,
+    ProofAuditRecord,
+    ProofAuditStatus,
     ReviewConfidence,
     ReviewFinding,
     ReviewIssue,
@@ -32,25 +34,92 @@ from gpd.mcp.paper.review_artifacts import (
     write_stage_review_report,
 )
 
+MANUSCRIPT_PATH = "paper/curvature_flow_bounds.tex"
+
+
+def test_claim_record_claim_kind_is_not_theorem_bearing_without_theorem_signals() -> None:
+    claim = ClaimRecord(
+        claim_id="CLM-001",
+        claim_type=ClaimType.method,
+        claim_kind="claim",
+        text="We introduce a practical numerical workflow for the benchmark problem.",
+        artifact_path=MANUSCRIPT_PATH,
+        section="Methods",
+    )
+
+    assert claim.theorem_bearing is False
+
+
+@pytest.mark.parametrize("claim_kind", ["theorem", "lemma", "corollary", "proposition"])
+def test_claim_record_theorem_style_claim_kinds_remain_theorem_bearing(claim_kind: str) -> None:
+    claim = ClaimRecord(
+        claim_id="CLM-001",
+        claim_type=ClaimType.main_result,
+        claim_kind=claim_kind,
+        text="The bound closes under the stated hypotheses.",
+        artifact_path=MANUSCRIPT_PATH,
+        section="Results",
+    )
+
+    assert claim.theorem_bearing is True
+
+
+def test_claim_record_theorem_like_text_still_counts_for_generic_claim_kind() -> None:
+    claim = ClaimRecord(
+        claim_id="CLM-001",
+        claim_type=ClaimType.generality,
+        claim_kind="claim",
+        text="For every smooth initial datum, there exists a unique continuation.",
+        artifact_path=MANUSCRIPT_PATH,
+        section="Results",
+    )
+
+    assert claim.theorem_bearing is True
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value"),
+    [
+        ("theorem_assumptions", ["The initial data are smooth."]),
+        ("theorem_parameters", ["epsilon"]),
+    ],
+)
+def test_claim_record_theorem_metadata_still_counts_for_generic_claim_kind(
+    field_name: str, field_value: list[str]
+) -> None:
+    claim = ClaimRecord(
+        claim_id="CLM-001",
+        claim_type=ClaimType.main_result,
+        claim_kind="claim",
+        text="The construction improves the previous estimate in the tested regime.",
+        artifact_path=MANUSCRIPT_PATH,
+        section="Results",
+        **{field_name: field_value},
+    )
+
+    assert claim.theorem_bearing is True
+
 
 def test_review_artifact_round_trip(tmp_path: Path) -> None:
     claim_index = ClaimIndex(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims=[
             ClaimRecord(
                 claim_id="CLM-001",
                 claim_type=ClaimType.significance,
                 text="The result has broad impact.",
-                artifact_path="paper/main.tex",
+                artifact_path=MANUSCRIPT_PATH,
                 section="Conclusion",
+                theorem_assumptions=["N is compact"],
+                theorem_parameters=["r_0"],
             )
         ],
     )
     stage_report = StageReviewReport(
         stage_id="interestingness",
         stage_kind=ReviewStageKind.interestingness,
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         manuscript_sha256="a" * 64,
         claims_reviewed=["CLM-001"],
         summary="Impact claim is overstated.",
@@ -61,17 +130,29 @@ def test_review_artifact_round_trip(tmp_path: Path) -> None:
                 claim_ids=["CLM-001"],
                 severity=ReviewIssueSeverity.major,
                 summary="Broad-impact claim is unsupported.",
-                evidence_refs=["paper/main.tex#Conclusion"],
+                evidence_refs=[f"{MANUSCRIPT_PATH}#Conclusion"],
                 support_status=ReviewSupportStatus.unsupported,
                 blocking=True,
                 required_action="Narrow the significance claim to the demonstrated regime.",
+            )
+        ],
+        proof_audits=[
+            ProofAuditRecord(
+                claim_id="CLM-001",
+                theorem_assumptions_checked=["N is compact"],
+                theorem_parameters_checked=[],
+                proof_locations=[f"{MANUSCRIPT_PATH}:42"],
+                uncovered_parameters=["r_0"],
+                coverage_gaps=["Proof establishes only the centered case."],
+                alignment_status=ProofAuditStatus.misaligned,
+                notes="The proof does not cover the quantified parameter.",
             )
         ],
         confidence=ReviewConfidence.high,
         recommendation_ceiling=ReviewRecommendation.major_revision,
     )
     ledger = ReviewLedger(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         issues=[
             ReviewIssue(
                 issue_id="REF-001",
@@ -85,7 +166,7 @@ def test_review_artifact_round_trip(tmp_path: Path) -> None:
         ],
     )
     decision = RefereeDecisionInput(
-        manuscript_path="paper/main.tex",
+        manuscript_path=MANUSCRIPT_PATH,
         target_journal="jhep",
         final_recommendation=ReviewRecommendation.major_revision,
         final_confidence=ReviewConfidence.high,
@@ -112,13 +193,47 @@ def test_review_artifact_round_trip(tmp_path: Path) -> None:
     assert read_referee_decision(decision_path) == decision
 
 
+def test_stage_review_report_rejects_duplicate_proof_audit_claim_ids() -> None:
+    with pytest.raises(ValidationError, match="proof_audits must not repeat claim_id values"):
+        StageReviewReport(
+            stage_id="math",
+            stage_kind=ReviewStageKind.math,
+            manuscript_path=MANUSCRIPT_PATH,
+            manuscript_sha256="a" * 64,
+            claims_reviewed=["CLM-001"],
+            summary="Summary",
+            strengths=[],
+            findings=[],
+            proof_audits=[
+                ProofAuditRecord(claim_id="CLM-001"),
+                ProofAuditRecord(claim_id="CLM-001"),
+            ],
+            confidence=ReviewConfidence.medium,
+            recommendation_ceiling=ReviewRecommendation.major_revision,
+        )
+
+
+def test_proof_audit_rejects_aligned_status_with_coverage_gaps() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="aligned proof_audits cannot list uncovered assumptions, uncovered parameters, or coverage gaps",
+    ):
+        ProofAuditRecord(
+            claim_id="CLM-001",
+            theorem_parameters_checked=["r_0"],
+            proof_locations=[f"{MANUSCRIPT_PATH}:3"],
+            uncovered_parameters=["r_0"],
+            alignment_status=ProofAuditStatus.aligned,
+        )
+
+
 def test_claim_index_rejects_invalid_sha256(tmp_path: Path) -> None:
     claims_path = tmp_path / "CLAIMS.json"
     claims_path.write_text(
         json.dumps(
             {
                 "version": 1,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "abc123",
                 "claims": [],
             }
@@ -136,7 +251,7 @@ def test_claim_index_rejects_uppercase_sha256(tmp_path: Path) -> None:
         json.dumps(
             {
                 "version": 1,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "A" * 64,
                 "claims": [],
             }
@@ -175,7 +290,7 @@ def test_stage_review_report_requires_issue_ids(tmp_path: Path) -> None:
                 "round": 1,
                 "stage_id": "reader",
                 "stage_kind": "reader",
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "claims_reviewed": ["CLM-001"],
                 "summary": "Summary",
@@ -233,7 +348,7 @@ def test_stage_review_report_requires_stage_id_to_match_stage_kind(tmp_path: Pat
                 "round": 1,
                 "stage_id": "literature",
                 "stage_kind": "reader",
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "claims_reviewed": ["CLM-001"],
                 "summary": "Summary",
@@ -257,7 +372,7 @@ def test_review_ledger_rejects_unexpected_extra_fields(tmp_path: Path) -> None:
             {
                 "version": 1,
                 "round": 1,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "issues": [
                     {
                         "issue_id": "REF-001",
@@ -284,7 +399,7 @@ def test_review_ledger_rejects_invalid_issue_and_claim_id_formats(tmp_path: Path
             {
                 "version": 1,
                 "round": 1,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "issues": [
                     {
                         "issue_id": "ISSUE-001",
@@ -311,7 +426,7 @@ def test_review_ledger_rejects_invalid_issue_and_claim_id_formats(tmp_path: Path
             ClaimIndex,
             {
                 "version": 2,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "claims": [],
             },
@@ -323,7 +438,7 @@ def test_review_ledger_rejects_invalid_issue_and_claim_id_formats(tmp_path: Path
                 "round": 1,
                 "stage_id": "reader",
                 "stage_kind": ReviewStageKind.reader,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "claims_reviewed": [],
                 "summary": "Summary",
@@ -338,7 +453,7 @@ def test_review_ledger_rejects_invalid_issue_and_claim_id_formats(tmp_path: Path
             {
                 "version": 2,
                 "round": 1,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "issues": [],
             },
         ),
@@ -359,7 +474,7 @@ def test_review_artifacts_pin_version_to_one(model_cls, kwargs) -> None:
                 "round": 0,
                 "stage_id": "reader",
                 "stage_kind": ReviewStageKind.reader,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "manuscript_sha256": "a" * 64,
                 "claims_reviewed": [],
                 "summary": "Summary",
@@ -374,7 +489,7 @@ def test_review_artifacts_pin_version_to_one(model_cls, kwargs) -> None:
             {
                 "version": 1,
                 "round": 0,
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "issues": [],
             },
         ),
@@ -390,7 +505,7 @@ def test_read_referee_decision_rejects_unknown_top_level_keys(tmp_path: Path) ->
     decision_path.write_text(
         json.dumps(
             {
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "target_journal": "jhep",
                 "final_recommendation": "major_revision",
                 "unexpected": "boom",
@@ -408,7 +523,7 @@ def test_read_referee_decision_rejects_malformed_blocking_issue_ids(tmp_path: Pa
     decision_path.write_text(
         json.dumps(
             {
-                "manuscript_path": "paper/main.tex",
+                "manuscript_path": MANUSCRIPT_PATH,
                 "target_journal": "jhep",
                 "final_recommendation": "major_revision",
                 "blocking_issue_ids": ["REF-001", "not-a-ref"],

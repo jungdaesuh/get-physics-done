@@ -1,12 +1,18 @@
 ---
 template_version: 1
+type: continue-here-template
 ---
 
-<!-- Used by: pause-work workflow for session handoff. -->
+<!-- Used by: pause-work workflow as the canonical temporary pause/resume handoff artifact. -->
 
-# Continue-Here Template
+# Canonical Temporary Continue-Here Handoff Template
 
-Copy and fill this structure for `GPD/phases/XX-name/.continue-here.md`:
+Copy and fill this structure for `GPD/phases/XX-name/.continue-here.md`.
+This is the canonical temporary phase handoff artifact written by `gpd:pause-work` and consumed by `gpd:resume-work` and `gpd resume`. The machine-readable local recovery surface is `gpd --raw resume`; this file carries human-readable phase context for that handoff.
+
+This file is not the authority for project position, continuation, or resume ranking. Those responsibilities stay with `GPD/state.json`, `GPD/state.json.bak`, `GPD/STATE.md`, append-only execution lineage, and the derived execution head / `GPD/observability/current-execution.json` status. `gpd --raw resume` resolves the canonical continuation view across those surfaces; the body below is for humans and recovery tooling, not a second state source:
+
+If this pause follows a successful derivation write-back, carry the canonical `result_id` forward explicitly as `last_result_id`. That is the rerun anchor.
 
 ```yaml
 ---
@@ -54,6 +60,8 @@ last_updated: 2026-03-15T14:30:00Z
 [Expressions, values, and partial derivations that the next session needs.
 Each entry should have: LaTeX equation, explicit units, and validity range.]
 
+If a canonical derived result was persisted this session, record its `result_id` here and repeat it as `last_result_id` so a later rerun can target the same registry entry directly.
+
 Equations:
 
 - `H_eff = H_0 + \lambda V_1 + \lambda^2 V_2` (units: energy, valid: \lambda << 1)
@@ -65,7 +73,7 @@ Numerical values:
 - Coupling at critical point: [value +/- uncertainty, units, scheme]
 - Eigenvalues computed for N = [values], stored in [file path]
 
-Convention snapshot (must match state.json convention_lock):
+Convention snapshot (must match `state.json.convention_lock`):
 
 - Metric: [signature used in this session]
 - Fourier: [convention used]
@@ -102,7 +110,7 @@ Start with: [specific action - e.g., "evaluate the matrix element <n|V|m> for n,
 This section captures derivation content that must survive across ALL sessions.
 Unlike the rest of this file, this section is NOT ephemeral -- the pause-work
 workflow extracts it and appends it to `GPD/DERIVATION-STATE.md` before
-this file is deleted on resume. That file is append-only and cumulative.
+the handoff is consumed on resume. That file is append-only and cumulative.
 
 ### Equations Established This Session
 
@@ -122,6 +130,7 @@ this file is deleted on resume. That file is append-only and cumulative.
 
 <!-- Reference the result IDs added to state.json this session -->
 <!-- Each entry links back to the state.json intermediate_results key -->
+<!-- If a derived result is the rerun anchor, repeat it explicitly as last_result_id. -->
 
 - Result ID: [id] -- [brief description of what was computed]
 
@@ -146,13 +155,16 @@ Required YAML frontmatter:
 <guidelines>
 - Be specific enough that a fresh agent instance understands immediately
 - Include WHY decisions were made, not just what (physics reasoning)
+- Preserve these canonical section names so pause/resume tooling and humans see the same structure every time
 - Record intermediate results as structured entries: LaTeX equation + units + validity range
 - Every equation must have explicit units (even if dimensionless) and validity domain
 - Note sign conventions and normalization choices (these are the #1 source of errors on resume)
 - Convention snapshot in intermediate_results must be consistent with state.json convention_lock
 - The `<next_action>` should be actionable without reading anything else
 - The `<intermediate_results>` section is critical for physics - unlike software, you can't just "run the code" to recover state
-- This file gets DELETED after resume - it's not permanent storage
+- This file is the canonical temporary handoff artifact. `gpd:resume-work`, `gpd resume`, and `gpd --raw resume` reach it through canonical continuation or live execution pointers, and it may be deleted once the handoff is consumed
+- Deleting or missing this file removes one temporary handoff input; it does not erase project state by itself
+- The canonical continuation hierarchy and append-only lineage remain the authoritative sources; this file is readable handoff context
 - The `<persistent_state>` section is the exception: its content is appended to `GPD/DERIVATION-STATE.md` BEFORE this file is deleted, so equations/conventions/results accumulate permanently across all sessions
 - Fill `<persistent_state>` carefully -- it is the antidote to lossy compression across context resets
 </guidelines>

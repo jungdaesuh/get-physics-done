@@ -9,20 +9,18 @@ allowed-tools:
   - search_files
   - find_files
   - task
+help:
+  group: Validation and analysis
+  order: 360
+  compact_description: Check notation and convention consistency
+  display_signature: gpd:validate-conventions [phase]
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Validate that physics conventions (metric signature, Fourier convention, natural units, gauge choice, etc.) are used consistently across all completed phases. Detects convention drift where a symbol or convention is redefined in a later phase without updating earlier references.
+Validate that physics conventions are used consistently across completed phases, and detect convention drift where symbols or conventions are redefined without updating earlier references.
 
-Routes to the validate-conventions workflow which handles:
-
-- Loading the convention lock from state.json
-- Scanning all phase artifacts for convention usage
-- Cross-checking consistency between phases
-- Reporting any mismatches or drift
+The optional scope argument is real: if you pass a phase number, the workflow validates only that phase and fails closed if the phase cannot be resolved. If you pass nothing, it scans all completed phases.
 </objective>
 
 <execution_context>
@@ -33,18 +31,12 @@ Routes to the validate-conventions workflow which handles:
 Scope: $ARGUMENTS (optional)
 - If a number (e.g., "3"): validate conventions only for that phase
 - If empty: validate conventions across all completed phases
+- Any other input is rejected by command-context validation instead of being guessed
 
 @GPD/STATE.md
 @GPD/ROADMAP.md
 </context>
 
 <process>
-Execute the validate-conventions workflow from @{GPD_INSTALL_DIR}/workflows/validate-conventions.md end-to-end.
-
-The workflow checks:
-
-1. **Convention lock completeness** -- Are all relevant conventions explicitly locked in state.json?
-2. **Cross-phase consistency** -- Are locked conventions used consistently in all phase artifacts?
-3. **Symbol redefinition** -- Is any symbol defined differently in different phases?
-4. **Approximation compatibility** -- Are approximation regimes consistent with convention choices?
+Follow the included validate-conventions workflow exactly.
 </process>

@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ValidationError as PydanticValidationError
 
 from gpd.contracts import ConventionLock
 from gpd.core.errors import ConventionError
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "KNOWN_CONVENTIONS",
     "CONVENTION_LABELS",
+    "CONVENTION_OPTIONS",
     "KEY_ALIASES",
     "VALUE_ALIASES",
     "ConventionSetResult",
@@ -38,6 +40,7 @@ __all__ = [
     "ConventionDiffResult",
     "ConventionCheckResult",
     "AssertionMismatch",
+    "AssertionCheckResult",
     "normalize_key",
     "normalize_value",
     "is_bogus_value",
@@ -48,7 +51,11 @@ __all__ = [
     "convention_diff_phases",
     "convention_check",
     "parse_assert_conventions",
+    "check_assertions",
+    "required_assertion_keys",
     "validate_assertions",
+    "convention_lock_data_from_state_payload",
+    "convention_lock_from_state_payload",
 ]
 
 # --- Canonical Convention Fields (18) ---
@@ -77,6 +84,30 @@ CONVENTION_LABELS: dict[str, str] = {
     "covariant_derivative_sign": "Covariant derivative sign",
     "gamma_matrix_convention": "Gamma matrix convention",
     "creation_annihilation_order": "Creation/annihilation order",
+}
+
+# Standard values exposed by the MCP convention surface. These are recommended
+# preset spellings, not the full physics-language vocabulary accepted by the
+# core convention lock.
+CONVENTION_OPTIONS: dict[str, list[str]] = {
+    "metric_signature": ["(+,-,-,-)", "(-,+,+,+)", "Euclidean (+,+,+,+)", "mostly-minus", "mostly-plus", "euclidean"],
+    "fourier_convention": ["physics", "math", "symmetric", "QFT"],
+    "natural_units": ["natural", "SI", "CGS", "lattice"],
+    "gauge_choice": ["Coulomb", "Lorenz", "axial", "Feynman", "light-cone"],
+    "regularization_scheme": ["dim-reg", "cutoff", "lattice", "zeta", "PV"],
+    "renormalization_scheme": ["MS-bar", "on-shell", "MOM", "lattice"],
+    "coordinate_system": ["Cartesian", "spherical", "cylindrical", "light-cone"],
+    "spin_basis": ["Dirac", "Weyl", "Majorana"],
+    "state_normalization": ["relativistic", "non-relativistic", "box"],
+    "coupling_convention": ["g", "g^2", "g^2/(4pi)", "alpha=g^2/(4pi)"],
+    "index_positioning": ["Einstein", "explicit"],
+    "time_ordering": ["time-ordered", "anti-time-ordered", "path-ordered"],
+    "commutation_convention": ["canonical", "anti-canonical"],
+    "levi_civita_sign": ["+1", "-1"],
+    "generator_normalization": ["delta/2", "delta"],
+    "covariant_derivative_sign": ["D=d-igA", "D=d+igA"],
+    "gamma_matrix_convention": ["Dirac", "Weyl", "Majorana"],
+    "creation_annihilation_order": ["normal", "anti-normal", "Weyl"],
 }
 
 # Short aliases (physicist-friendly) -> canonical convention_lock field names.
@@ -117,7 +148,7 @@ VALUE_ALIASES: dict[str, dict[str, str]] = {
 }
 
 # Values that should be treated as "unset" (prevent string-vs-null confusion)
-_BOGUS_VALUES = frozenset({"", "null", "undefined", "none"})
+_BOGUS_VALUES = frozenset({"", "null", "undefined", "none", "not set"})
 
 # Regex for ASSERT_CONVENTION lines:
 #   <!-- ASSERT_CONVENTION: key=value, key=value -->  (Markdown)
@@ -128,6 +159,50 @@ _ASSERT_LINE_RE = re.compile(
     re.MULTILINE,
 )
 _KV_PAIR_RE = re.compile(r"^(\w+)\s*=\s*(.+)$")
+_CRITICAL_ASSERTION_KEYS: tuple[str, ...] = (
+    "metric_signature",
+    "fourier_convention",
+    "natural_units",
+)
+
+
+def convention_lock_data_from_state_payload(
+    raw_state: object,
+    *,
+    source_label: str = "state.json",
+) -> dict[str, object]:
+    """Return validated ``convention_lock`` mapping data from a state payload.
+
+    Missing state or missing ``convention_lock`` is treated as an empty lock.
+    Present-but-malformed payloads fail closed so mutation surfaces do not
+    silently discard corrupted state.
+    """
+
+    if raw_state is None:
+        return {}
+    if not isinstance(raw_state, dict):
+        raise ConventionError(f"{source_label} must be a JSON object")
+
+    lock_data = raw_state.get("convention_lock", {})
+    if lock_data is None:
+        return {}
+    if not isinstance(lock_data, dict):
+        raise ConventionError(f"{source_label}.convention_lock must be a JSON object")
+    return lock_data
+
+
+def convention_lock_from_state_payload(
+    raw_state: object,
+    *,
+    source_label: str = "state.json",
+) -> ConventionLock:
+    """Return a validated :class:`ConventionLock` from a state payload."""
+
+    lock_data = convention_lock_data_from_state_payload(raw_state, source_label=source_label)
+    try:
+        return ConventionLock.model_validate(lock_data)
+    except PydanticValidationError as exc:
+        raise ConventionError(f"Malformed {source_label}.convention_lock: {exc}") from exc
 
 
 # --- Result Types ---
@@ -216,6 +291,23 @@ class AssertionMismatch(BaseModel):
     key: str
     file_value: str
     lock_value: str
+
+
+class AssertionCheckResult(BaseModel):
+    """Result of checking convention assertions against the current lock."""
+
+    model_config = ConfigDict(frozen=True)
+
+    file: str
+    lock_available: bool
+    require_assertions: bool = False
+    assertion_count: int
+    required_keys: list[str] = Field(default_factory=list)
+    missing_required_assertions: list[str] = Field(default_factory=list)
+    missing_required_keys: list[str] = Field(default_factory=list)
+    mismatches: list[AssertionMismatch] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    passed: bool
 
 
 # --- Key/Value Normalization ---
@@ -578,6 +670,24 @@ def parse_assert_conventions(content: str) -> list[tuple[str, str]]:
     return pairs
 
 
+def required_assertion_keys(lock: ConventionLock) -> list[str]:
+    """Return the active critical convention keys every derivation artifact should assert."""
+    required: list[str] = []
+    for key in _CRITICAL_ASSERTION_KEYS:
+        if not is_bogus_value(getattr(lock, key, None)):
+            required.append(key)
+    return required
+
+
+def _lookup_lock_value(lock: ConventionLock, key: str) -> str | None:
+    """Return the active value for a canonical or custom convention key."""
+    if key in KNOWN_CONVENTIONS:
+        value = getattr(lock, key, None)
+        if value is not None:
+            return str(value)
+    return lock.custom_conventions.get(key)
+
+
 @instrument_gpd_function("conventions.validate_assertions")
 def validate_assertions(
     content: str,
@@ -589,16 +699,20 @@ def validate_assertions(
 
     Returns a list of mismatches (empty = all assertions match or no assertions found).
     """
+    return _collect_assertion_mismatches(parse_assert_conventions(content), lock, filename=filename)
+
+
+def _collect_assertion_mismatches(
+    assertions: list[tuple[str, str]],
+    lock: ConventionLock,
+    *,
+    filename: str = "<unknown>",
+) -> list[AssertionMismatch]:
+    """Return only the mismatched assertions that can be checked against a lock."""
     mismatches: list[AssertionMismatch] = []
-    assertions = parse_assert_conventions(content)
 
     for key, asserted_value in assertions:
-        # Look up the lock value: canonical field, then custom_conventions
-        lock_value: str | None = None
-        if key in KNOWN_CONVENTIONS:
-            lock_value = getattr(lock, key, None)
-        if lock_value is None:
-            lock_value = lock.custom_conventions.get(key)
+        lock_value = _lookup_lock_value(lock, key)
 
         if lock_value is None:
             # Convention not set in lock — skip (can't validate)
@@ -619,3 +733,67 @@ def validate_assertions(
             )
 
     return mismatches
+
+
+@instrument_gpd_function("conventions.check_assertions")
+def check_assertions(
+    content: str,
+    lock: ConventionLock | None,
+    *,
+    filename: str = "<unknown>",
+    require_assertions: bool = False,
+    required_keys: list[str] | None = None,
+) -> AssertionCheckResult:
+    """Check ASSERT_CONVENTION directives against a lock with bootstrap-safe semantics.
+
+    If *lock* is unavailable, validation is skipped and the result passes with a warning.
+    This keeps bootstrap scenarios safe while still surfacing assertion coverage and
+    mismatch information for pre-commit gates and other structural checks.
+    """
+    assertions = parse_assert_conventions(content)
+    normalized_required_keys = [normalize_key(key) for key in (required_keys or [])]
+    if lock is None:
+        warnings = ["Convention lock unavailable; ASSERT_CONVENTION validation skipped"]
+        if require_assertions and not assertions:
+            warnings.append("Required ASSERT_CONVENTION coverage could not be enforced without a lock")
+        return AssertionCheckResult(
+            file=filename,
+            lock_available=False,
+            require_assertions=require_assertions,
+            assertion_count=len(assertions),
+            required_keys=normalized_required_keys,
+            missing_required_assertions=[],
+            missing_required_keys=[],
+            mismatches=[],
+            warnings=warnings,
+            passed=True,
+        )
+
+    missing_required_assertions = ["ASSERT_CONVENTION"] if require_assertions and not assertions else []
+    asserted_keys = {key for key, _ in assertions}
+    missing_required_keys = [
+        key
+        for key in normalized_required_keys
+        if key not in asserted_keys and not is_bogus_value(_lookup_lock_value(lock, key))
+    ]
+    mismatches = _collect_assertion_mismatches(assertions, lock, filename=filename)
+    warnings: list[str] = []
+    if missing_required_assertions:
+        warnings.append("Missing ASSERT_CONVENTION coverage")
+    if missing_required_keys:
+        warnings.append(
+            "Missing required ASSERT_CONVENTION keys: " + ", ".join(missing_required_keys)
+        )
+
+    return AssertionCheckResult(
+        file=filename,
+        lock_available=True,
+        require_assertions=require_assertions,
+        assertion_count=len(assertions),
+        required_keys=normalized_required_keys,
+        missing_required_assertions=missing_required_assertions,
+        missing_required_keys=missing_required_keys,
+        mismatches=mismatches,
+        warnings=warnings,
+        passed=not missing_required_assertions and not missing_required_keys and not mismatches,
+    )

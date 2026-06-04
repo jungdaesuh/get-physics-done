@@ -1,17 +1,22 @@
 ---
 name: gpd:graph
 description: Visualize dependency graph across phases and identify gaps
-argument-hint: ""
 context_mode: project-required
 allowed-tools:
   - file_read
   - shell
   - search_files
   - find_files
+help:
+  group: Tangents, memory, and exports
+  order: 570
+  compact_description: Visualize phase dependencies
+  display_signature: gpd:graph
+  notes:
+    - Complements the technical-analysis lane; use separate commands such as gpd:error-propagation for uncertainty flow.
+  root_detail_order: 210
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Build and visualize the dependency graph across all research phases. Shows how results flow between phases (provides/requires/affects) and identifies gaps where a phase requires something no other phase provides.
@@ -33,7 +38,7 @@ Use this for:
 </context>
 
 <process>
-Execute the graph workflow from @{GPD_INSTALL_DIR}/workflows/graph.md end-to-end.
+Execute the included graph workflow end-to-end.
 
 ## Step 1: Read All SUMMARY.md Frontmatter
 

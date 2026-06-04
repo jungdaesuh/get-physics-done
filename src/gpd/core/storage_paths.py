@@ -1,25 +1,41 @@
 """Project-local storage-path policy helpers for GPD.
 
 These helpers classify and validate internal durable paths, user-visible
-durable paths, and project-local scratch paths so callers can route outputs
-consistently.
+durable paths, managed durable paths, and project-local scratch paths so
+callers can route outputs consistently.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import tempfile
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from enum import StrEnum
+from functools import lru_cache
 from pathlib import Path
 
-from gpd.core.constants import PLANNING_DIR_NAME, SCRATCH_DIR_NAME, ProjectLayout
+from gpd.core.constants import (
+    PLANNING_DIR_NAME,
+    PUBLICATION_DIR_NAME,
+    PUBLICATION_INTAKE_DIR_NAME,
+    PUBLICATION_MANUSCRIPT_DIR_NAME,
+    SCRATCH_DIR_NAME,
+    ProjectLayout,
+)
 from gpd.core.errors import GPDError
 
 __all__ = [
     "DurableOutputKind",
+    "ManagedOutputClass",
+    "ManagedOutputMatchMode",
+    "ManagedOutputPolicy",
+    "ManagedOutputRootKind",
     "ProjectStorageLayout",
+    "StageArtifactPolicy",
     "StorageClass",
+    "StoragePathAssessment",
     "StoragePathCheck",
     "StoragePathError",
 ]
@@ -53,6 +69,155 @@ class DurableOutputKind(StrEnum):
     SLIDES = "slides"
 
 
+class ManagedOutputClass(StrEnum):
+    """Typed output class used by managed-output policies."""
+
+    GPD_MANAGED_DURABLE = "gpd_managed_durable"
+    GPD_INTERNAL_OTHER = "gpd_internal_other"
+    USER_EXPORT_DURABLE = "user_export_durable"
+    SCRATCH = "scratch"
+    PROJECT_LOCAL_OTHER = "project_local_other"
+    TEMP_ROOT = "temp_root"
+    EXTERNAL = "external"
+
+
+class ManagedOutputRootKind(StrEnum):
+    """Root surface that owns a managed-output policy."""
+
+    GPD = "gpd"
+    PROJECT = "project"
+
+
+class ManagedOutputMatchMode(StrEnum):
+    """How a managed-output policy matches a candidate path."""
+
+    EXACT = "exact"
+    SUBTREE = "subtree"
+
+
+class StageArtifactPolicy(StrEnum):
+    """Whether a managed-output policy may own staged durable artifacts."""
+
+    DISALLOWED = "disallowed"
+    ALLOWED = "allowed"
+
+
+@dataclass(frozen=True, slots=True)
+class ManagedOutputPolicy:
+    """Typed policy describing an allowed durable output surface."""
+
+    output_class: ManagedOutputClass
+    managed_root_kind: ManagedOutputRootKind
+    default_output_subtree: tuple[str, ...]
+    match_mode: ManagedOutputMatchMode = ManagedOutputMatchMode.SUBTREE
+    stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED
+
+    def bind_output_subtree_placeholders(
+        self,
+        bindings: Mapping[str, str],
+    ) -> ManagedOutputPolicy:
+        """Return a copy with dynamic subtree placeholders resolved."""
+
+        return replace(
+            self,
+            default_output_subtree=_bind_output_subtree_placeholders(self.default_output_subtree, bindings),
+        )
+
+    @classmethod
+    def gpd_subtree(
+        cls,
+        *parts: str,
+        stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED,
+        output_class: ManagedOutputClass = ManagedOutputClass.GPD_MANAGED_DURABLE,
+    ) -> ManagedOutputPolicy:
+        return cls(
+            output_class=output_class,
+            managed_root_kind=ManagedOutputRootKind.GPD,
+            default_output_subtree=_normalize_output_subtree(parts),
+            match_mode=ManagedOutputMatchMode.SUBTREE,
+            stage_artifact_policy=stage_artifact_policy,
+        )
+
+    @classmethod
+    def gpd_path(
+        cls,
+        *parts: str,
+        stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED,
+        output_class: ManagedOutputClass = ManagedOutputClass.GPD_MANAGED_DURABLE,
+    ) -> ManagedOutputPolicy:
+        return cls(
+            output_class=output_class,
+            managed_root_kind=ManagedOutputRootKind.GPD,
+            default_output_subtree=_normalize_output_subtree(parts),
+            match_mode=ManagedOutputMatchMode.EXACT,
+            stage_artifact_policy=stage_artifact_policy,
+        )
+
+    @classmethod
+    def publication_intake_subtree(
+        cls,
+        subject_slug: str,
+        *parts: str,
+        stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED,
+        output_class: ManagedOutputClass = ManagedOutputClass.GPD_MANAGED_DURABLE,
+    ) -> ManagedOutputPolicy:
+        return cls.gpd_subtree(
+            PUBLICATION_DIR_NAME,
+            subject_slug,
+            PUBLICATION_INTAKE_DIR_NAME,
+            *parts,
+            stage_artifact_policy=stage_artifact_policy,
+            output_class=output_class,
+        )
+
+    @classmethod
+    def publication_manuscript_subtree(
+        cls,
+        subject_slug: str,
+        *parts: str,
+        stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED,
+        output_class: ManagedOutputClass = ManagedOutputClass.GPD_MANAGED_DURABLE,
+    ) -> ManagedOutputPolicy:
+        return cls.gpd_subtree(
+            PUBLICATION_DIR_NAME,
+            subject_slug,
+            PUBLICATION_MANUSCRIPT_DIR_NAME,
+            *parts,
+            stage_artifact_policy=stage_artifact_policy,
+            output_class=output_class,
+        )
+
+    @classmethod
+    def project_subtree(
+        cls,
+        *parts: str,
+        stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED,
+        output_class: ManagedOutputClass = ManagedOutputClass.USER_EXPORT_DURABLE,
+    ) -> ManagedOutputPolicy:
+        return cls(
+            output_class=output_class,
+            managed_root_kind=ManagedOutputRootKind.PROJECT,
+            default_output_subtree=_normalize_output_subtree(parts),
+            match_mode=ManagedOutputMatchMode.SUBTREE,
+            stage_artifact_policy=stage_artifact_policy,
+        )
+
+    @classmethod
+    def project_path(
+        cls,
+        *parts: str,
+        stage_artifact_policy: StageArtifactPolicy = StageArtifactPolicy.DISALLOWED,
+        output_class: ManagedOutputClass = ManagedOutputClass.USER_EXPORT_DURABLE,
+    ) -> ManagedOutputPolicy:
+        return cls(
+            output_class=output_class,
+            managed_root_kind=ManagedOutputRootKind.PROJECT,
+            default_output_subtree=_normalize_output_subtree(parts),
+            match_mode=ManagedOutputMatchMode.EXACT,
+            stage_artifact_policy=stage_artifact_policy,
+        )
+
+
 class StoragePathError(GPDError, ValueError):
     """Raised when a final output path violates the storage policy."""
 
@@ -64,11 +229,27 @@ class StoragePathCheck:
     path: Path
     classification: StorageClass
     kind: DurableOutputKind | None = None
+    managed_output_class: ManagedOutputClass | None = None
+    matched_policy: ManagedOutputPolicy | None = None
     warnings: tuple[str, ...] = ()
 
     @property
     def ok(self) -> bool:
         return not self.warnings
+
+
+@dataclass(frozen=True, slots=True)
+class StoragePathAssessment:
+    """Typed policy assessment for a candidate storage path."""
+
+    path: Path
+    classification: StorageClass
+    managed_output_class: ManagedOutputClass
+    matched_policy: ManagedOutputPolicy | None = None
+
+    @property
+    def policy_owned(self) -> bool:
+        return self.matched_policy is not None
 
 
 _DURABLE_DIR_NAMES: dict[DurableOutputKind, str] = {
@@ -111,6 +292,26 @@ _SUSPICIOUS_DURABLE_SUFFIXES: frozenset[str] = frozenset(
 )
 _SCRATCH_TEMP_SUFFIXES: frozenset[str] = frozenset({".tmp", ".lock", ".bak"})
 _PROJECT_SCRATCH_SEGMENTS: frozenset[str] = frozenset({"tmp", "temp", "scratch"})
+_CANONICAL_TEMP_ROOT_ALIASES: tuple[Path, ...] = (Path("/tmp"), Path("/private/tmp"), Path("/var/tmp"))
+_STORAGE_AUDIT_PRUNED_DIR_NAMES: frozenset[str] = frozenset(
+    {
+        ".cache",
+        ".git",
+        ".hg",
+        ".mypy_cache",
+        ".npm-cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".svn",
+        ".uv-cache",
+        ".venv",
+        "__pycache__",
+        "node_modules",
+        "venv",
+    }
+)
+_GENERIC_PROJECT_OUTPUT_ROOT_DIR_NAMES: frozenset[str] = frozenset({"build", "cache", "dist"})
+_OUTPUT_SUBTREE_PLACEHOLDER_RE = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def _is_relative_to(path: Path, parent: Path) -> bool:
@@ -122,12 +323,7 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
 
 
 def _safe_component(value: str) -> str:
-    cleaned = "".join(
-        char
-        if (char.isascii() and char.isalnum()) or char in "._-"
-        else "-"
-        for char in value.strip()
-    )
+    cleaned = "".join(char if (char.isascii() and char.isalnum()) or char in "._-" else "-" for char in value.strip())
     collapsed = cleaned.strip("-")
     return collapsed or "unnamed"
 
@@ -143,13 +339,119 @@ def _dedupe_paths(paths: list[Path]) -> tuple[Path, ...]:
     return tuple(unique)
 
 
+@lru_cache(maxsize=1)
+def _runtime_config_dir_lookup() -> tuple[tuple[str, ...], str | None]:
+    try:
+        from gpd.adapters.runtime_catalog import iter_runtime_descriptors
+
+        return tuple(descriptor.config_dir_name for descriptor in iter_runtime_descriptors()), None
+    except Exception as exc:
+        return (), f"{type(exc).__name__}: {exc}"
+
+
+def _runtime_config_dir_names() -> tuple[str, ...]:
+    names, _error = _runtime_config_dir_lookup()
+    return names
+
+
+def _runtime_config_dir_lookup_error() -> str | None:
+    _names, error = _runtime_config_dir_lookup()
+    return error
+
+
+def _iter_storage_audit_files(root: Path, *, skip_roots: tuple[Path, ...] = ()) -> tuple[Path, ...]:
+    if not root.exists():
+        return ()
+
+    pruned_dir_names = _STORAGE_AUDIT_PRUNED_DIR_NAMES
+    root_pruned_dir_names = frozenset(_runtime_config_dir_names())
+    resolved_root = root.resolve(strict=False)
+    resolved_skip_roots = tuple(path.resolve(strict=False) for path in skip_roots)
+    files: list[Path] = []
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        resolved_current = current.resolve(strict=False)
+        try:
+            entries = sorted(current.iterdir(), key=lambda path: path.name)
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if entry.is_symlink():
+                    if entry.is_file():
+                        files.append(entry)
+                    continue
+                if entry.is_dir():
+                    resolved_entry = entry.resolve(strict=False)
+                    if (
+                        entry.name in pruned_dir_names
+                        or (resolved_current == resolved_root and entry.name in root_pruned_dir_names)
+                        or any(
+                            resolved_entry == skip_root or _is_relative_to(resolved_entry, skip_root)
+                            for skip_root in resolved_skip_roots
+                        )
+                    ):
+                        continue
+                    stack.append(entry)
+                elif entry.is_file():
+                    files.append(entry)
+            except OSError:
+                continue
+    return tuple(files)
+
+
+def _normalize_output_subtree(parts: tuple[str, ...]) -> tuple[str, ...]:
+    normalized: list[str] = []
+    for raw_part in parts:
+        raw = str(raw_part).strip()
+        if not raw:
+            continue
+        if raw.startswith("/"):
+            raise ValueError(f"Managed output subtree must be relative, got {raw!r}")
+        for piece in raw.replace("\\", "/").split("/"):
+            component = piece.strip()
+            if not component or component == ".":
+                continue
+            if component == "..":
+                raise ValueError(f"Managed output subtree must not contain '..', got {raw!r}")
+            normalized.append(component)
+    if not normalized:
+        raise ValueError("Managed output subtree must contain at least one path component")
+    return tuple(normalized)
+
+
+def _bind_output_subtree_placeholders(
+    parts: tuple[str, ...],
+    bindings: Mapping[str, str],
+) -> tuple[str, ...]:
+    if not parts:
+        return ()
+
+    def _replace_placeholder(match: re.Match[str]) -> str:
+        placeholder = match.group(1)
+        raw_value = str(bindings.get(placeholder, "")).strip()
+        if not raw_value:
+            raise ValueError(f"Missing managed output subtree binding for {{{placeholder}}}")
+        normalized_value = _normalize_output_subtree((raw_value,))
+        if len(normalized_value) != 1:
+            raise ValueError(
+                f"Managed output subtree placeholder {{{placeholder}}} must resolve to exactly one path component"
+            )
+        return normalized_value[0]
+
+    substituted = tuple(_OUTPUT_SUBTREE_PLACEHOLDER_RE.sub(_replace_placeholder, component) for component in parts)
+    return _normalize_output_subtree(substituted)
+
+
 class ProjectStorageLayout:
     """Storage policy view over a single project root."""
 
-    __slots__ = ("root", "gpd")
+    __slots__ = ("root", "gpd", "gpd_dir_name")
 
     def __init__(self, root: Path, gpd_dir: str = PLANNING_DIR_NAME) -> None:
         self.root = root.resolve(strict=False)
+        self.gpd_dir_name = gpd_dir
         self.gpd = ProjectLayout(self.root, gpd_dir=gpd_dir).gpd.resolve(strict=False)
 
     @property
@@ -163,12 +465,20 @@ class ProjectStorageLayout:
     def output_dir(self, kind: DurableOutputKind) -> Path:
         return self.root / _DURABLE_DIR_NAMES[kind]
 
-    def phase_artifacts_dir(self, phase_name: str) -> Path:
+    def managed_output_root(self, managed_root_kind: ManagedOutputRootKind) -> Path:
+        if managed_root_kind == ManagedOutputRootKind.GPD:
+            return self.gpd
+        return self.root
+
+    def managed_output_path(self, policy: ManagedOutputPolicy) -> Path:
         return (
-            self.output_dir(DurableOutputKind.ARTIFACTS)
-            / "phases"
-            / _safe_component(phase_name)
+            self.managed_output_root(policy.managed_root_kind)
+            .joinpath(*policy.default_output_subtree)
+            .resolve(strict=False)
         )
+
+    def phase_artifacts_dir(self, phase_name: str) -> Path:
+        return self.output_dir(DurableOutputKind.ARTIFACTS) / "phases" / _safe_component(phase_name)
 
     def phase_operation_dir(self, phase_name: str, operation: str, *, slug: str | None = None) -> Path:
         path = self.phase_artifacts_dir(phase_name) / _safe_component(operation)
@@ -182,10 +492,16 @@ class ProjectStorageLayout:
             candidate = self.root / candidate
         return candidate.resolve(strict=False)
 
+    def anchor(self, path: Path | str) -> Path:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            candidate = self.root / candidate
+        return candidate.absolute()
+
     def _display_path(self, path: Path) -> str:
         if _is_relative_to(path, self.root):
-            return str(path.relative_to(self.root))
-        return str(path)
+            return path.relative_to(self.root).as_posix()
+        return path.as_posix()
 
     def _is_project_local_scratch_path(self, path: Path) -> bool:
         if not _is_relative_to(path, self.root) or _is_relative_to(path, self.gpd):
@@ -194,19 +510,30 @@ class ProjectStorageLayout:
         return any(segment.lower() in _PROJECT_SCRATCH_SEGMENTS for segment in rel.parts)
 
     def _internal_storage_violation(self, path: Path) -> str | None:
+        if not _is_relative_to(path, self.root):
+            return None
         rel = path.relative_to(self.root)
         suffix = path.suffix.lower()
 
         if any(segment in _SUSPICIOUS_INTERNAL_SEGMENTS for segment in rel.parts):
-            return f"Suspicious durable-artifact path under {self.gpd}: {rel}"
+            return f"Suspicious durable-artifact path under {self.gpd.as_posix()}: {rel.as_posix()}"
 
         if (
-            (_is_relative_to(path, self.gpd / "phases") or _is_relative_to(path, self.gpd / "paper"))
-            and suffix in _SUSPICIOUS_DURABLE_SUFFIXES
-        ):
-            return f"Artifact-like file stored under internal metadata directories: {rel}"
+            _is_relative_to(path, self.gpd / "phases") or _is_relative_to(path, self.gpd / "paper")
+        ) and suffix in _SUSPICIOUS_DURABLE_SUFFIXES:
+            return f"Artifact-like file stored under internal metadata directories: {rel.as_posix()}"
 
         return None
+
+    def _generic_root_output_warning(self, path: Path) -> str | None:
+        if not _is_relative_to(path, self.root) or _is_relative_to(path, self.gpd):
+            return None
+        rel = path.relative_to(self.root)
+        if not rel.parts or rel.parts[0] not in _GENERIC_PROJECT_OUTPUT_ROOT_DIR_NAMES:
+            return None
+        if path.suffix.lower() not in _SUSPICIOUS_DURABLE_SUFFIXES:
+            return None
+        return f"Project-local generic root may hide durable output: {rel.as_posix()}"
 
     def temp_roots(self) -> tuple[Path, ...]:
         candidates: list[Path] = []
@@ -219,6 +546,7 @@ class ProjectStorageLayout:
             if not raw.is_absolute():
                 continue
             candidates.append(raw.resolve(strict=False))
+        candidates.extend(path.resolve(strict=False) for path in _CANONICAL_TEMP_ROOT_ALIASES)
         return _dedupe_paths(candidates)
 
     def project_root_is_temporary(self) -> bool:
@@ -238,12 +566,70 @@ class ProjectStorageLayout:
             return StorageClass.TEMP_ROOT
         return StorageClass.EXTERNAL
 
+    def _matches_managed_output_policy(self, path: Path, policy: ManagedOutputPolicy) -> bool:
+        managed_path = self.managed_output_path(policy)
+        if policy.match_mode == ManagedOutputMatchMode.EXACT:
+            return path == managed_path
+        return path == managed_path or _is_relative_to(path, managed_path)
+
+    def assess_output_path(
+        self,
+        path: Path | str,
+        *,
+        managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+    ) -> StoragePathAssessment:
+        anchored = self.anchor(path)
+        resolved = anchored.resolve(strict=False)
+        path_for_policy = anchored if anchored.is_symlink() else resolved
+        classification = self.classify(path_for_policy)
+
+        if classification == StorageClass.SCRATCH or self._is_project_local_scratch_path(path_for_policy):
+            return StoragePathAssessment(
+                path=path_for_policy,
+                classification=classification,
+                managed_output_class=ManagedOutputClass.SCRATCH,
+            )
+        if classification == StorageClass.TEMP_ROOT:
+            return StoragePathAssessment(
+                path=resolved,
+                classification=classification,
+                managed_output_class=ManagedOutputClass.TEMP_ROOT,
+            )
+        if classification == StorageClass.EXTERNAL:
+            return StoragePathAssessment(
+                path=resolved,
+                classification=classification,
+                managed_output_class=ManagedOutputClass.EXTERNAL,
+            )
+
+        for policy in managed_output_policies:
+            if self._matches_managed_output_policy(path_for_policy, policy):
+                return StoragePathAssessment(
+                    path=path_for_policy,
+                    classification=classification,
+                    managed_output_class=policy.output_class,
+                    matched_policy=policy,
+                )
+
+        if classification == StorageClass.USER_DURABLE:
+            managed_output_class = ManagedOutputClass.USER_EXPORT_DURABLE
+        elif classification == StorageClass.PROJECT_LOCAL_OTHER:
+            managed_output_class = ManagedOutputClass.PROJECT_LOCAL_OTHER
+        else:
+            managed_output_class = ManagedOutputClass.GPD_INTERNAL_OTHER
+
+        return StoragePathAssessment(
+            path=path_for_policy,
+            classification=classification,
+            managed_output_class=managed_output_class,
+        )
+
     def validate_internal_output(self, path: Path | str) -> Path:
         resolved = self.resolve(path)
         classification = self.classify(resolved)
         if classification != StorageClass.INTERNAL_DURABLE:
             raise StoragePathError(
-                f"Internal durable outputs must stay under {self.gpd}, got {resolved} ({classification})."
+                f"Internal durable outputs must stay under {self.gpd.as_posix()}, got {resolved.as_posix()} ({classification})."
             )
         return resolved
 
@@ -253,45 +639,70 @@ class ProjectStorageLayout:
         if classification != StorageClass.USER_DURABLE:
             raise StoragePathError(
                 "User-visible durable outputs must land in a stable project directory, "
-                f"got {resolved} ({classification})."
+                f"got {resolved.as_posix()} ({classification})."
             )
         if kind is not None and not _is_relative_to(resolved, self.output_dir(kind)):
             raise StoragePathError(
-                f"Expected a {kind.value} output under {self.output_dir(kind)}, got {resolved}."
+                f"Expected a {kind.value} output under {self.output_dir(kind).as_posix()}, got {resolved.as_posix()}."
             )
         return resolved
 
-    def validate_final_output(self, path: Path | str) -> Path:
-        resolved = self.resolve(path)
-        classification = self.classify(resolved)
-        display_path = self._display_path(resolved)
-
-        if classification == StorageClass.INTERNAL_DURABLE:
-            raise StoragePathError(f"Final durable outputs must not be written under {self.gpd}: {display_path}")
-        if classification == StorageClass.SCRATCH or self._is_project_local_scratch_path(resolved):
-            raise StoragePathError(f"Final durable outputs must not be written under scratch directories: {display_path}")
-        if classification == StorageClass.TEMP_ROOT:
-            raise StoragePathError(f"Final durable outputs must not be written under an OS temp root: {display_path}")
-        if classification == StorageClass.EXTERNAL:
-            raise StoragePathError(f"Final durable outputs must stay inside the project root: {display_path}")
+    def validate_managed_output(self, path: Path | str, *, policy: ManagedOutputPolicy) -> Path:
+        resolved = self.validate_final_output(path, managed_output_policies=(policy,))
+        if not self._matches_managed_output_policy(resolved, policy):
+            raise StoragePathError(
+                "Managed durable outputs must land under "
+                f"{self._display_path(self.managed_output_path(policy))}, got {self._display_path(resolved)}."
+            )
         return resolved
 
-    def validate_commit_target(self, path: Path | str) -> Path:
-        resolved = self.resolve(path)
-        classification = self.classify(resolved)
+    def validate_final_output(
+        self,
+        path: Path | str,
+        *,
+        managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+    ) -> Path:
+        assessment = self.assess_output_path(path, managed_output_policies=managed_output_policies)
+        display_path = self._display_path(assessment.path)
+
+        if assessment.managed_output_class == ManagedOutputClass.GPD_INTERNAL_OTHER:
+            raise StoragePathError(
+                f"Final durable outputs must not be written under {self.gpd.as_posix()}: {display_path}"
+            )
+        if assessment.managed_output_class == ManagedOutputClass.SCRATCH:
+            raise StoragePathError(
+                f"Final durable outputs must not be written under scratch directories: {display_path}"
+            )
+        if assessment.managed_output_class == ManagedOutputClass.TEMP_ROOT:
+            raise StoragePathError(f"Final durable outputs must not be written under an OS temp root: {display_path}")
+        if assessment.managed_output_class == ManagedOutputClass.EXTERNAL:
+            raise StoragePathError(f"Final durable outputs must stay inside the project root: {display_path}")
+        return assessment.path
+
+    def validate_commit_target(
+        self,
+        path: Path | str,
+        *,
+        managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+    ) -> Path:
+        assessment = self.assess_output_path(path, managed_output_policies=managed_output_policies)
+        resolved = assessment.path
         display_path = self._display_path(resolved)
 
-        if classification == StorageClass.INTERNAL_DURABLE:
+        if assessment.managed_output_class == ManagedOutputClass.GPD_MANAGED_DURABLE:
+            return resolved
+
+        if assessment.classification == StorageClass.INTERNAL_DURABLE:
             violation = self._internal_storage_violation(resolved)
             if violation is not None:
                 raise StoragePathError(violation)
             return resolved
 
-        if classification == StorageClass.SCRATCH or self._is_project_local_scratch_path(resolved):
+        if assessment.managed_output_class == ManagedOutputClass.SCRATCH:
             raise StoragePathError(f"Commit targets must not come from scratch directories: {display_path}")
-        if classification == StorageClass.TEMP_ROOT:
+        if assessment.managed_output_class == ManagedOutputClass.TEMP_ROOT:
             raise StoragePathError(f"Commit targets must not come from OS temp roots: {display_path}")
-        if classification == StorageClass.EXTERNAL:
+        if assessment.managed_output_class == ManagedOutputClass.EXTERNAL:
             raise StoragePathError(f"Commit targets must stay inside the project root: {display_path}")
         return resolved
 
@@ -301,72 +712,111 @@ class ProjectStorageLayout:
         *,
         kind: DurableOutputKind | None = None,
         preferred_kinds: tuple[DurableOutputKind, ...] = (),
+        managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
     ) -> StoragePathCheck:
-        resolved = self.resolve(path)
-        classification = self.classify(resolved)
+        assessment = self.assess_output_path(path, managed_output_policies=managed_output_policies)
+        resolved = assessment.path
+        classification = assessment.classification
         warnings: list[str] = []
         preferred_dirs = tuple(self.output_dir(candidate) for candidate in preferred_kinds)
 
         if self.project_root_is_temporary():
-            warnings.append(f"Project root is under a temporary directory: {self.root}")
+            warnings.append(f"Project root is under a temporary directory: {self.root.as_posix()}")
 
-        if classification == StorageClass.PROJECT_LOCAL_OTHER and self._is_project_local_scratch_path(resolved):
+        if assessment.managed_output_class == ManagedOutputClass.SCRATCH:
             warnings.append(
                 "User-visible durable outputs should not land in project-local tmp/temp/scratch directories, "
-                f"got {resolved}."
+                f"got {resolved.as_posix()}."
             )
-        elif classification == StorageClass.PROJECT_LOCAL_OTHER:
-            preferred_label = ", ".join(str(path.relative_to(self.root)) for path in preferred_dirs) or "named durable roots"
+        elif assessment.managed_output_class == ManagedOutputClass.PROJECT_LOCAL_OTHER:
+            preferred_label = (
+                ", ".join(path.relative_to(self.root).as_posix() for path in preferred_dirs) or "named durable roots"
+            )
             warnings.append(
-                f"Output is in a custom project directory; prefer {preferred_label} for discoverability, got {resolved}."
+                f"Output is in a custom project directory; prefer {preferred_label} for discoverability, got {resolved.as_posix()}."
             )
-        elif classification != StorageClass.USER_DURABLE:
+        elif assessment.managed_output_class not in {
+            ManagedOutputClass.USER_EXPORT_DURABLE,
+            ManagedOutputClass.GPD_MANAGED_DURABLE,
+        }:
             warnings.append(
                 "User-visible durable outputs should land in a stable project directory, "
-                f"got {resolved} ({classification})."
+                f"got {resolved.as_posix()} ({classification})."
             )
-        elif preferred_dirs and not any(_is_relative_to(resolved, parent) for parent in preferred_dirs):
-            preferred_label = ", ".join(str(path.relative_to(self.root)) for path in preferred_dirs)
-            warnings.append(f"Expected output under one of {preferred_label}, got {resolved}.")
-        elif kind is not None and not _is_relative_to(resolved, self.output_dir(kind)):
-            warnings.append(f"Expected a {kind.value} output under {self.output_dir(kind)}, got {resolved}.")
+        elif (
+            assessment.managed_output_class == ManagedOutputClass.USER_EXPORT_DURABLE
+            and preferred_dirs
+            and not any(_is_relative_to(resolved, parent) for parent in preferred_dirs)
+        ):
+            preferred_label = ", ".join(path.relative_to(self.root).as_posix() for path in preferred_dirs)
+            warnings.append(f"Expected output under one of {preferred_label}, got {resolved.as_posix()}.")
+        elif (
+            assessment.managed_output_class == ManagedOutputClass.USER_EXPORT_DURABLE
+            and kind is not None
+            and not _is_relative_to(resolved, self.output_dir(kind))
+        ):
+            warnings.append(
+                f"Expected a {kind.value} output under {self.output_dir(kind).as_posix()}, got {resolved.as_posix()}."
+            )
 
         return StoragePathCheck(
             path=resolved,
             classification=classification,
             kind=kind,
+            managed_output_class=assessment.managed_output_class,
+            matched_policy=assessment.matched_policy,
             warnings=tuple(warnings),
         )
 
-    def audit_storage_warnings(self) -> tuple[str, ...]:
+    def audit_storage_warnings(
+        self,
+        *,
+        managed_output_policies: tuple[ManagedOutputPolicy, ...] = (),
+    ) -> tuple[str, ...]:
         warnings: list[str] = []
         if self.project_root_is_temporary():
-            warnings.append(f"Project root is under a temporary directory: {self.root}")
+            warnings.append(f"Project root is under a temporary directory: {self.root.as_posix()}")
+        runtime_config_dir_lookup_error = _runtime_config_dir_lookup_error()
+        if runtime_config_dir_lookup_error is not None:
+            warnings.append(
+                "Runtime config directory pruning skipped because validated runtime catalog lookup failed: "
+                f"{runtime_config_dir_lookup_error}"
+            )
+        raw_gpd = self.root / self.gpd_dir_name
+        if raw_gpd.exists() and not _is_relative_to(self.gpd, self.root):
+            warnings.append(
+                "GPD storage root resolves outside the project root: "
+                f"{raw_gpd.relative_to(self.root).as_posix()} -> {self.gpd.as_posix()}"
+            )
 
         if self.gpd.exists():
-            for path in self.gpd.rglob("*"):
-                if not path.is_file():
-                    continue
-                rel = path.relative_to(self.root)
+            for path in _iter_storage_audit_files(self.gpd):
+                rel_label = self._display_path(path)
                 suffix = path.suffix.lower()
 
                 if _is_relative_to(path, self.scratch_dir) and suffix not in _SCRATCH_TEMP_SUFFIXES:
-                    warnings.append(f"Scratch file should not be treated as durable output: {rel}")
+                    warnings.append(f"Scratch file should not be treated as durable output: {rel_label}")
+                    continue
+
+                assessment = self.assess_output_path(path, managed_output_policies=managed_output_policies)
+                if assessment.managed_output_class == ManagedOutputClass.GPD_MANAGED_DURABLE:
                     continue
 
                 violation = self._internal_storage_violation(path)
                 if violation is not None:
                     warnings.append(violation)
 
-        for dirname in _PROJECT_SCRATCH_SEGMENTS:
-            project_scratch_root = self.root / dirname
-            if not project_scratch_root.is_dir():
+        for path in _iter_storage_audit_files(self.root, skip_roots=(self.gpd,)):
+            generic_root_warning = self._generic_root_output_warning(path)
+            if generic_root_warning is not None:
+                warnings.append(generic_root_warning)
                 continue
-            for path in project_scratch_root.rglob("*"):
-                if not path.is_file():
-                    continue
-                if path.suffix.lower() in _SCRATCH_TEMP_SUFFIXES:
-                    continue
-                warnings.append(f"Project scratch directory should not hold final outputs: {path.relative_to(self.root)}")
+            if not self._is_project_local_scratch_path(path):
+                continue
+            if path.suffix.lower() in _SCRATCH_TEMP_SUFFIXES:
+                continue
+            warnings.append(
+                f"Project scratch directory should not hold final outputs: {path.relative_to(self.root).as_posix()}"
+            )
 
         return tuple(dict.fromkeys(warnings))

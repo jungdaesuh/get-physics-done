@@ -3,11 +3,15 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import json
+import os
 import sys
 import tomllib
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+import gpd._python_compat as python_compat
 import gpd.version as gpd_version
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -66,3 +70,36 @@ def test_resolve_active_version_prefers_cwd_checkout_version(tmp_path: Path) -> 
     nested.mkdir(parents=True)
 
     assert gpd_version.resolve_active_version(nested) == "9.9.9"
+
+
+def test_resolve_checkout_python_prefers_checkout_local_virtualenv(tmp_path: Path) -> None:
+    repo_root = _make_checkout(tmp_path, "9.9.9")
+    nested = repo_root / "research" / "project"
+    nested.mkdir(parents=True)
+    venv_python_rel = Path("Scripts") / "python.exe" if os.name == "nt" else Path("bin") / "python"
+    checkout_python = repo_root / ".venv" / venv_python_rel
+    checkout_python.parent.mkdir(parents=True)
+    checkout_python.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+
+    assert gpd_version.resolve_checkout_python(nested, fallback="/managed/python") == str(checkout_python)
+
+
+def test_resolve_checkout_python_falls_back_when_checkout_has_no_local_virtualenv(tmp_path: Path) -> None:
+    repo_root = _make_checkout(tmp_path, "9.9.9")
+    nested = repo_root / "research" / "project"
+    nested.mkdir(parents=True)
+
+    assert gpd_version.resolve_checkout_python(nested, fallback="/managed/python") == "/managed/python"
+
+
+def test_resolve_checkout_python_returns_none_when_no_checkout_exists(tmp_path: Path) -> None:
+    outside = tmp_path / "standalone"
+    outside.mkdir(parents=True)
+
+    with patch.object(gpd_version, "checkout_root", return_value=None):
+        assert gpd_version.resolve_checkout_python(outside, fallback="/managed/python") is None
+
+
+def test_require_supported_python_rejects_older_interpreters() -> None:
+    with pytest.raises(RuntimeError, match=r"requires Python 3\.11\+; current interpreter is Python 3\.10"):
+        python_compat.require_supported_python(version_info=(3, 10, 14))

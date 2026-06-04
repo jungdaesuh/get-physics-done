@@ -14,8 +14,13 @@ def test_paper_writer_prompt_keeps_contract_evidence_as_writing_block() -> None:
     source = _read_paper_writer()
 
     assert "required contract-backed outcome evidence" in source
-    assert "`plan_contract_ref`, `contract_results`, and any decisive `comparison_verdicts` entry with an evidence path" in source
-    assert "the research is not paper-ready. Return WRITING BLOCKED." in source
+    assert "plan_contract_ref" in source
+    assert "contract_results" in source
+    assert "comparison_verdicts" in source
+    assert "any decisive `comparison_verdicts` entry with an evidence path" not in source
+    assert "any decisive `comparison_verdicts` entry when the manuscript claim depends on that comparison" in source
+    assert "the research is not paper-ready. Block with the `## WRITING BLOCKED` label." in source
+    assert "The control surface is `gpd_return.status`." in source
 
 
 def test_paper_writer_prompt_treats_missing_confidence_tags_as_calibration_warning() -> None:
@@ -23,6 +28,59 @@ def test_paper_writer_prompt_treats_missing_confidence_tags_as_calibration_warni
 
     assert "Missing `CONFIDENCE:` tags are a calibration warning, not a writing block." in source
     assert "Treat them as missing calibration input" in source
-    assert "downgrade claim language when confidence is underspecified" in source
-    assert "report the missing tags in `gpd_return.issues` or checkpoint notes" in source
+    assert "downgrade claim language" in source
+    assert "gpd_return.issues" in source
     assert "If any contributing phase lacks contract-backed outcome evidence or confidence tags" not in source
+
+
+def test_paper_writer_prompt_surfaces_builder_journal_boundary() -> None:
+    source = _read_paper_writer()
+
+    assert "Builder-backed journal keys for `PAPER-CONFIG.json` and `ARTIFACT-MANIFEST.json` are only" in source
+    assert "`prl`, `apj`, `mnras`, `nature`, `jhep`, and `jfm`" in source
+    assert "style-only calibration for prose and structure" in source
+    assert "Do not write unsupported journal labels into machine-readable builder artifacts." in source
+
+
+def test_paper_writer_prompt_keeps_lazy_authoring_contract_paths_visible() -> None:
+    source = _read_paper_writer()
+
+    assert "{GPD_INSTALL_DIR}/references/shared/shared-protocols.md" in source
+    assert "{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md" in source
+    assert "{GPD_INSTALL_DIR}/references/publication/paper-writer-cookbook.md" in source
+    assert "{GPD_INSTALL_DIR}/templates/notation-glossary.md" in source
+    assert "{GPD_INSTALL_DIR}/templates/latex-preamble.md" in source
+    assert "{GPD_INSTALL_DIR}/references/publication/figure-generation-templates.md" in source
+    assert "{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md" in source
+    assert "{GPD_INSTALL_DIR}/templates/paper/author-response.md" in source
+    assert "@{GPD_INSTALL_DIR}/references/shared/shared-protocols.md" not in source
+    assert "@{GPD_INSTALL_DIR}/references/orchestration/agent-infrastructure.md" not in source
+    assert "@{GPD_INSTALL_DIR}/templates/notation-glossary.md" not in source
+    assert "@{GPD_INSTALL_DIR}/templates/latex-preamble.md" not in source
+    assert "@{GPD_INSTALL_DIR}/templates/paper/author-response.md" not in source
+
+
+def test_paper_writer_prompt_keeps_required_gpd_acknowledgment_visible() -> None:
+    source = _read_paper_writer()
+
+    assert "This research made use of Get Physics Done (GPD)" in source
+    assert "developed by Physical Superintelligence PBC (PSI)." in source
+    assert "supported in part by" not in source
+
+
+def test_paper_writer_tensor_network_boundary_opens_selected_handle_before_method_judgment() -> None:
+    source = _read_paper_writer()
+
+    assert "protocol_bundle_load_manifest" in source
+    assert "verification_domains" in source
+    assert "execution_guides" in source
+    assert "fallback domain/protocol handle" in source
+    for token in ("before", "domain", "method", "judgment", "tensor-network", "caveats"):
+        assert token in source
+
+    for forbidden in (
+        "# Tensor Networks",
+        "Bond-dimension-limited",
+        "entanglement-growth control",
+    ):
+        assert forbidden not in source

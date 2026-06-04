@@ -5,7 +5,6 @@ argument-hint: "[phase] [--dimensional] [--limits] [--convergence] [--regression
 context_mode: project-required
 requires:
   files: ["GPD/ROADMAP.md"]
-  state: "phase_executed"
 review-contract:
   review_mode: review
   schema_version: 1
@@ -21,12 +20,17 @@ review-contract:
     - missing phase artifacts
     - degraded review integrity
   preflight_checks:
+    - command_context
     - project_state
     - roadmap
+    - phase_lookup
     - phase_artifacts
+    - phase_summaries
+    - phase_proof_review
   required_state: phase_executed
 allowed-tools:
   - file_read
+  - ask_user
   - shell
   - find_files
   - search_files
@@ -36,26 +40,22 @@ allowed-tools:
   - mcp__gpd_verification__get_bundle_checklist
   - mcp__gpd_verification__suggest_contract_checks
   - mcp__gpd_verification__run_contract_check
+help:
+  group: Validation and analysis
+  order: 290
+  compact_description: Run physics verification checks
+  display_signature: gpd:verify-work [phase]
+  root_detail_order: 120
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
-
 <objective>
-Verify research results through systematic physics checks with persistent state.
+Run the staged verification workflow for an executed phase.
 
-Purpose: Confirm that derivations are correct, numerical results are trustworthy, and physical conclusions are sound. One check at a time, plain text responses, no interrogation. When issues are found, automatically diagnose, classify severity, and prepare for resolution.
-
-Output: `GPD/phases/XX-name/XX-VERIFICATION.md` tracking all check results. This workflow is only valid once the phase has reached the `phase_executed` state. If issues are found, return diagnosed gaps with severity classification and verified fix plans ready for `/gpd:execute-phase`.
-
-Physics verification is fundamentally different from software testing. A software test has a binary pass/fail; a physics check has degrees of agreement, expected approximation errors, and regime-dependent validity. The verification framework accounts for this.
+Output: `GPD/phases/XX-name/XX-VERIFICATION.md`. This workflow is only valid once the phase has reached the `phase_executed` state.
 </objective>
 
 <execution_context>
-@{GPD_INSTALL_DIR}/workflows/verify-work.md
-@{GPD_INSTALL_DIR}/references/verification/core/verification-core.md
-@{GPD_INSTALL_DIR}/templates/verification-report.md
-@{GPD_INSTALL_DIR}/templates/contract-results-schema.md
+@{GPD_INSTALL_DIR}/workflows/verify-work/session-router.md
 </execution_context>
 
 <context>
@@ -63,65 +63,12 @@ Phase: $ARGUMENTS (optional)
 - If provided: Verify specific phase (e.g., "4")
 - If not provided: Check for active sessions or prompt for phase
 
-@GPD/STATE.md
-@GPD/ROADMAP.md
 </context>
 
 <process>
-**CRITICAL: First, read the full workflow file using the file_read tool:**
-Read the file at {GPD_INSTALL_DIR}/workflows/verify-work.md — this contains the complete step-by-step instructions. Do NOT improvise. Follow the workflow file exactly.
+**CRITICAL: First, read the included session-router stage authority using the file_read tool.**
+Follow the included first-stage authority exactly. Later stage loading and field
+access are owned by the staged workflow.
 
-Execute the workflow end-to-end.
-Preserve all workflow gates (session management, check presentation, diagnosis, fix planning, routing).
-
-The verification applies the following physics checks, selected based on the phase type:
-
-## For Analytical Derivations
-
-1. **Dimensional analysis** — Does every term in every equation have consistent dimensions? Track dimensions through every algebraic step, not just the final result.
-2. **Limiting cases** — Does the result reduce to known expressions in appropriate limits?
-   - Weak/strong coupling
-   - Large/small N
-   - High/low temperature
-   - Non-relativistic / classical limit
-   - Free theory limit
-   - Single-particle / mean-field limit
-3. **Symmetry preservation** — Does the result respect all symmetries of the original problem?
-   - Gauge invariance (if applicable)
-   - Lorentz / rotational / translational invariance
-   - Hermiticity of observables
-   - Unitarity of time evolution
-   - CPT or other discrete symmetries
-4. **Special values** — Does the result give correct answers for exactly solvable special cases?
-5. **Sign and factor checks** — Are overall signs physically sensible? (e.g., energy bounded below, probabilities non-negative, entropy non-negative) Are factors of 2, pi, hbar correct?
-6. **Logical completeness** — Does the derivation proceed from stated assumptions to conclusion without gaps? Are all approximations explicitly stated and justified?
-
-## For Numerical Results
-
-7. **Convergence tests** — Do results converge as resolution parameters are refined?
-   - Grid spacing / time step refinement
-   - Basis set / cutoff convergence
-   - Monte Carlo statistical convergence
-   - Extrapolation to continuum / thermodynamic limit
-8. **Analytical benchmarks** — Do numerical results match analytical predictions in regimes where both are available?
-9. **Conservation laws** — Are conserved quantities (energy, particle number, momentum, charge) actually conserved to expected precision?
-10. **Physical plausibility** — Are results physically reasonable?
-    - Correct order of magnitude
-    - Correct qualitative behavior (monotonicity, asymptotic behavior)
-    - No unphysical artifacts (negative probabilities, acausal propagation)
-11. **Reproducibility** — Do results reproduce when re-run with different random seeds, initial conditions, or numerical methods?
-
-## For Literature Comparisons
-
-12. **Quantitative agreement** — Do results agree with published values within stated uncertainties?
-13. **Discrepancy resolution** — If results disagree with literature, is the source of disagreement identified? (Different conventions, different approximations, error in prior work, or error in current work?)
-
-## Severity Classification
-
-- **CRITICAL** — Result is wrong (dimensional error, symmetry violation, sign error). Blocks all downstream work.
-- **MAJOR** — Result may be wrong (failed limiting case, numerical non-convergence). Must be resolved before conclusions are drawn.
-- **MINOR** — Result is probably correct but incompletely validated (missing one limiting case, no error bars on a qualitative plot). Should be resolved before publication.
-- **NOTE** — Observation for the record (e.g., "convergence is slow but adequate", "agrees with Smith et al. to 3 significant figures").
-
-**For deeper focused analysis**, use the dedicated commands: `/gpd:dimensional-analysis` (unit consistency), `/gpd:limiting-cases` (known limit recovery), or `/gpd:numerical-convergence` (convergence testing).
+The staged workflow authorities own the detailed check taxonomy; this wrapper only bootstraps the canonical verification surface and delegates the physics checks.
   </process>
