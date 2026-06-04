@@ -11,15 +11,18 @@ allowed-tools:
   - shell
   - search_files
   - find_files
+help:
+  group: Tangents, memory, and exports
+  order: 510
+  compact_description: Explicit git-backed alternative path for a side investigation
+  display_signature: gpd:branch-hypothesis <description>
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Create a git branch for investigating an alternative hypothesis or approach in parallel with the main line of research.
 
-Hypothesis branches allow a researcher to explore "what if?" questions without polluting the main research state. Each branch gets its own STATE.md fork and hypothesis documentation, enabling side-by-side comparison later via /gpd:compare-branches.
+Hypothesis branches allow a researcher to explore "what if?" questions without polluting the main research state. Each branch gets its own STATE.md fork and hypothesis documentation, enabling side-by-side comparison later via gpd:compare-branches.
 
 Common triggers:
 
@@ -42,6 +45,6 @@ Arguments: $ARGUMENTS (format: <description of hypothesis>)
 </context>
 
 <process>
-Execute the branch-hypothesis workflow from @{GPD_INSTALL_DIR}/workflows/branch-hypothesis.md end-to-end.
+Execute the included branch-hypothesis workflow end-to-end.
 Preserve all validation gates (argument parsing, git state checks, branch creation, hypothesis documentation).
 </process>

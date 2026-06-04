@@ -12,6 +12,10 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    ValidationInfo,
     field_validator,
 )
 from pydantic import (
@@ -45,10 +49,11 @@ __all__ = [
 ]
 
 _CHECKSUM_RE = re.compile(r"^[0-9a-f]{64}$")
+_STRICT_FROZEN_MODEL_CONFIG = ConfigDict(frozen=True, extra="forbid")
 
 
 class RequiredPackage(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     package: str
     version: str
@@ -56,7 +61,7 @@ class RequiredPackage(BaseModel):
 
 
 class SystemRequirements(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     operating_systems: list[str] = Field(default_factory=list)
     architectures: list[str] = Field(default_factory=list)
@@ -65,7 +70,7 @@ class SystemRequirements(BaseModel):
 
 
 class InputDataset(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     name: str
     source: str
@@ -77,7 +82,7 @@ class InputDataset(BaseModel):
 
 
 class GeneratedDataset(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     name: str
     script: str
@@ -87,7 +92,7 @@ class GeneratedDataset(BaseModel):
 
 
 class ExternalDependency(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     resource: str
     access_method: str
@@ -95,18 +100,18 @@ class ExternalDependency(BaseModel):
 
 
 class ExecutionStep(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     name: str
     command: str
     outputs: list[str] = Field(default_factory=list)
-    stochastic: bool = False
+    stochastic: StrictBool = False
     expected_wall_time: str = ""
     parallel_group: str = ""
 
 
 class ExpectedNumericalResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     quantity: str
     expected_value: str
@@ -116,28 +121,37 @@ class ExpectedNumericalResult(BaseModel):
 
 
 class OutputFileExpectation(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     path: str
     description: str = ""
     approximate_size: str = ""
     checksum_sha256: str = ""
-    approximate_checksum: bool = False
+    approximate_checksum: StrictBool = False
 
 
 class ResourceRequirement(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     step: str
-    cpu_cores: int
-    memory_gb: float
+    cpu_cores: StrictInt
+    memory_gb: StrictFloat
     gpu: str = ""
     wall_time: str = ""
     notes: str = ""
 
+    @field_validator("memory_gb", mode="before")
+    @classmethod
+    def _normalize_memory_gb(cls, value: object) -> object:
+        if isinstance(value, bool) or isinstance(value, str):
+            raise ValueError("Input should be a valid number")
+        if isinstance(value, int):
+            return float(value)
+        return value
+
 
 class RandomSeedRecord(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     computation: str
     seed: str
@@ -145,7 +159,7 @@ class RandomSeedRecord(BaseModel):
 
 
 class PlatformDifference(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     platform: str
     issue: str
@@ -153,7 +167,7 @@ class PlatformDifference(BaseModel):
 
 
 class EnvironmentSpecification(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     python_version: str
     package_manager: str
@@ -164,7 +178,7 @@ class EnvironmentSpecification(BaseModel):
 
 
 class ReproducibilityManifest(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     paper_title: str
     date: str
@@ -194,9 +208,36 @@ class ReproducibilityManifest(BaseModel):
             raise ValueError("field cannot be empty")
         return value
 
+    @field_validator("random_seeds")
+    @classmethod
+    def _seed_records_reference_stochastic_steps(
+        cls,
+        value: list[RandomSeedRecord],
+        info: ValidationInfo,
+    ) -> list[RandomSeedRecord]:
+        execution_steps = info.data.get("execution_steps", [])
+        stochastic_steps = {
+            step.name
+            for step in execution_steps
+            if isinstance(step, ExecutionStep) and step.stochastic
+        }
+        unknown_seed_targets = sorted(
+            {
+                seed.computation
+                for seed in value
+                if seed.computation not in stochastic_steps
+            }
+        )
+        if unknown_seed_targets:
+            formatted = ", ".join(f"'{step_name}'" for step_name in unknown_seed_targets)
+            raise ValueError(
+                f"seed records reference non-stochastic or unknown execution steps: {formatted}"
+            )
+        return value
+
 
 class ReproducibilityIssue(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     severity: str
     field: str
@@ -204,7 +245,7 @@ class ReproducibilityIssue(BaseModel):
 
 
 class ReproducibilityValidationResult(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = _STRICT_FROZEN_MODEL_CONFIG
 
     valid: bool
     issues: list[ReproducibilityIssue] = Field(default_factory=list)
@@ -323,8 +364,20 @@ def verify_output_checksum(path: Path, expected_checksum: str) -> bool:
     return compute_sha256(path) == expected_checksum.strip().lower()
 
 
-def validate_reproducibility_manifest(manifest: ReproducibilityManifest | dict) -> ReproducibilityValidationResult:
-    """Validate a structured reproducibility manifest."""
+def validate_reproducibility_manifest(
+    manifest: ReproducibilityManifest | dict,
+    *,
+    project_root: Path | None = None,
+) -> ReproducibilityValidationResult:
+    """Validate a structured reproducibility manifest.
+
+    When ``project_root`` is provided, referenced paths (input dataset
+    sources, generated dataset scripts, execution step inputs/outputs, output
+    file paths) are checked for existence relative to that root, and missing
+    targets surface as structured ``ReproducibilityIssue`` entries. This is
+    what stops the paper builder from emitting provenance paths like
+    ``project-evidence/...`` that point at files nobody will find later.
+    """
     if isinstance(manifest, ReproducibilityManifest):
         manifest_obj = manifest
     else:
@@ -410,7 +463,6 @@ def validate_reproducibility_manifest(manifest: ReproducibilityManifest | dict) 
         if valid_checksum:
             checksum_ok += 1
         elif approximate_checksum:
-            checksum_ok += 1
             warnings.append(
                 ReproducibilityIssue(
                     severity="warning",
@@ -426,7 +478,7 @@ def validate_reproducibility_manifest(manifest: ReproducibilityManifest | dict) 
                     message=f"Output file '{output_file.path}' is missing a valid checksum.",
                 )
             )
-    checksum_coverage = round((100.0 * checksum_ok / checksum_items), 2) if checksum_items else 100.0
+    checksum_coverage = round((100.0 * checksum_ok / checksum_items), 2) if checksum_items else 0.0
 
     if not manifest_obj.execution_steps:
         issues.append(
@@ -527,9 +579,50 @@ def validate_reproducibility_manifest(manifest: ReproducibilityManifest | dict) 
             )
         )
 
+    if project_root is not None:
+        for index, dataset in enumerate(manifest_obj.input_data):
+            if dataset.source.strip() and not (project_root / dataset.source).exists():
+                issues.append(
+                    ReproducibilityIssue(
+                        severity="error",
+                        field=f"input_data[{index}].source",
+                        message=f"input_data[{index}].source path '{dataset.source}' does not exist under project root.",
+                    )
+                )
+        for index, dataset in enumerate(manifest_obj.generated_data):
+            script = getattr(dataset, "script", None)
+            if isinstance(script, str) and script.strip() and not (project_root / script).exists():
+                issues.append(
+                    ReproducibilityIssue(
+                        severity="error",
+                        field=f"generated_data[{index}].script",
+                        message=f"generated_data[{index}].script path '{script}' does not exist under project root.",
+                    )
+                )
+        for step_index, step in enumerate(manifest_obj.execution_steps):
+            for output_index, output_path in enumerate(getattr(step, "outputs", []) or []):
+                if isinstance(output_path, str) and output_path.strip() and not (project_root / output_path).exists():
+                    issues.append(
+                        ReproducibilityIssue(
+                            severity="error",
+                            field=f"execution_steps[{step_index}].outputs[{output_index}]",
+                            message=(
+                                f"execution step output '{output_path}' does not exist under project root."
+                            ),
+                        )
+                    )
+        for index, output_file in enumerate(manifest_obj.output_files):
+            if output_file.path.strip() and not (project_root / output_file.path).exists():
+                issues.append(
+                    ReproducibilityIssue(
+                        severity="error",
+                        field=f"output_files[{index}].path",
+                        message=f"output_files[{index}].path '{output_file.path}' does not exist under project root.",
+                    )
+                )
+
     valid = len(issues) == 0
-    blocking_warnings = [w for w in warnings if "approximate" not in w.message.lower()]
-    ready = valid and checksum_coverage == 100.0 and seed_coverage == 100.0 and not blocking_warnings
+    ready = valid and checksum_coverage == 100.0 and seed_coverage == 100.0 and not warnings
     return ReproducibilityValidationResult(
         valid=valid,
         issues=issues,
@@ -583,13 +676,8 @@ def build_reproducibility_kernel_verdict(
             return Fail("reproducibility manifest registry type mismatch")
         if typed.validation.ready_for_review:
             return Pass("manifest is review-ready")
-        blocking_warnings = [
-            warning.message
-            for warning in typed.validation.warnings
-            if "approximate checksum" not in warning.message.lower()
-        ]
-        if blocking_warnings:
-            return Fail(blocking_warnings[0])
+        if typed.validation.warnings:
+            return Fail(typed.validation.warnings[0].message)
         return Fail("manifest is not review-ready")
 
     return run_kernel(

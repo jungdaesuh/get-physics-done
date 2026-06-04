@@ -19,18 +19,19 @@
     "Install GPD before enabling built-in MCP servers."
   ],
   "health_check": {
+    "probe_kind": "schema_valid",
     "tool": "list_error_classes",
     "input": {},
     "expect": "count >= 100 error classes loaded"
   },
   "alternatives": {
     "python_module": {
-      "command": "python3",
+      "command": "${GPD_PYTHON}",
       "args": [
         "-m",
         "gpd.mcp.servers.errors_mcp"
       ],
-      "notes": "Requires gpd package installed and Python >=3.11"
+      "notes": "Replace `${GPD_PYTHON}` with a Python >=3.11 interpreter that has GPD installed."
     }
   }
 }

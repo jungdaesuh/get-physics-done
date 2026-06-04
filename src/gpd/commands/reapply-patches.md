@@ -10,15 +10,18 @@ allowed-tools:
   - find_files
   - search_files
   - ask_user
+help:
+  group: Configuration and maintenance
+  order: 720
+  compact_description: Reapply local modifications after updating
+  display_signature: gpd:reapply-patches
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-After a GPD update wipes and reinstalls files, this command merges user's previously saved local modifications back into the new version. Uses intelligent comparison to handle cases where the upstream file also changed.
+Route local-patch reapplication into the workflow-owned implementation.
 
-In the physics research context, "patches" include corrections to calculation templates, custom notation conventions, modified validation checks, and personalized workflow adjustments.
+This wrapper owns the public command surface only. The same-named workflow owns patch discovery, merge/conflict handling, cleanup choices, and reporting.
 </objective>
 
 <execution_context>
@@ -26,14 +29,10 @@ In the physics research context, "patches" include corrections to calculation te
 </execution_context>
 
 <process>
-Follow the reapply-patches workflow: @{GPD_INSTALL_DIR}/workflows/reapply-patches.md
+Follow the included reapply-patches workflow.
 </process>
 
 <success_criteria>
 
-- [ ] All backed-up patches processed
-- [ ] User modifications merged into new version
-- [ ] Physics-specific content (conventions, signs, units) preserved correctly
-- [ ] Conflicts resolved with user input
-- [ ] Status reported for each file
+- [ ] Reapply-patches workflow executed as the authority for mechanics
 </success_criteria>

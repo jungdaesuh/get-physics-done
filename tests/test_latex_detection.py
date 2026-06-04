@@ -9,28 +9,29 @@ from gpd.mcp.paper.compiler import (
     find_latex_compiler,
     get_latex_install_guidance,
 )
+from gpd.mcp.paper.models import PaperToolchainCapability
 
 
 class TestFindLatexCompiler:
     def test_returns_path_when_compiler_on_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("gpd.mcp.paper.compiler.shutil.which", lambda _: "/usr/bin/pdflatex")
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", lambda _: "/usr/bin/pdflatex")
         assert find_latex_compiler("pdflatex") == "/usr/bin/pdflatex"
 
     def test_returns_none_when_not_found_on_non_windows(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("gpd.mcp.paper.compiler.shutil.which", lambda _: None)
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", lambda _: None)
         monkeypatch.setattr("gpd.mcp.paper.compiler.platform.system", lambda: "Linux")
         assert find_latex_compiler("pdflatex") is None
 
     def test_searches_windows_paths_when_not_on_path(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("gpd.mcp.paper.compiler.shutil.which", lambda _: None)
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", lambda _: None)
         monkeypatch.setattr("gpd.mcp.paper.compiler.platform.system", lambda: "Windows")
 
         # Create a fake MiKTeX install directory
         miktex_bin = tmp_path / "MiKTeX" / "miktex" / "bin" / "x64"
         miktex_bin.mkdir(parents=True)
-        (miktex_bin / "pdflatex.exe").write_text("fake")
+        (miktex_bin / "pdflatex.exe").write_text("fake", encoding="utf-8")
 
         monkeypatch.setattr(
             "gpd.mcp.paper.compiler._WINDOWS_LATEX_SEARCH_DIRS",
@@ -44,13 +45,13 @@ class TestFindLatexCompiler:
     def test_searches_texlive_year_dirs_on_windows(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("gpd.mcp.paper.compiler.shutil.which", lambda _: None)
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", lambda _: None)
         monkeypatch.setattr("gpd.mcp.paper.compiler.platform.system", lambda: "Windows")
 
         # Create a fake TeX Live install directory with year subdir
         tl_bin = tmp_path / "texlive" / "2024" / "bin" / "windows"
         tl_bin.mkdir(parents=True)
-        (tl_bin / "pdflatex.exe").write_text("fake")
+        (tl_bin / "pdflatex.exe").write_text("fake", encoding="utf-8")
 
         monkeypatch.setattr(
             "gpd.mcp.paper.compiler._WINDOWS_LATEX_SEARCH_DIRS",
@@ -65,8 +66,8 @@ class TestFindLatexCompiler:
 class TestDetectLatexToolchain:
     def test_available_on_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "gpd.mcp.paper.compiler.find_latex_compiler",
-            lambda compiler: "/usr/bin/pdflatex",
+            "gpd.mcp.paper.compiler._which",
+            lambda compiler: "/usr/bin/pdflatex" if compiler == "pdflatex" else None,
         )
         status = detect_latex_toolchain()
         assert status.available is True
@@ -74,19 +75,176 @@ class TestDetectLatexToolchain:
         assert status.distribution is not None
 
     def test_not_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "gpd.mcp.paper.compiler.find_latex_compiler",
-            lambda compiler: None,
-        )
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", lambda _: None)
+        monkeypatch.setattr("gpd.mcp.paper.compiler._find_in_windows_paths", lambda _: None)
         status = detect_latex_toolchain()
         assert status.available is False
         assert status.compiler_path is None
         assert "No LaTeX compiler found" in status.message
 
+    def test_reports_full_readiness_when_core_and_helper_tools_are_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_find(binary: str) -> str | None:
+            mapping = {
+                "pdflatex": "/usr/bin/pdflatex",
+                "bibtex": "/usr/bin/bibtex",
+                "latexmk": "/usr/bin/latexmk",
+                "kpsewhich": "/usr/bin/kpsewhich",
+            }
+            return mapping.get(binary)
+
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", fake_find)
+
+        status = detect_latex_toolchain()
+
+        assert status.compiler_available is True
+        assert status.available is True
+        assert status.bibtex_available is True
+        assert status.bibliography_support_available is True
+        assert status.latexmk_available is True
+        assert status.kpsewhich_available is True
+        # pdftotext_available is no longer set by detect_latex_toolchain —
+        # PDF extraction now uses pypdf instead of the pdftotext binary.
+        assert status.pdftotext_available is None
+        assert status.readiness_state == "ready"
+        assert status.paper_build_ready is True
+        assert status.arxiv_submission_ready is True
+        assert "readiness=ready" in status.message
+
+    def test_pdf_intake_warning_recommends_paper_extra_when_pypdf_is_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import importlib.abc
+        import sys
+
+        def fake_find(binary: str) -> str | None:
+            mapping = {
+                "pdflatex": "/usr/bin/pdflatex",
+                "bibtex": "/usr/bin/bibtex",
+                "latexmk": "/usr/bin/latexmk",
+                "kpsewhich": "/usr/bin/kpsewhich",
+            }
+            return mapping.get(binary)
+
+        class _BlockPypdf(importlib.abc.MetaPathFinder):
+            def find_spec(self, fullname: str, path, target=None):
+                if fullname == "pypdf" or fullname.startswith("pypdf."):
+                    raise ImportError("pypdf is disabled for this test")
+                return None
+
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", fake_find)
+        original_pypdf = sys.modules.pop("pypdf", None)
+        blocker = _BlockPypdf()
+        sys.meta_path.insert(0, blocker)
+        try:
+            status = detect_latex_toolchain()
+        finally:
+            sys.meta_path.remove(blocker)
+            if original_pypdf is not None:
+                sys.modules["pypdf"] = original_pypdf
+
+        warning = next(warning for warning in status.warnings if "pypdf not found" in warning)
+        assert "get-physics-done[paper]" in warning
+        assert "get-physics-done[arxiv]" not in warning
+
+    def test_degrades_when_bibtex_is_missing_but_compiler_is_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_find(binary: str) -> str | None:
+            mapping = {
+                "pdflatex": "/usr/bin/pdflatex",
+                "bibtex": None,
+                "latexmk": None,
+                "kpsewhich": None,
+            }
+            return mapping.get(binary)
+
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", fake_find)
+        monkeypatch.setattr("gpd.mcp.paper.compiler._find_in_windows_paths", lambda _: None)
+
+        status = detect_latex_toolchain()
+
+        assert status.compiler_available is True
+        assert status.available is True
+        assert status.bibtex_available is False
+        assert status.bibliography_support_available is False
+        assert status.latexmk_available is False
+        assert status.kpsewhich_available is False
+        # pdftotext_available is no longer set by detect_latex_toolchain —
+        # PDF extraction now uses pypdf instead of the pdftotext binary.
+        assert status.pdftotext_available is None
+        assert status.readiness_state == "degraded"
+        assert status.paper_build_ready is True
+        assert status.arxiv_submission_ready is False
+        assert "BibTeX missing" in status.message
+        assert status.warnings
+        assert any("citation-bearing builds" in warning for warning in status.warnings)
+        assert not any("pdftotext not found" in warning for warning in status.warnings)
+
+
+class TestPaperToolchainCapability:
+    def test_paper_build_requires_compiler_and_bibliography_support_is_tracked_separately(self) -> None:
+        status = PaperToolchainCapability(
+            compiler_available=True,
+            bibtex_available=False,
+            latexmk_available=True,
+            kpsewhich_available=True,
+        )
+
+        assert status.paper_build_ready is True
+        assert status.bibliography_support_available is False
+        assert status.arxiv_submission_ready is False
+
+        readiness = PaperToolchainCapability.model_validate(
+            {
+                **status.model_dump(mode="python"),
+                "bibtex_available": True,
+                "kpsewhich_available": False,
+            }
+        )
+
+        assert readiness.bibliography_support_available is True
+        assert readiness.paper_build_ready is True
+        assert readiness.arxiv_submission_ready is False
+
+    def test_blocks_when_compiler_is_missing_even_if_helpers_are_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_find(binary: str) -> str | None:
+            mapping = {
+                "pdflatex": None,
+                "bibtex": "/usr/bin/bibtex",
+                "latexmk": "/usr/bin/latexmk",
+                "kpsewhich": "/usr/bin/kpsewhich",
+            }
+            return mapping.get(binary)
+
+        monkeypatch.setattr("gpd.mcp.paper.compiler._which", fake_find)
+        monkeypatch.setattr("gpd.mcp.paper.compiler._find_in_windows_paths", lambda _: None)
+
+        status = detect_latex_toolchain()
+
+        assert status.compiler_available is False
+        assert status.available is False
+        assert status.bibtex_available is True
+        assert status.bibliography_support_available is False
+        assert status.latexmk_available is True
+        assert status.kpsewhich_available is True
+        # pdftotext_available is no longer set by detect_latex_toolchain —
+        # PDF extraction now uses pypdf instead of the pdftotext binary.
+        assert status.pdftotext_available is None
+        assert status.readiness_state == "blocked"
+        assert status.paper_build_ready is False
+        assert status.arxiv_submission_ready is False
+        assert "No LaTeX compiler found" in status.message
+
     def test_detects_miktex_distribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "gpd.mcp.paper.compiler.find_latex_compiler",
-            lambda compiler: "C:\\Users\\user\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\pdflatex.exe",
+            "gpd.mcp.paper.compiler._which",
+            lambda compiler: "C:\\Users\\user\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\pdflatex.exe"
+            if compiler == "pdflatex"
+            else None,
         )
         status = detect_latex_toolchain()
         assert status.available is True
@@ -94,8 +252,8 @@ class TestDetectLatexToolchain:
 
     def test_detects_texlive_distribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "gpd.mcp.paper.compiler.find_latex_compiler",
-            lambda compiler: "C:\\texlive\\2024\\bin\\windows\\pdflatex.exe",
+            "gpd.mcp.paper.compiler._which",
+            lambda compiler: "C:\\texlive\\2024\\bin\\windows\\pdflatex.exe" if compiler == "pdflatex" else None,
         )
         status = detect_latex_toolchain()
         assert status.available is True
@@ -103,8 +261,8 @@ class TestDetectLatexToolchain:
 
     def test_detects_mactex_distribution(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "gpd.mcp.paper.compiler.find_latex_compiler",
-            lambda compiler: "/Library/TeX/texbin/pdflatex",
+            "gpd.mcp.paper.compiler._which",
+            lambda compiler: "/Library/TeX/texbin/pdflatex" if compiler == "pdflatex" else None,
         )
         status = detect_latex_toolchain()
         assert status.available is True

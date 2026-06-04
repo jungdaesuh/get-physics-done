@@ -43,8 +43,13 @@ assets:
     - path: references/protocols/general-relativity.md
     - path: references/protocols/asymptotic-symmetries.md
     - path: references/protocols/order-of-limits.md
+  planning_guides:
+    - path: references/planning/gr-cosmology.md
+      note: Use the gauge/formulation, constraint, and observable-extraction skeleton before planning evolution work.
+    - path: references/planning/numerical-pde-ode.md
+      note: Use the stability, convergence, and production-solve skeleton for discretized evolution tasks.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/numerical-relativity.md
 anchor_prompts:
   - State the evolution formulation, gauge conditions, and waveform-extraction strategy before interpreting dynamics.
   - Surface the decisive waveform, horizon, or perturbative benchmark expected to validate the run.

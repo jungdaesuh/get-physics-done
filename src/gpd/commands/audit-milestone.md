@@ -12,10 +12,13 @@ allowed-tools:
   - shell
   - task
   - file_write
+help:
+  group: Tangents, memory, and exports
+  order: 630
+  compact_description: Audit milestone completion against goals
+  display_signature: gpd:audit-milestone [version]
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Verify a research milestone achieved its definition of done. Check whether the original research question has been answered, whether all claims are supported by derivations or data, whether results are internally consistent, and whether cross-phase integration is sound.
@@ -40,7 +43,11 @@ Version: $ARGUMENTS (optional — defaults to current milestone)
 
 **Completed Work:**
 find_files: GPD/phases/*/*SUMMARY.md
-find_files: GPD/phases/*/*-VERIFICATION.md
+
+Use canonical phase helpers for verification artifacts:
+- Local CLI: `gpd phase list`
+- Runtime command: `gpd:show-phase <phase-number>`
+- Do not preload raw `*-VERIFICATION.md` globs here.
 </context>
 
 <inline_guidance>
@@ -65,7 +72,7 @@ find_files: GPD/phases/*/*-VERIFICATION.md
 </inline_guidance>
 
 <process>
-Execute the audit-milestone workflow from @{GPD_INSTALL_DIR}/workflows/audit-milestone.md end-to-end.
+Execute the included audit-milestone workflow end-to-end.
 Preserve all workflow gates (scope determination, verification reading, integration check, requirements coverage, routing).
 
 The audit evaluates research completeness across these dimensions:

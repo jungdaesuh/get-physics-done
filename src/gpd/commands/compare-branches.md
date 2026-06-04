@@ -1,17 +1,19 @@
 ---
 name: gpd:compare-branches
 description: Compare results across hypothesis branches side-by-side
-argument-hint: ""
 context_mode: project-required
 allowed-tools:
   - file_read
   - shell
   - search_files
   - find_files
+help:
+  group: Tangents, memory, and exports
+  order: 520
+  compact_description: Compare results across hypothesis branches
+  display_signature: gpd:compare-branches
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Compare research results across hypothesis branches to determine which approach is more promising.
@@ -30,6 +32,6 @@ Use after two or more hypothesis branches have produced results that can be mean
 </context>
 
 <process>
-Execute the compare-branches workflow from @{GPD_INSTALL_DIR}/workflows/compare-branches.md end-to-end.
+Execute the included compare-branches workflow end-to-end.
 Preserve all validation gates (branch listing, state extraction, comparison building, merge confirmation).
 </process>

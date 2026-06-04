@@ -1,0 +1,174 @@
+{
+  "schema_version": "phase5.agent_latency_matrix.v1",
+  "rows": [
+    {
+      "row_id": "P5-AGENT-LAT-01",
+      "agent_name": "gpd-referee",
+      "fixture_family": "phase5_agent_useful_action_latency",
+      "row_tier": "jit_canary",
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "persona_class": "gpd_referee",
+      "prompt_variant_class": "claim_evidence_review_before_report_schema",
+      "expected_turn0_intent_class": "claim_evidence_audit",
+      "expected_turn0_physics_progress_class": "claim_evidence_review",
+      "source_owners": [
+        "src/gpd/agents/gpd-referee.md",
+        "src/gpd/specs/references/publication/peer-review-panel.md",
+        "src/gpd/specs/references/publication/publication-final-adjudication-boundary.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase5_agent_latency.py"
+      ],
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {"exact": 0},
+        "schema_repair_loop_count": {"exact": 0},
+        "duplicate_question_bucket_count": {"exact": 0},
+        "question_before_action_count": {"exact": 0},
+        "stale_artifact_trust_count": {"exact": 0},
+        "post_stop_activity_count": {"exact": 0},
+        "unexpected_write_count": {"exact": 0},
+        "unsupported_completion_claim_count": {"exact": 0},
+        "raw_reload_leakage_count": {"exact": 0},
+        "content_hydration_before_selection_count": {"exact": 0},
+        "structured_authority_coverage": {"min": 1},
+        "conversation_turn_count": {"max": 1},
+        "schema_surface_count": {"max": 0},
+        "physics_progress_count": {"min": 1}
+      },
+      "expected_metric_classes": {
+        "first_useful_action_class": "immediate_command",
+        "useful_work_latency_class": "first_turn",
+        "physics_to_schema_ratio_class": "progress_dominant"
+      }
+    },
+    {
+      "row_id": "P5-AGENT-LAT-02",
+      "agent_name": "gpd-verifier",
+      "fixture_family": "phase5_agent_useful_action_latency",
+      "row_tier": "jit_canary",
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "persona_class": "gpd_verifier",
+      "prompt_variant_class": "contract_targets_before_report_schema",
+      "expected_turn0_intent_class": "verification_target_selection",
+      "expected_turn0_physics_progress_class": "contract_target_review",
+      "source_owners": [
+        "src/gpd/agents/gpd-verifier.md",
+        "src/gpd/specs/references/verification/verification-status-authority.md",
+        "src/gpd/specs/references/verification/core/verification-core.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase5_agent_latency.py"
+      ],
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {"exact": 0},
+        "schema_repair_loop_count": {"exact": 0},
+        "duplicate_question_bucket_count": {"exact": 0},
+        "question_before_action_count": {"exact": 0},
+        "stale_artifact_trust_count": {"exact": 0},
+        "post_stop_activity_count": {"exact": 0},
+        "unexpected_write_count": {"exact": 0},
+        "unsupported_completion_claim_count": {"exact": 0},
+        "raw_reload_leakage_count": {"exact": 0},
+        "content_hydration_before_selection_count": {"exact": 0},
+        "structured_authority_coverage": {"min": 1},
+        "conversation_turn_count": {"max": 1},
+        "schema_surface_count": {"max": 0},
+        "physics_progress_count": {"min": 1}
+      },
+      "expected_metric_classes": {
+        "first_useful_action_class": "immediate_command",
+        "useful_work_latency_class": "first_turn",
+        "physics_to_schema_ratio_class": "progress_dominant"
+      }
+    },
+    {
+      "row_id": "P5-AGENT-LAT-03",
+      "agent_name": "gpd-planner",
+      "fixture_family": "phase5_agent_useful_action_latency",
+      "row_tier": "jit_canary",
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "persona_class": "gpd_planner",
+      "prompt_variant_class": "phase_decomposition_before_plan_schema",
+      "expected_turn0_intent_class": "phase_decomposition",
+      "expected_turn0_physics_progress_class": "dependency_graph_started",
+      "source_owners": [
+        "src/gpd/agents/gpd-planner.md",
+        "src/gpd/specs/templates/phase-prompt.md",
+        "src/gpd/specs/templates/plan-contract-schema.md",
+        "src/gpd/specs/references/planning/planner-execution-procedure.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase5_agent_latency.py"
+      ],
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {"exact": 0},
+        "schema_repair_loop_count": {"exact": 0},
+        "duplicate_question_bucket_count": {"exact": 0},
+        "question_before_action_count": {"exact": 0},
+        "stale_artifact_trust_count": {"exact": 0},
+        "post_stop_activity_count": {"exact": 0},
+        "unexpected_write_count": {"exact": 0},
+        "unsupported_completion_claim_count": {"exact": 0},
+        "raw_reload_leakage_count": {"exact": 0},
+        "content_hydration_before_selection_count": {"exact": 0},
+        "structured_authority_coverage": {"min": 1},
+        "conversation_turn_count": {"max": 1},
+        "schema_surface_count": {"max": 0},
+        "physics_progress_count": {"min": 1}
+      },
+      "expected_metric_classes": {
+        "first_useful_action_class": "immediate_command",
+        "useful_work_latency_class": "first_turn",
+        "physics_to_schema_ratio_class": "progress_dominant"
+      }
+    },
+    {
+      "row_id": "P5-AGENT-LAT-04",
+      "agent_name": "gpd-paper-writer",
+      "fixture_family": "phase5_agent_useful_action_latency",
+      "row_tier": "jit_canary",
+      "provider_launch_allowed": false,
+      "network_allowed": false,
+      "raw_artifacts_allowed": false,
+      "persona_class": "gpd_paper_writer",
+      "prompt_variant_class": "section_architecture_before_output_format",
+      "expected_turn0_intent_class": "section_architecture",
+      "expected_turn0_physics_progress_class": "section_claim_mapped",
+      "source_owners": [
+        "src/gpd/agents/gpd-paper-writer.md",
+        "src/gpd/specs/references/publication/paper-writer-cookbook.md",
+        "src/gpd/specs/references/publication/publication-response-writer-handoff.md"
+      ],
+      "test_owners": [
+        "tests/core/test_phase5_agent_latency.py"
+      ],
+      "behavior_metric_bounds": {
+        "invalid_command_suggestion_count": {"exact": 0},
+        "schema_repair_loop_count": {"exact": 0},
+        "duplicate_question_bucket_count": {"exact": 0},
+        "question_before_action_count": {"exact": 0},
+        "stale_artifact_trust_count": {"exact": 0},
+        "post_stop_activity_count": {"exact": 0},
+        "unexpected_write_count": {"exact": 0},
+        "unsupported_completion_claim_count": {"exact": 0},
+        "raw_reload_leakage_count": {"exact": 0},
+        "content_hydration_before_selection_count": {"exact": 0},
+        "structured_authority_coverage": {"min": 1},
+        "conversation_turn_count": {"max": 1},
+        "schema_surface_count": {"max": 0},
+        "physics_progress_count": {"min": 1}
+      },
+      "expected_metric_classes": {
+        "first_useful_action_class": "immediate_command",
+        "useful_work_latency_class": "first_turn",
+        "physics_to_schema_ratio_class": "progress_dominant"
+      }
+    }
+  ]
+}

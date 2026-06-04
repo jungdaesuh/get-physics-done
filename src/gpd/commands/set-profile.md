@@ -7,10 +7,13 @@ allowed-tools:
   - file_read
   - file_write
   - shell
+help:
+  group: Configuration and maintenance
+  order: 670
+  compact_description: Switch the abstract model profile
+  display_signature: gpd:set-profile <profile>
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Switch the research profile used by GPD agents. Controls how each agent approaches physics tasks, balancing rigor and depth vs speed and breadth.
@@ -23,13 +26,7 @@ Switch the research profile used by GPD agents. Controls how each agent approach
 - **review**: Validation and checking mode. Agents prioritize finding errors, verifying limits, cross-checking independent derivations, and testing edge cases. Best for: pre-submission review, debugging calculations, sanity checks.
 - **paper-writing**: Publication-focused mode. Agents prioritize clear exposition, proper notation, complete derivation chains, and reader-friendly presentation. Best for: drafting manuscripts, preparing supplementary materials.
 
-Routes to the set-profile workflow which handles:
-
-- Argument validation (deep-theory/numerical/exploratory/review/paper-writing)
-- Config file creation if missing
-- Profile update in config.json
-- Confirmation with profile description display
-- Reminder that `/gpd:settings` handles concrete runtime model IDs per tier
+This command only changes `model_profile`. If you want to pin concrete runtime model IDs, use `gpd:set-tier-models`. If you want a workflow preset bundle or broader unattended/configuration changes, use `gpd:settings` so the existing knobs are resolved together instead of inventing a separate preset block.
   </objective>
 
 <execution_context>
@@ -37,13 +34,5 @@ Routes to the set-profile workflow which handles:
 </execution_context>
 
 <process>
-**Follow the set-profile workflow** from `@{GPD_INSTALL_DIR}/workflows/set-profile.md`.
-
-The workflow handles all logic including:
-
-1. Profile argument validation
-2. Config file ensuring
-3. Config reading and updating
-4. Profile description table generation from RESEARCH_PROFILES
-5. Confirmation display showing active profile and its characteristics
+This is an action command. Follow the included set-profile workflow exactly and execute its update step now; do not only describe the available profiles.
    </process>

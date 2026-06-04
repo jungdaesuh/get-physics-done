@@ -53,8 +53,13 @@ assets:
   protocols_optional:
     - path: references/protocols/group-theory.md
     - path: references/protocols/perturbation-theory.md
+  planning_guides:
+    - path: references/planning/statistical-mechanics.md
+      note: Use the sampling, autocorrelation, scaling, and benchmark skeleton for Monte Carlo planning.
+    - path: references/planning/cross-domain-convention-bridge.md
+      note: Use when lattice observables must be translated back to continuum QFT conventions.
   execution_guides:
-    - path: references/execution/executor-subfield-guide.md
+    - path: references/execution/guards/lattice-gauge-monte-carlo.md
 anchor_prompts:
   - State the gauge action, fermion discretization, scale-setting observable, and target continuum or chiral limit before production measurements.
   - Ask whether topology, excited-state contamination, or finite-volume systematics are the decisive failure mode for the claim.

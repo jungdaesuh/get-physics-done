@@ -1,4 +1,4 @@
-"""Regression tests for agent commit-ownership policy."""
+"""Assertions for agent commit-ownership policy."""
 
 from __future__ import annotations
 
@@ -8,20 +8,15 @@ from pathlib import Path
 import pytest
 
 from gpd import registry
+from gpd.adapters.install_utils import _inject_command_visibility_sections_from_frontmatter
+from gpd.core.model_visible_text import AGENT_FRONTMATTER_AUTHORITY_POINTER
+from tests.agent_policy_test_support import assert_role_kit_section_in_prompt
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_DIR = REPO_ROOT / "src/gpd/agents"
 INFRA_PATH = REPO_ROOT / "src/gpd/specs/references/orchestration/agent-infrastructure.md"
 
 DIRECT_AGENTS = {"gpd-debugger", "gpd-executor", "gpd-planner"}
-DIRECT_SENTENCE = (
-    "Commit authority: direct. You may use `gpd commit` for your own scoped artifacts only. "
-    "Do NOT use raw `git commit` when `gpd commit` applies."
-)
-ORCHESTRATOR_SENTENCE = (
-    "Commit authority: orchestrator-only. Do NOT run `gpd commit`, `git commit`, or stage files. "
-    "Return changed paths in `gpd_return.files_written`."
-)
 
 
 @pytest.fixture(autouse=True)
@@ -40,11 +35,7 @@ def test_every_agent_frontmatter_declares_commit_authority() -> None:
 
 
 def test_registry_exposes_exact_direct_commit_allowlist() -> None:
-    direct = {
-        name
-        for name in registry.list_agents()
-        if registry.get_agent(name).commit_authority == "direct"
-    }
+    direct = {name for name in registry.list_agents() if registry.get_agent(name).commit_authority == "direct"}
 
     assert direct == DIRECT_AGENTS
 
@@ -56,23 +47,59 @@ def test_registry_agent_commit_authority_values_are_valid() -> None:
         assert registry.get_agent(name).commit_authority in valid
 
 
-def test_agent_infrastructure_commit_matrix_covers_full_agent_inventory() -> None:
+def test_agent_infrastructure_commit_policy_uses_frontmatter_inventory_instead_of_manual_matrix() -> None:
     infra = INFRA_PATH.read_text(encoding="utf-8")
-    matrix_agents = set(re.findall(r"^\| (gpd-[a-z-]+) \| `(?:direct|orchestrator)` \|", infra, re.MULTILINE))
 
-    assert matrix_agents == set(registry.list_agents())
+    assert "named allowlist" in infra
+    assert "Direct-commit allowlist:" not in infra
+    assert "validated by the registry; do not duplicate a hand-maintained matrix" in infra
+    assert "Canonical ownership matrix:" not in infra
+    assert not re.search(r"^\| (gpd-[a-z-]+) \| `(?:direct|orchestrator)` \|", infra, re.MULTILINE)
 
 
-def test_agent_prompts_include_exact_commit_authority_sentence() -> None:
+def test_agent_prompts_use_generated_agent_requirements_as_single_authority_surface() -> None:
     for name in registry.list_agents():
-        path = Path(registry.get_agent(name).path)
+        agent = registry.get_agent(name)
+        path = Path(agent.path)
         content = path.read_text(encoding="utf-8")
-        expected = DIRECT_SENTENCE if name in DIRECT_AGENTS else ORCHESTRATOR_SENTENCE
-        assert expected in content, path.name
+
+        assert AGENT_FRONTMATTER_AUTHORITY_POINTER not in content, path.name
+        assert agent.system_prompt.startswith("## Agent Requirements\n"), path.name
+        assert agent.system_prompt.count("## Agent Requirements") == 1, path.name
+        assert f"commit_authority: {agent.commit_authority}" in agent.system_prompt, path.name
+        assert f"surface: {agent.surface}" in agent.system_prompt, path.name
+        assert f"artifact_write_authority: {agent.artifact_write_authority}" in agent.system_prompt, path.name
+        assert f"shared_state_authority: {agent.shared_state_authority}" in agent.system_prompt, path.name
+        assert not re.search(r"^Commit authority:", content, re.MULTILINE), path.name
 
 
-def test_verifier_does_not_duplicate_stale_commit_ownership_block() -> None:
-    verifier = (AGENTS_DIR / "gpd-verifier.md").read_text(encoding="utf-8")
+def test_agent_role_kit_install_projection_is_generated_once_after_requirements() -> None:
+    projected = _inject_command_visibility_sections_from_frontmatter(
+        "---\n"
+        "name: role-kit-agent\n"
+        "tools: file_read\n"
+        "role_kits:\n"
+        "  - status-routing\n"
+        "---\n"
+        "## Agent Requirements\n\n"
+        "stale generated requirements\n\n"
+        "## Agent Role Kits\n\n"
+        "stale generated role kits\n\n"
+        "## Existing Body\n\n"
+        "Body.\n"
+    )
 
-    assert "## Agent Commit Ownership" not in verifier
-    assert "Which agents commit their own work vs. return `files_written`" not in verifier
+    assert "stale generated requirements" not in projected
+    assert "stale generated role kits" not in projected
+    assert_role_kit_section_in_prompt(projected, ("status-routing",), before="## Existing Body")
+    assert "Body." in projected
+
+
+def test_agents_do_not_duplicate_stale_commit_ownership_blocks() -> None:
+    for path in sorted(AGENTS_DIR.glob("*.md")):
+        content = path.read_text(encoding="utf-8")
+
+        assert "## Agent Commit Ownership" not in content, path.name
+        assert "Which agents commit their own work vs. return `files_written`" not in content, path.name
+        assert "Do NOT use raw `git commit` when `gpd commit` applies." not in content, path.name
+        assert "Do NOT run `gpd commit`, `git commit`, or stage files." not in content, path.name

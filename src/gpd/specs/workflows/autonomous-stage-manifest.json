@@ -1,0 +1,309 @@
+{
+  "schema_version": 1,
+  "workflow_id": "autonomous",
+  "required_init_field_groups": {
+    "launch_context": [
+      "project_root",
+      "autonomous_argument_input",
+      "autonomous_from_phase",
+      "commit_docs",
+      "autonomy",
+      "research_mode",
+      "review_cadence",
+      "model_profile",
+      "platform"
+    ],
+    "milestone_context": [
+      "milestone_version",
+      "milestone_name",
+      "milestone_slug",
+      "phase_count",
+      "completed_phases",
+      "all_phases_complete",
+      "project_exists",
+      "roadmap_exists",
+      "state_exists",
+      "phases_dir_exists"
+    ],
+    "roadmap_context": [
+      "autonomous_phase_plan",
+      "autonomous_completed_phase_numbers",
+      "autonomous_completed_phase_verification_statuses",
+      "autonomous_incomplete_phase_count",
+      "autonomous_current_phase_number",
+      "autonomous_current_phase_name",
+      "autonomous_current_phase_goal",
+      "autonomous_current_phase_success_criteria"
+    ],
+    "phase_state_context": [
+      "phase_found",
+      "phase_dir",
+      "phase_number",
+      "phase_name",
+      "phase_slug",
+      "padded_phase",
+      "has_context",
+      "has_plans",
+      "plan_count"
+    ],
+    "verification_status_context": [
+      "verification_report_status",
+      "verification_report_status_payload",
+      "phase_proof_review_status"
+    ]
+  },
+  "stage_defaults": {
+    "allowed_tools": [
+      "ask_user",
+      "file_read",
+      "shell",
+      "task"
+    ],
+    "conditional_authorities": [],
+    "must_not_eager_load": [
+      "workflows/autonomous.md"
+    ],
+    "writes_allowed": []
+  },
+  "cold_authority_policy": "workflow_stage_authorities_cold_except_eager",
+  "stages": [
+    {
+      "id": "initialize_discover",
+      "order": 1,
+      "purpose": "startup validation, autonomous argument parsing, milestone snapshot, and roadmap phase discovery",
+      "mode_paths": [
+        "workflows/autonomous/initialize-discover.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "milestone_context",
+        "roadmap_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/initialize-discover.md"
+      ],
+      "allowed_tools": [
+        "ask_user",
+        "file_read",
+        "shell"
+      ],
+      "produced_state": [
+        "autonomous launch state",
+        "roadmap phase plan"
+      ],
+      "next_stages": [
+        "phase_route",
+        "convention_lifecycle_closeout"
+      ],
+      "checkpoints": [
+        "launch arguments parsed",
+        "project state files checked",
+        "phase plan selected without loading downstream authorities"
+      ]
+    },
+    {
+      "id": "phase_route",
+      "order": 2,
+      "purpose": "current phase selection, paper-phase routing, and progress display",
+      "mode_paths": [
+        "workflows/autonomous/phase-route.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "milestone_context",
+        "roadmap_context",
+        "phase_state_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/phase-route.md"
+      ],
+      "produced_state": [
+        "phase routing decision"
+      ],
+      "next_stages": [
+        "discuss_delegate",
+        "convention_lifecycle_closeout"
+      ],
+      "checkpoints": [
+        "current phase selected",
+        "paper route classified",
+        "normal phase path remains child-command delegated"
+      ]
+    },
+    {
+      "id": "discuss_delegate",
+      "order": 3,
+      "purpose": "phase context existence check and discuss-phase delegation",
+      "mode_paths": [
+        "workflows/autonomous/discuss-delegate.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "phase_state_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/discuss-delegate.md"
+      ],
+      "produced_state": [
+        "context delegation result"
+      ],
+      "next_stages": [
+        "plan_execute_child_cycle",
+        "blocked_recovery"
+      ],
+      "checkpoints": [
+        "context state inspected",
+        "missing context delegated to discuss-phase",
+        "no local CONTEXT authoring authority loaded"
+      ]
+    },
+    {
+      "id": "plan_execute_child_cycle",
+      "order": 4,
+      "purpose": "plan and execute child command orchestration with lifecycle gates and bounded-checkpoint stop handling",
+      "mode_paths": [
+        "workflows/autonomous/plan-execute-child-cycle.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "phase_state_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/plan-execute-child-cycle.md"
+      ],
+      "produced_state": [
+        "plan child return",
+        "execute child return",
+        "bounded checkpoint decision"
+      ],
+      "next_stages": [
+        "verification_route",
+        "blocked_recovery"
+      ],
+      "checkpoints": [
+        "plan lifecycle gate passed",
+        "execute lifecycle gate passed",
+        "bounded checkpoint stop checked before verification"
+      ]
+    },
+    {
+      "id": "verification_route",
+      "order": 5,
+      "purpose": "verify-work child invocation and structured verification status routing",
+      "mode_paths": [
+        "workflows/autonomous/verification-route.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "phase_state_context",
+        "verification_status_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/verification-route.md"
+      ],
+      "produced_state": [
+        "verification routing decision"
+      ],
+      "next_stages": [
+        "gap_route",
+        "convention_lifecycle_closeout",
+        "blocked_recovery"
+      ],
+      "checkpoints": [
+        "verify-work return inspected",
+        "session-router status reloaded",
+        "gaps route separated from closeout"
+      ]
+    },
+    {
+      "id": "gap_route",
+      "order": 6,
+      "purpose": "single gap-closure attempt through child commands and fresh verification",
+      "mode_paths": [
+        "workflows/autonomous/gap-route.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "phase_state_context",
+        "verification_status_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/gap-route.md"
+      ],
+      "produced_state": [
+        "gap retry result",
+        "fresh verification result"
+      ],
+      "next_stages": [
+        "convention_lifecycle_closeout",
+        "blocked_recovery"
+      ],
+      "checkpoints": [
+        "one retry limit applied",
+        "gap execution delegated",
+        "fresh verification required after retry"
+      ]
+    },
+    {
+      "id": "convention_lifecycle_closeout",
+      "order": 7,
+      "purpose": "convention validation, next-phase loop reload, milestone audit, and completion routing",
+      "mode_paths": [
+        "workflows/autonomous/convention-lifecycle-closeout.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "milestone_context",
+        "roadmap_context",
+        "phase_state_context",
+        "verification_status_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/convention-lifecycle-closeout.md"
+      ],
+      "produced_state": [
+        "convention validation result",
+        "milestone closeout routing decision"
+      ],
+      "next_stages": [
+        "blocked_recovery"
+      ],
+      "checkpoints": [
+        "convention validation delegated",
+        "loop requires fresh staged init",
+        "audit and completion remain child-command owned"
+      ]
+    },
+    {
+      "id": "blocked_recovery",
+      "order": 8,
+      "purpose": "shared autonomous blocker retry, skip, or stop recovery",
+      "mode_paths": [
+        "workflows/autonomous/blocked-recovery.md"
+      ],
+      "required_init_field_groups": [
+        "launch_context",
+        "milestone_context",
+        "roadmap_context",
+        "phase_state_context",
+        "verification_status_context"
+      ],
+      "loaded_authorities": [
+        "workflows/autonomous/blocked-recovery.md"
+      ],
+      "allowed_tools": [
+        "ask_user",
+        "file_read",
+        "shell"
+      ],
+      "produced_state": [
+        "blocked recovery decision"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "retry/skip/stop menu surfaced",
+        "next staged reload identified"
+      ]
+    }
+  ]
+}

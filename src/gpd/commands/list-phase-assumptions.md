@@ -1,17 +1,28 @@
 ---
 name: gpd:list-phase-assumptions
 description: Surface the AI's assumptions about a phase approach before planning
-argument-hint: "[phase]"
+argument-hint: "<phase-number>"
 context_mode: project-required
+command-policy:
+  schema_version: 1
+  subject_policy:
+    subject_kind: phase
+    resolution_mode: phase_number
+    explicit_input_kinds:
+      - phase-number
+    allow_interactive_without_subject: false
 allowed-tools:
   - file_read
   - shell
   - search_files
   - find_files
+help:
+  group: Planning and execution
+  order: 140
+  compact_description: Preview the planned phase approach
+  display_signature: gpd:list-phase-assumptions <number>
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Analyze a phase and present the AI's assumptions about the physics, methodology, computational approach, scope boundaries, anchors, risk areas, and dependencies.

@@ -1,6 +1,6 @@
 # Executor Completion Protocols
 
-Load this reference after all tasks complete, before creating the canonical `{phase}-{plan}-SUMMARY.md`.
+Load this reference after all tasks complete, before creating the canonical `{phase}-{plan}-SUMMARY.md`, final self-check, typed return, and completion commit.
 
 ## Summary Creation
 
@@ -13,6 +13,12 @@ After all tasks complete, create `{phase}-{plan}-SUMMARY.md` at `${phase_dir}/`.
 **Canonical ledger schema to load before writing SUMMARY frontmatter:**
 
 @{GPD_INSTALL_DIR}/templates/contract-results-schema.md
+
+Before treating contract-backed output as complete, run:
+
+```bash
+gpd validate summary-contract GPD/phases/XX-name/{phase}-{plan}-SUMMARY.md
+```
 
 **Verification contract:** For contract-backed work, the SUMMARY.md frontmatter MUST declare `plan_contract_ref`, `contract_results`, and any decisive `comparison_verdicts` so the verifier can test results without re-reading the full derivation. `plan_contract_ref` must end with the exact `#/contract` fragment. `contract_results` must cover every declared claim, deliverable, acceptance test, reference, and forbidden proxy ID from the PLAN contract. Use only real contract IDs in both ledgers. If a decisive comparison remains open, keep the parent target incomplete and emit `verdict: inconclusive` or `verdict: tension` instead of omitting the verdict. Every decisive numerical result needs concrete evidence. Every equation that matters downstream needs a spot-check or limiting-case anchor. The contract-backed example below keeps `uncertainty_markers` explicit and non-empty to match the canonical schema.
 For `contract_results.references`, keep the action ledger internally consistent: `completed` requires non-empty `completed_actions`, `missing` requires non-empty `missing_actions`, `not_applicable` leaves both empty, and the two lists must not overlap.
@@ -40,7 +46,7 @@ contract_results:
   deliverables:
     deliv-main:
       status: passed
-      path: "paper/figures/main.pdf"
+      path: "paper/figures/benchmark.pdf"
       summary: "[artifact produced and why it matters]"
       linked_ids: [claim-main, test-main]
   acceptance_tests:
@@ -159,85 +165,129 @@ Or: "None --- plan executed exactly as written."
 
 **Environment gates section** (if any occurred): Document which task, what was needed, outcome.
 
+## Final Self-Check
+
+After writing SUMMARY.md, verify claims before proceeding to typed return or completion commit.
+
+1. Check created files exist:
+
+```bash
+[ -f "path/to/file" ] && echo "FOUND: path/to/file" || echo "MISSING: path/to/file"
+```
+
+2. Check task checkpoint commits exist:
+
+```bash
+git log --oneline | grep -q "{hash}" && echo "FOUND: {hash}" || echo "MISSING: {hash}"
+```
+
+3. Verify numerical results are reproducible by rerunning the key command and comparing with the SUMMARY.md value.
+
+4. Verify LaTeX compiles when applicable:
+
+```bash
+cd documents/ && latexmk -pdf -interaction=nonstopmode "${MANUSCRIPT_TEX}" 2>&1 | tail -5
+```
+
+5. Verify figures are newer than their generating scripts when applicable.
+
+6. Verify convention consistency across all created or modified outputs.
+
+7. Apply selected bundle final checks: load the selected verification-domain docs, `protocol_bundle_verifier_extensions`, and matching `execution_guides` from `<protocol_bundle_context>`. If no selected bundle covers the final result domain, load `{GPD_INSTALL_DIR}/references/execution/guards/final-verification-guards.md` on demand and apply only matching rows.
+
+Minimum final checks:
+
+- Contract-backed anchors and first-result gates outrank every bundle or guard asset.
+- Analytical results need dimension, convention, sign/factor, limiting-case, and symmetry checks.
+- Numerical results need convergence, benchmark or known-answer comparison, uncertainty/error bars, and reproducibility commands.
+- Claims that use a proxy must explicitly state why the proxy is forbidden, inadequate, decisive, or unresolved under the contract.
+- If no domain or selected guard matches, skip topic-specific rows and rely on generic execution flow plus contract-backed anchors and checks.
+
+Append `## Self-Check: PASSED` or `## Self-Check: FAILED` to SUMMARY.md with missing items listed.
+
+For contract-backed plans, also confirm:
+
+- every decisive claim ID has a `contract_results.claims` entry;
+- every deliverable has produced, partial, or failed status and a path when applicable;
+- every acceptance test has an explicit outcome plus evidence or notes;
+- every must-surface reference has completed or missing required actions recorded;
+- every forbidden proxy is rejected, violated, or unresolved;
+- profiles and autonomy modes do NOT relax contract-result emission.
+
+Do not proceed to typed return or completion commit if the self-check fails.
+
+## Closeout Success Checklist
+
+Use this checklist after the inline executor prompt says plan execution is done:
+
+- Conventions were loaded and verified before the first task.
+- All tasks were executed, or the run paused at a checkpoint with enough state
+  for a fresh continuation.
+- Each completed task was checkpointed with the proper format.
+- Derivation work tracked signs and conventions, with self-critique checkpoints
+  every 3-4 derivation steps.
+- Method-specific modules were loaded only when the task entered that method
+  family.
+- Numerical work recorded reproducibility metadata, convergence evidence,
+  benchmark or analytic-limit checks, and uncertainty.
+- Automatic escalation counters were tracked.
+- All deviations have a deviation-rule classification.
+- Environment gates were handled and documented as gated flow.
+- Research log and state-tracking files were maintained during execution.
+- Every derived equation and computed value was verified at the required depth.
+- SUMMARY.md has substantive physics content, conventions, confidence tags, and
+  contract ledgers when the plan is contract-backed.
+- Shared-state updates were returned through `gpd_return` by default; direct
+  shared-state writes happened only when explicitly delegated.
+- Context pressure honored the 50% forced checkpoint and ORANGE/RED stops.
+- Stuck points were documented honestly; no plausible-but-wrong results were
+  produced.
+- Selected or on-demand post-step guards were applied after major steps, and
+  guard failures were mapped to deviation rules.
+
 ## State Updates
 
 Before recording completion, verify that no live first-result, skeptical, or pre-fanout gate remains in the bounded execution state. A pre-fanout review is not retired until both the matching gate clear and the matching fanout unlock have been recorded.
 
-After SUMMARY.md, update STATE.md using gpd CLI:
+After SUMMARY.md, apply durable child-return state effects through the canonical applicator:
 
 ```bash
-# Advance plan counter (handles edge cases automatically)
-gpd state advance
-
-# Recalculate progress bar from disk state
-gpd state update-progress
-
-# Record execution metrics
-gpd state record-metric \
-  --phase "${PHASE}" --plan "${PLAN}" --duration "${DURATION}" \
-  --tasks "${TASK_COUNT}" --files "${ARTIFACT_COUNT}"
-
-# Add decisions (extract from SUMMARY.md key-decisions)
-for decision in "${DECISIONS[@]}"; do
-  gpd state add-decision \
-    --phase "${PHASE}" --summary "${decision}"
-done
-
-# Add key results to global results registry
-for result in "${KEY_RESULTS[@]}"; do
-  gpd result add \
-    --phase "${PHASE}" --description "${result}"
-done
-
-# Update session info
-gpd state record-session \
-  --stopped-at "Completed ${PHASE}-${PLAN}-PLAN.md"
+gpd apply-return-updates "${SUMMARY_FILE}"
 ```
 
-**State command behaviors:**
-
-- `state advance`: Increments Current Plan, detects last-plan edge case, sets status
-- `state update-progress`: Recalculates progress bar from SUMMARY.md counts on disk
-- `state record-metric`: Appends to Performance Metrics table
-- `state add-decision`: Adds to Decisions section, removes placeholders
-- `result add`: Adds to intermediate results registry for cross-referencing
-- `state record-session`: Updates Last session timestamp and Stopped At fields; omit `--resume-file` to preserve the current handoff pointer or pass `--resume-file "—"` to clear it explicitly
+The canonical applicator owns plan advance, progress recompute, metric recording, decisions, blockers, and session cleanup for spawned-agent completion. Do not duplicate those effects with direct `gpd state ...` commands in the completion path.
 
 **gpd CLI error handling:**
 
-gpd CLI commands can fail. Handle errors explicitly:
+The applicator command can fail. Handle errors explicitly and keep durable state changes inside the return envelope:
 
 ```bash
-# CORRECT — check exit code and handle failure
-if ! gpd state advance; then
-  echo "ERROR: state advance failed. Check STATE.md format."
-  # Read STATE.md to diagnose
-  cat GPD/STATE.md
-  # Retry once after diagnosis, or flag for human review
+# CORRECT - check exit code and handle applicator failure
+if ! gpd apply-return-updates "${SUMMARY_FILE}"; then
+  echo "ERROR: apply-return-updates failed. Keep shared-state repair in the return envelope."
+  # Capture stderr, inspect the SUMMARY/return envelope, and retry once only
+  # with a corrected fenced gpd_return block if the failure is repairable.
 fi
 
 # WRONG — ignoring exit codes
-gpd state advance  # might silently fail
+gpd apply-return-updates "${SUMMARY_FILE}"  # might silently fail
 ```
 
 **Common gpd CLI failure modes:**
 
 | Failure | Cause | Fix |
 |---------|-------|-----|
-| `ENOENT` | STATE.md or target file missing | Verify `GPD/STATE.md` exists before calling |
-| `Parse error` | Malformed frontmatter or markdown | Read file, fix formatting, retry |
-| `No phase/plan found` | STATE.md has unexpected structure | Check Current Phase/Plan fields in STATE.md |
+| `ENOENT` | SUMMARY, returned artifact, or project state file missing | Verify the referenced SUMMARY/artifact path; do not hand-edit shared state |
+| `Parse error` | Malformed SUMMARY frontmatter or fenced `gpd_return` YAML | Fix the SUMMARY/return envelope and retry once if repairable |
+| `No phase/plan found` | Return phase/plan does not match the roadmap/state contract | Correct the return envelope or escalate to the orchestrator |
 | Non-zero exit with no output | Python crash or missing dependency | Check `python --version`, verify gpd CLI path |
 
-**Recovery protocol:** If a gpd CLI command fails twice, do not patch `STATE.md` or `state.json` manually. Capture the failing command and stderr in the return envelope or plan SUMMARY, run `gpd state validate` if the failure looks state-related, and escalate to `/gpd:sync-state` or the orchestrator instead of editing shared state files directly.
+**Recovery protocol:** If a gpd CLI command fails twice, do not patch `STATE.md` or `state.json` manually. Capture the failing command and stderr in the return envelope or plan SUMMARY, run `gpd state validate` if the failure looks state-related, and escalate to `gpd:sync-state` or the orchestrator instead of editing shared state files directly.
 
-**Extract decisions from SUMMARY.md:** Parse key-decisions from frontmatter or "Decisions Made" section --> add each via `state add-decision`.
+**Decisions from SUMMARY.md:** Put executor-owned decisions in SUMMARY frontmatter and/or `gpd_return.decisions`. The canonical applicator records accepted decisions; do not add them with direct `gpd state ...` commands in the spawned-agent completion path.
 
-**For blockers found during execution:**
+**For blockers found during execution:** Put blocker entries in `gpd_return.blockers` and set the typed return status/next action accordingly. The canonical applicator records accepted blockers; if the applicator rejects them, stop with the applicator failure instead of patching shared state.
 
-```bash
-gpd state add-blocker --text "Blocker description"
-```
 
 ## Completion Format
 
@@ -287,7 +337,7 @@ gpd state add-blocker --text "Blocker description"
 
 ```yaml
 gpd_return:
-  status: completed | checkpoint | blocked | failed
+  status: completed
   files_written:
     - "derivations/hamiltonian.tex"
     - "scripts/compute_spectrum.py"
@@ -295,13 +345,13 @@ gpd_return:
   issues:
     - "Lanczos solver required increased basis size (auto-fixed: Rule 2)"
   next_actions:
-    - "/gpd:execute-phase {phase}"
-    - "/gpd:show-phase {phase}"
+    - "gpd:execute-phase {phase}"
+    - "gpd:show-phase {phase}"
   phase: "{phase}"
   plan: "{plan}"
-  tasks_completed: N
-  tasks_total: M
-  duration_seconds: NNN
+  tasks_completed: 4
+  tasks_total: 4
+  duration_seconds: 3600
   conventions_used:
     units: "natural"
     metric: "(+,-,-,-)"
@@ -314,12 +364,49 @@ gpd_return:
 Append this YAML block after the markdown completion format. It enables machine-readable parsing by the orchestrator.
 ```
 
+If the workflow expects a spawned-agent handoff, the same `gpd_return` object may also carry these top-level keys:
+
+```yaml
+gpd_return:
+  status: checkpoint
+  files_written: ["GPD/phases/XX-name/{phase}-{plan}-SUMMARY.md"]
+  issues:
+    - "{blocker text}"
+  next_actions:
+    - "Resolve {blocker text} before continuing downstream execution."
+  state_updates:
+    advance_plan: true
+    update_progress: true
+    record_metric:
+      phase: "{phase}"
+      plan: "{plan}"
+      duration: NNN
+      tasks: N
+      files: N
+  contract_updates:
+    claim_id:
+      status: "updated"
+  decisions:
+    - summary: "{decision summary}"
+      phase: "{phase}"
+  blockers:
+    - text: "{blocker text}"
+  continuation_update:
+    handoff:
+      stopped_at: "Completed ${PHASE}-${PLAN}-PLAN.md"
+      resume_file: null
+      last_result_id: null
+    bounded_segment: null
+```
+
+`gpd apply-return-updates` records handoff timestamp/provenance; omit `recorded_at` and `recorded_by` from child returns.
+
 Include ALL checkpoints (previous + new if continuation agent).
 
 ## Final Commit
 
 ```bash
-gpd commit "docs({phase}-{plan}): complete [plan-name] research plan" --files ${phase_dir}/{phase}-{plan}-SUMMARY.md ${phase_dir}/{phase}-{plan}-LOG.md ${phase_dir}/{phase}-{plan}-STATE-TRACKING.md GPD/STATE.md
+gpd commit "docs({phase}-{plan}): complete [plan-name] research plan" --files ${phase_dir}/{phase}-{plan}-SUMMARY.md ${phase_dir}/{phase}-{plan}-LOG.md ${phase_dir}/{phase}-{plan}-STATE-TRACKING.md
 ```
 
-Separate from per-task checkpoints --- captures execution metadata only.
+Separate from per-task checkpoints --- captures execution metadata only. The default spawned executor completion commit excludes `GPD/STATE.md`; durable shared-state effects flow through `gpd_return` and `gpd apply-return-updates`. If a workflow explicitly delegates shared-state ownership, follow that workflow's separate state-write and commit instructions.

@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "source_hashes": {
+    "src/gpd/adapters/runtime_catalog.json": "a5fd009da14a1daf7c9ab6e23197b3fc1f588be0e1abbdd87d5ffa1d655e3572",
+    "src/gpd/adapters/runtime_catalog_schema.json": "0a824919b3c614b1e9be163b535201353baf1a63e507bfd6c8814b6566fb1cee",
+    "src/gpd/core/public_surface_contract.json": "55d1cc332960222c394e73513aac3709b0236570745d494541439692d81c315c",
+    "src/gpd/core/public_surface_contract_schema.json": "745700a5292b6d71de04dc5080f77b860d9f339d5c397014b3ad59d2458a1f65"
+  },
+  "python_compatibility": {
+    "schema_version": 1,
+    "minimum_supported_python": {
+      "major": 3,
+      "minor": 11
+    },
+    "minimum_supported_python_label": "3.11",
+    "preferred_versioned_python_minors": [
+      13,
+      12,
+      11
+    ],
+    "recommended_python_version": {
+      "major": 3,
+      "minor": 13
+    }
+  },
+  "runtimes": [
+    {
+      "runtime_name": "claude-code",
+      "display_name": "Claude Code",
+      "priority": 10,
+      "config_dir_name": ".claude",
+      "install_flag": "--claude",
+      "launch_command": "claude",
+      "selection_flags": [
+        "--claude-code",
+        "--claude"
+      ],
+      "selection_aliases": [
+        "claude-code",
+        "claude code",
+        "claude"
+      ],
+      "command_prefix": "/gpd:",
+      "public_command_surface_prefix": "/gpd:",
+      "installer_help_example_scope": "global",
+      "global_config": {
+        "strategy": "env_or_home",
+        "env_var": "CLAUDE_CONFIG_DIR",
+        "home_subpath": ".claude"
+      }
+    },
+    {
+      "runtime_name": "gemini",
+      "display_name": "Gemini CLI",
+      "priority": 20,
+      "config_dir_name": ".gemini",
+      "install_flag": "--gemini",
+      "launch_command": "gemini",
+      "selection_flags": [
+        "--gemini",
+        "--gemini-cli"
+      ],
+      "selection_aliases": [
+        "gemini",
+        "gemini cli"
+      ],
+      "command_prefix": "/gpd:",
+      "public_command_surface_prefix": "/gpd:",
+      "installer_help_example_scope": null,
+      "global_config": {
+        "strategy": "env_or_home",
+        "env_var": "GEMINI_CONFIG_DIR",
+        "home_subpath": ".gemini"
+      }
+    },
+    {
+      "runtime_name": "codex",
+      "display_name": "Codex",
+      "priority": 30,
+      "config_dir_name": ".codex",
+      "install_flag": "--codex",
+      "launch_command": "codex",
+      "selection_flags": [
+        "--codex"
+      ],
+      "selection_aliases": [
+        "codex"
+      ],
+      "command_prefix": "$gpd-",
+      "public_command_surface_prefix": "$gpd-",
+      "installer_help_example_scope": "local",
+      "global_config": {
+        "strategy": "env_or_home",
+        "env_var": "CODEX_CONFIG_DIR",
+        "home_subpath": ".codex"
+      }
+    },
+    {
+      "runtime_name": "opencode",
+      "display_name": "OpenCode",
+      "priority": 40,
+      "config_dir_name": ".opencode",
+      "install_flag": "--opencode",
+      "launch_command": "opencode",
+      "selection_flags": [
+        "--opencode"
+      ],
+      "selection_aliases": [
+        "opencode",
+        "open code"
+      ],
+      "command_prefix": "/gpd-",
+      "public_command_surface_prefix": "/gpd-",
+      "installer_help_example_scope": null,
+      "global_config": {
+        "strategy": "xdg_app",
+        "env_dir_var": "OPENCODE_CONFIG_DIR",
+        "env_file_var": "OPENCODE_CONFIG",
+        "xdg_subdir": "opencode",
+        "home_subpath": ".config/opencode"
+      }
+    },
+    {
+      "runtime_name": "copilot-cli",
+      "display_name": "GitHub Copilot CLI",
+      "priority": 50,
+      "config_dir_name": ".copilot",
+      "install_flag": "--copilot",
+      "launch_command": "gh copilot",
+      "selection_flags": [
+        "--copilot",
+        "--copilot-cli"
+      ],
+      "selection_aliases": [
+        "copilot",
+        "copilot cli",
+        "copilot-cli",
+        "github copilot"
+      ],
+      "command_prefix": "/gpd-",
+      "public_command_surface_prefix": "/gpd-",
+      "installer_help_example_scope": null,
+      "global_config": {
+        "strategy": "env_or_home",
+        "env_var": "COPILOT_CONFIG_DIR",
+        "home_subpath": ".copilot"
+      }
+    }
+  ],
+  "shared_install_metadata": {
+    "schemaVersion": 1,
+    "bootstrapPackageName": "get-physics-done",
+    "bootstrapCommand": "npx -y get-physics-done",
+    "installRootDirName": "get-physics-done",
+    "manifestName": "gpd-file-manifest.json",
+    "patchesDirName": "gpd-local-patches"
+  },
+  "shared_public_surface_text": {
+    "schemaVersion": 1,
+    "beginnerHubUrl": "https://github.com/psi-oss/get-physics-done/tree/main/docs",
+    "beginnerPreflightRequirements": [
+      "One supported runtime is already installed and can open from your normal terminal.",
+      "Node.js 20+ is available in that same terminal.",
+      "Python 3.11+ with the standard `venv` module is available there too."
+    ],
+    "beginnerCaveats": [
+      "GPD is not a standalone app.",
+      "GPD does not install your runtime for you.",
+      "GPD does not include model access, billing, or API credits.",
+      "This hub is the beginner path, not the full reference.",
+      "If evidence, references, or artifacts are missing, say so explicitly; GPD should not invent them."
+    ],
+    "beginnerStartupLadder": [
+      "help",
+      "start",
+      "tour",
+      "new-project / map-research",
+      "resume-work"
+    ],
+    "localCliBridgeCommands": [
+      "gpd --help",
+      "gpd doctor",
+      "gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>",
+      "gpd permissions status --runtime <runtime> --autonomy <mode>",
+      "gpd permissions sync --runtime <runtime> --autonomy <mode>",
+      "gpd resume",
+      "gpd resume --recent",
+      "gpd observe execution",
+      "gpd cost",
+      "gpd presets list",
+      "gpd validate plan-preflight <PLAN.md>",
+      "gpd integrations status wolfram"
+    ],
+    "localCliBridge": {
+      "doctorCommand": "gpd doctor",
+      "helpCommand": "gpd --help",
+      "permissionsStatusCommand": "gpd permissions status --runtime <runtime> --autonomy <mode>",
+      "permissionsSyncCommand": "gpd permissions sync --runtime <runtime> --autonomy <mode>",
+      "resumeCommand": "gpd resume",
+      "resumeRecentCommand": "gpd resume --recent",
+      "observeExecutionCommand": "gpd observe execution",
+      "costCommand": "gpd cost",
+      "presetsListCommand": "gpd presets list",
+      "planPreflightCommand": "gpd validate plan-preflight <PLAN.md>",
+      "integrationsStatusWolframCommand": "gpd integrations status wolfram",
+      "terminalPhrase": "from your normal terminal",
+      "purposePhrase": "install/readiness checks, typed command validation, permissions, observability, diagnostics, recovery, cost from recorded local telemetry, presets, and shared Wolfram integration",
+      "installLocalExample": "gpd install <runtime> --local",
+      "doctorLocalCommand": "gpd doctor --runtime <runtime> --local",
+      "doctorGlobalCommand": "gpd doctor --runtime <runtime> --global",
+      "validateCommandContextCommand": "gpd validate command-context <name>",
+      "unattendedReadinessCommand": "gpd validate unattended-readiness --runtime <runtime> --autonomy <mode>"
+    },
+    "resumeAuthority": {
+      "durableAuthorityPhrase": "`state.json.continuation` is the durable authority",
+      "publicVocabularyIntro": "Canonical continuation fields define the public resume vocabulary",
+      "publicFields": [
+        "active_resume_kind",
+        "active_resume_origin",
+        "active_resume_pointer",
+        "active_bounded_segment",
+        "derived_execution_head",
+        "active_resume_result",
+        "continuity_handoff_file",
+        "recorded_continuity_handoff_file",
+        "missing_continuity_handoff_file",
+        "resume_candidates"
+      ]
+    },
+    "recoveryLadder": {
+      "title": "Recovery ladder",
+      "localSnapshotCommand": "gpd resume",
+      "localSnapshotPhrase": "the current-workspace read-only recovery snapshot",
+      "crossWorkspaceCommand": "gpd resume --recent",
+      "crossWorkspacePhrase": "find the workspace first",
+      "resumePhrase": "continue inside that workspace",
+      "nextPhrase": "the fastest next command",
+      "pausePhrase": "an explicit handoff to restore, projected from canonical continuation"
+    },
+    "settingsCommandSentence": "After your first successful start or later, use the runtime `settings` command to review autonomy, workflow defaults, model-cost posture, runtime permission sync, and preset/tier overrides.",
+    "settingsRecommendationSentence": "The safest starting point is `review` plus runtime defaults. Favor scientific rigor and explicit uncertainty over agreement-seeking, and keep missing evidence or artifacts explicit instead of inventing them."
+  }
+}

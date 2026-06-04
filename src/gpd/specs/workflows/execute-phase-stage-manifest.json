@@ -1,0 +1,1109 @@
+{
+  "schema_version": 1,
+  "workflow_id": "execute-phase",
+  "required_init_field_groups": {
+    "execution_phase_base": [
+      "executor_model",
+      "verifier_model",
+      "autonomy",
+      "review_cadence",
+      "research_mode",
+      "parallelization",
+      "max_unattended_minutes_per_plan",
+      "max_unattended_minutes_per_wave",
+      "checkpoint_after_n_tasks",
+      "checkpoint_after_first_load_bearing_result",
+      "checkpoint_before_downstream_dependent_tasks",
+      "verifier_enabled",
+      "branching_strategy",
+      "branch_name",
+      "phase_found",
+      "phase_dir",
+      "phase_number",
+      "phase_name",
+      "phase_slug",
+      "plans"
+    ],
+    "phase_bootstrap_route": [
+      "phase_found",
+      "phase_dir",
+      "phase_number",
+      "plan_count",
+      "branching_strategy",
+      "branch_name",
+      "state_exists",
+      "roadmap_exists",
+      "project_contract_gate",
+      "project_contract_validation",
+      "project_contract_load_info",
+      "platform"
+    ],
+    "plan_progress": [
+      "incomplete_plans",
+      "plan_count",
+      "incomplete_count"
+    ],
+    "summary_plan_progress": [
+      "summaries",
+      "incomplete_plans",
+      "plan_count",
+      "incomplete_count"
+    ],
+    "contract_gate_status": [
+      "project_contract_gate",
+      "project_contract_validation",
+      "project_contract_load_info"
+    ],
+    "reference_runtime_context": [
+      "effective_reference_intake",
+      "active_reference_context"
+    ],
+    "reference_intake_context": [
+      "effective_reference_intake"
+    ],
+    "reference_artifact_context": [
+      "reference_artifact_files",
+      "reference_artifacts_content"
+    ],
+    "reference_artifact_handles": [
+      "reference_artifact_files"
+    ],
+    "protocol_bundle_context": [
+      "selected_protocol_bundle_ids",
+      "protocol_bundle_count",
+      "protocol_bundle_context",
+      "protocol_bundle_verifier_extensions"
+    ],
+    "protocol_bundle_handles": [
+      "selected_protocol_bundle_ids",
+      "protocol_bundle_count",
+      "protocol_bundle_load_manifest",
+      "protocol_bundle_verifier_extensions"
+    ],
+    "task_overlay_handles": [
+      "selected_task_overlay_ids",
+      "task_overlay_load_manifest",
+      "task_overlay_policy_summary"
+    ],
+    "convention_lock_context": [
+      "convention_lock",
+      "convention_lock_count"
+    ],
+    "derived_convention_lock_context": [
+      "derived_convention_lock",
+      "derived_convention_lock_count"
+    ],
+    "execution_resume_context": [
+      "current_execution",
+      "has_live_execution",
+      "execution_review_pending",
+      "execution_pre_fanout_review_pending",
+      "execution_skeptical_requestioning_required",
+      "execution_downstream_locked",
+      "execution_blocked",
+      "execution_resumable",
+      "execution_paused_at"
+    ],
+    "state_integrity_context": [
+      "state_load_source",
+      "state_integrity_issues",
+      "platform"
+    ],
+    "reference_citation_handles": [
+      "citation_source_files",
+      "citation_source_warnings",
+      "active_references"
+    ],
+    "execution_science_handles": [
+      "convention_lock",
+      "convention_lock_count",
+      "intermediate_results",
+      "intermediate_result_count",
+      "approximations",
+      "approximation_count",
+      "propagated_uncertainties",
+      "propagated_uncertainty_count",
+      "derived_convention_lock",
+      "derived_convention_lock_count",
+      "derived_intermediate_results",
+      "derived_intermediate_result_count",
+      "derived_approximations",
+      "derived_approximation_count"
+    ],
+    "verification_report_bridge_handles": [
+      "verification_report_skeleton_bridge",
+      "verification_report_finalizer_bridge"
+    ]
+  },
+  "authority_groups": {
+    "execute_recovery_templates_and_child_workflows": [
+      "templates/contract-results-schema.md",
+      "templates/recovery-plan.md",
+      "templates/paper/figure-tracker.md",
+      "templates/paper/experimental-comparison.md",
+      "workflows/execute-plan.md",
+      "workflows/verify-phase.md"
+    ],
+    "execute_dispatch_child_artifact_deferrals": [
+      "references/orchestration/agent-infrastructure.md",
+      "references/orchestration/artifact-surfacing.md",
+      "references/orchestration/child-artifact-gate.md",
+      "references/verification/core/verification-core.md",
+      "references/execution/github-lifecycle.md",
+      "references/execution/execute-plan-checkpoints.md",
+      "templates/summary.md",
+      "templates/contract-results-schema.md",
+      "workflows/execute-plan.md",
+      "workflows/verify-phase.md"
+    ],
+    "execute_contract_child_workflow_deferrals": [
+      "templates/contract-results-schema.md",
+      "workflows/execute-plan.md",
+      "workflows/verify-phase.md"
+    ],
+    "execute_terminal_transition_deferrals": [
+      "workflows/execute-plan.md",
+      "workflows/verify-phase.md",
+      "workflows/transition.md"
+    ]
+  },
+  "stage_defaults": {
+    "required_init_field_groups": [
+      "execution_phase_base",
+      "plan_progress",
+      "contract_gate_status",
+      "reference_runtime_context",
+      "protocol_bundle_context",
+      "execution_resume_context",
+      "state_integrity_context"
+    ],
+    "conditional_authorities": [],
+    "must_not_eager_load_groups": [
+      "execute_recovery_templates_and_child_workflows"
+    ],
+    "allowed_tools": [
+      "ask_user",
+      "file_read",
+      "file_write",
+      "file_edit",
+      "find_files",
+      "search_files",
+      "shell",
+      "task"
+    ],
+    "writes_allowed": [
+      "GPD/phases"
+    ]
+  },
+  "stages": [
+    {
+      "id": "phase_bootstrap",
+      "order": 1,
+      "purpose": "phase lookup, contract-gate validation, and bootstrap routing",
+      "mode_paths": [
+        "workflows/execute-phase/phase-bootstrap.md"
+      ],
+      "required_init_field_groups": [
+        "phase_bootstrap_route"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/phase-bootstrap.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/execute-phase.md",
+        "workflows/execute-phase/phase-classification.md",
+        "workflows/execute-phase/wave-planning.md",
+        "workflows/execute-phase/pre-execution-specialists.md",
+        "workflows/execute-phase/wave-dispatch.md",
+        "workflows/execute-phase/executor-dispatch.md",
+        "workflows/execute-phase/proof-critic-dispatch.md",
+        "workflows/execute-phase/wave-return-checkpoint.md",
+        "workflows/execute-phase/wave-failure-menu.md",
+        "workflows/execute-phase/checkpoint-resume.md",
+        "workflows/execute-phase/aggregate-and-verify.md",
+        "workflows/execute-phase/verification-handoff.md",
+        "workflows/execute-phase/gap-reverification.md",
+        "workflows/execute-phase/consistency-check.md",
+        "workflows/execute-phase/closeout.md",
+        "references/ui/ui-brand.md",
+        "references/orchestration/meta-orchestration.md",
+        "references/orchestration/artifact-surfacing.md",
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/context-budget.md",
+        "references/orchestration/model-profile-resolution.md",
+        "references/orchestration/agent-delegation.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/orchestration/continuous-execution.md",
+        "references/orchestration/continuation-format.md",
+        "references/orchestration/resume-vocabulary.md",
+        "references/orchestration/state-portability.md",
+        "references/orchestration/runtime-delegation-note.md",
+        "references/orchestration/child-artifact-gate.md",
+        "references/orchestration/continuation-boundary.md",
+        "references/verification/core/proof-redteam-workflow-gate.md",
+        "references/verification/core/proof-redteam-protocol.md",
+        "references/verification/core/verification-core.md",
+        "references/verification/verification-status-authority.md",
+        "references/execution/executor-index.md",
+        "references/execution/git-integration.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-recovery.md",
+        "references/execution/execute-plan-validation.md",
+        "references/execution/execute-plan-checkpoints.md",
+        "references/protocols/error-propagation-protocol.md",
+        "templates/continuation-prompt.md",
+        "templates/summary.md",
+        "templates/calculation-log.md",
+        "templates/contract-results-schema.md",
+        "templates/recovery-plan.md",
+        "templates/state-machine.md",
+        "templates/paper/figure-tracker.md",
+        "templates/paper/experimental-comparison.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_terminal_transition_deferrals"
+      ],
+      "writes_allowed": [],
+      "produced_state": [
+        "execution bootstrap state",
+        "contract gate decision state"
+      ],
+      "next_stages": [
+        "phase_classification"
+      ],
+      "checkpoints": [
+        "phase resolution completed",
+        "contract gate evaluated before execution"
+      ]
+    },
+    {
+      "id": "phase_classification",
+      "order": 2,
+      "purpose": "phase classification, context-hint selection, and execution policy",
+      "mode_paths": [
+        "workflows/execute-phase/phase-classification.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "convention_lock_context",
+        "derived_convention_lock_context",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/phase-classification.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "classification_policy_debug",
+          "authorities": [
+            "references/orchestration/meta-orchestration.md",
+            "references/orchestration/model-profile-resolution.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/meta-orchestration.md",
+        "references/orchestration/model-profile-resolution.md",
+        "workflows/execute-phase/wave-planning.md",
+        "workflows/execute-phase/wave-dispatch.md",
+        "workflows/execute-phase/aggregate-and-verify.md",
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/github-lifecycle.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_contract_child_workflow_deferrals"
+      ],
+      "writes_allowed": [],
+      "produced_state": [
+        "phase classification state",
+        "execution context hint"
+      ],
+      "next_stages": [
+        "wave_planning"
+      ],
+      "checkpoints": [
+        "phase classification completed",
+        "execution context hint selected"
+      ]
+    },
+    {
+      "id": "wave_planning",
+      "order": 3,
+      "purpose": "wave grouping, dependency analysis, and proof-bearing routing",
+      "mode_paths": [
+        "workflows/execute-phase/wave-planning.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "reference_artifact_handles",
+        "protocol_bundle_handles",
+        "reference_citation_handles"
+      ],
+      "required_init_fields": [
+        "convention_lock",
+        "convention_lock_count",
+        "derived_convention_lock",
+        "derived_convention_lock_count",
+        "intermediate_results",
+        "intermediate_result_count",
+        "approximations",
+        "approximation_count",
+        "propagated_uncertainties",
+        "propagated_uncertainty_count",
+        "derived_intermediate_results",
+        "derived_intermediate_result_count",
+        "derived_approximations",
+        "derived_approximation_count",
+        "state_load_source",
+        "state_integrity_issues",
+        "platform"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/wave-planning.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "selected_wave_has_proof_bearing_plan",
+          "authorities": [
+            "references/verification/core/proof-redteam-workflow-gate.md"
+          ]
+        },
+        {
+          "when": "context_pressure",
+          "authorities": [
+            "references/orchestration/context-budget.md"
+          ]
+        },
+        {
+          "when": "full_checkpoint_policy",
+          "authorities": [
+            "references/orchestration/checkpoints.md"
+          ]
+        },
+        {
+          "when": "full_verification_policy",
+          "authorities": [
+            "references/verification/core/verification-core.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/context-budget.md",
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/verification/core/proof-redteam-workflow-gate.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/github-lifecycle.md"
+      ],
+      "writes_allowed": [],
+      "produced_state": [
+        "wave planning state",
+        "execution risk posture"
+      ],
+      "next_stages": [
+        "pre_execution_specialists"
+      ],
+      "checkpoints": [
+        "wave grouping completed",
+        "proof-bearing routing resolved"
+      ]
+    },
+    {
+      "id": "pre_execution_specialists",
+      "order": 4,
+      "purpose": "specialist routing and orchestration handoff",
+      "mode_paths": [
+        "workflows/execute-phase/pre-execution-specialists.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "plan_progress",
+        "contract_gate_status",
+        "reference_runtime_context",
+        "protocol_bundle_context",
+        "convention_lock_context",
+        "derived_convention_lock_context",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/pre-execution-specialists.md",
+        "references/orchestration/agent-delegation.md",
+        "references/orchestration/runtime-delegation-note.md"
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/github-lifecycle.md"
+      ],
+      "writes_allowed": [],
+      "produced_state": [
+        "specialist routing state"
+      ],
+      "next_stages": [
+        "wave_dispatch"
+      ],
+      "checkpoints": [
+        "specialist routing resolved",
+        "runtime delegation prepared"
+      ]
+    },
+    {
+      "id": "wave_dispatch",
+      "order": 5,
+      "purpose": "wave setup, checkpoint creation, and dispatch route selection",
+      "mode_paths": [
+        "workflows/execute-phase/wave-dispatch.md"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/wave-dispatch.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "full_checkpoint_policy",
+          "authorities": [
+            "references/orchestration/checkpoints.md"
+          ]
+        },
+        {
+          "when": "context_pressure",
+          "authorities": [
+            "references/orchestration/context-budget.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_dispatch_child_artifact_deferrals"
+      ],
+      "produced_state": [
+        "dispatch route state"
+      ],
+      "next_stages": [
+        "executor_dispatch"
+      ],
+      "checkpoints": [
+        "wave dispatch route selected",
+        "pre-computation checkpoint prepared"
+      ]
+    },
+    {
+      "id": "executor_dispatch",
+      "order": 6,
+      "purpose": "executor task construction and normal wave fanout",
+      "mode_paths": [
+        "workflows/execute-phase/executor-dispatch.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "plan_progress",
+        "contract_gate_status",
+        "reference_runtime_context",
+        "protocol_bundle_context",
+        "task_overlay_handles",
+        "execution_resume_context",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/executor-dispatch.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "executor_child_context",
+          "authorities": [
+            "workflows/execute-plan.md",
+            "templates/summary.md"
+          ]
+        },
+        {
+          "when": "runtime_failure_details",
+          "authorities": [
+            "references/orchestration/agent-infrastructure.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/task-overlays.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_dispatch_child_artifact_deferrals"
+      ],
+      "produced_state": [
+        "executor dispatch state"
+      ],
+      "next_stages": [
+        "proof_critic_dispatch"
+      ],
+      "checkpoints": [
+        "executor child handoff prepared",
+        "normal fanout launched"
+      ]
+    },
+    {
+      "id": "proof_critic_dispatch",
+      "order": 7,
+      "purpose": "proof-bearing task critic handoff and proof-redteam artifact gate",
+      "mode_paths": [
+        "workflows/execute-phase/proof-critic-dispatch.md"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/proof-critic-dispatch.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "proof_bearing_wave",
+          "authorities": [
+            "references/verification/core/proof-redteam-protocol.md",
+            "templates/proof-redteam-schema.md"
+          ]
+        },
+        {
+          "when": "full_verification_policy",
+          "authorities": [
+            "references/verification/core/verification-core.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_dispatch_child_artifact_deferrals"
+      ],
+      "produced_state": [
+        "proof critic dispatch state"
+      ],
+      "next_stages": [
+        "wave_return_checkpoint"
+      ],
+      "checkpoints": [
+        "proof critic handoff prepared",
+        "proof-redteam artifact gate established"
+      ]
+    },
+    {
+      "id": "wave_return_checkpoint",
+      "order": 8,
+      "purpose": "child-return acceptance, artifact surfacing, and inter-wave checkpoint handling",
+      "mode_paths": [
+        "workflows/execute-phase/wave-return-checkpoint.md"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/wave-return-checkpoint.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "child_return_gate",
+          "authorities": [
+            "references/orchestration/child-artifact-gate.md",
+            "references/orchestration/artifact-surfacing.md"
+          ]
+        },
+        {
+          "when": "checkpoint_repair",
+          "authorities": [
+            "references/orchestration/checkpoints.md",
+            "references/execution/execute-plan-checkpoints.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_dispatch_child_artifact_deferrals"
+      ],
+      "produced_state": [
+        "child return state",
+        "wave checkpoint state"
+      ],
+      "next_stages": [
+        "wave_failure_menu"
+      ],
+      "checkpoints": [
+        "child returns accepted",
+        "wave checkpoint status updated"
+      ]
+    },
+    {
+      "id": "wave_failure_menu",
+      "order": 9,
+      "purpose": "retry, main-context execution, rollback, stop, and dependent-plan skip decisions",
+      "mode_paths": [
+        "workflows/execute-phase/wave-failure-menu.md"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/wave-failure-menu.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "runtime_failure_details",
+          "authorities": [
+            "references/orchestration/agent-infrastructure.md",
+            "references/execution/executor-index.md"
+          ]
+        },
+        {
+          "when": "recovery_path",
+          "authorities": [
+            "references/execution/execute-plan-recovery.md",
+            "templates/recovery-plan.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/orchestration/artifact-surfacing.md",
+        "references/orchestration/child-artifact-gate.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/executor-index.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-recovery.md",
+        "templates/recovery-plan.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_contract_child_workflow_deferrals"
+      ],
+      "produced_state": [
+        "wave failure routing state"
+      ],
+      "next_stages": [
+        "checkpoint_resume"
+      ],
+      "checkpoints": [
+        "wave failure route selected",
+        "dependent-plan skip policy resolved"
+      ]
+    },
+    {
+      "id": "checkpoint_resume",
+      "order": 10,
+      "purpose": "continuation handling, resume transport, and bounded segment recovery",
+      "mode_paths": [
+        "workflows/execute-phase/checkpoint-resume.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "protocol_bundle_handles",
+        "execution_resume_context",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/checkpoint-resume.md",
+        "references/orchestration/continuation-format.md",
+        "references/orchestration/resume-vocabulary.md",
+        "references/orchestration/continuation-boundary.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "continuation_prompt_rendering",
+          "authorities": [
+            "templates/continuation-prompt.md"
+          ]
+        },
+        {
+          "when": "machine_change_or_resume_transport_repair",
+          "authorities": [
+            "references/orchestration/state-portability.md"
+          ]
+        },
+        {
+          "when": "full_checkpoint_policy",
+          "authorities": [
+            "references/orchestration/checkpoints.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/orchestration/state-portability.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/github-lifecycle.md",
+        "templates/continuation-prompt.md"
+      ],
+      "produced_state": [
+        "continuation state",
+        "resume state"
+      ],
+      "next_stages": [
+        "aggregate_and_verify"
+      ],
+      "checkpoints": [
+        "checkpoint surfaced",
+        "resume transport prepared"
+      ]
+    },
+    {
+      "id": "aggregate_and_verify",
+      "order": 11,
+      "purpose": "result aggregation, summary extraction, figure inventory detection, and recovery-report routing",
+      "mode_paths": [
+        "workflows/execute-phase/aggregate-and-verify.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "summary_plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "reference_artifact_handles",
+        "execution_resume_context",
+        "execution_science_handles",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/aggregate-and-verify.md",
+        "templates/summary.md",
+        "templates/calculation-log.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "figure_outputs_present",
+          "authorities": [
+            "templates/paper/figure-tracker.md"
+          ]
+        },
+        {
+          "when": "comparison_outputs_present",
+          "authorities": [
+            "templates/paper/experimental-comparison.md"
+          ]
+        },
+        {
+          "when": "recovery_path",
+          "authorities": [
+            "templates/recovery-plan.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/executor-index.md",
+        "references/execution/git-integration.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-validation.md",
+        "references/execution/execute-plan-checkpoints.md",
+        "references/execution/execute-plan-recovery.md",
+        "references/protocols/error-propagation-protocol.md"
+      ],
+      "produced_state": [
+        "aggregation state",
+        "artifact inventory routing state",
+        "recovery report routing state"
+      ],
+      "next_stages": [
+        "verification_handoff"
+      ],
+      "checkpoints": [
+        "aggregation completed",
+        "artifact inventory routes selected"
+      ]
+    },
+    {
+      "id": "verification_handoff",
+      "order": 12,
+      "purpose": "fresh verifier spawn, bridge/finalizer handoff, report validation, and canonical status routing",
+      "mode_paths": [
+        "workflows/execute-phase/verification-handoff.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "reference_artifact_handles",
+        "protocol_bundle_handles",
+        "reference_citation_handles",
+        "execution_science_handles",
+        "verification_report_bridge_handles",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/verification-handoff.md",
+        "references/verification/verification-status-authority.md",
+        "references/orchestration/child-artifact-gate.md",
+        "references/orchestration/continuation-boundary.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "verifier_child_context",
+          "authorities": [
+            "workflows/verify-phase.md",
+            "references/verification/core/verification-core.md"
+          ]
+        },
+        {
+          "when": "report_contract_repair",
+          "authorities": [
+            "templates/contract-results-schema.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/executor-index.md",
+        "references/execution/git-integration.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-validation.md",
+        "references/execution/execute-plan-checkpoints.md",
+        "references/execution/execute-plan-recovery.md",
+        "references/protocols/error-propagation-protocol.md"
+      ],
+      "writes_allowed": [
+        "GPD/phases",
+        "GPD/STATE.md"
+      ],
+      "produced_state": [
+        "verification handoff state",
+        "verification status routing state"
+      ],
+      "next_stages": [
+        "gap_reverification"
+      ],
+      "checkpoints": [
+        "verification handoff completed",
+        "verification status routed"
+      ]
+    },
+    {
+      "id": "gap_reverification",
+      "order": 13,
+      "purpose": "gap-only follow-up, localized re-execution, debugger diagnosis, and re-verifier child gate",
+      "mode_paths": [
+        "workflows/execute-phase/gap-reverification.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "summary_plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "reference_artifact_handles",
+        "execution_resume_context",
+        "execution_science_handles",
+        "verification_report_bridge_handles",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/gap-reverification.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "gap_only_reverification_acceptance",
+          "authorities": [
+            "references/verification/verification-status-authority.md",
+            "references/orchestration/child-artifact-gate.md"
+          ]
+        },
+        {
+          "when": "localized_reexecution",
+          "authorities": [
+            "references/execution/executor-index.md",
+            "references/execution/execute-plan-validation.md",
+            "references/execution/execute-plan-checkpoints.md",
+            "references/execution/execute-plan-recovery.md"
+          ]
+        },
+        {
+          "when": "debugger_or_uncertainty_path",
+          "authorities": [
+            "references/protocols/error-propagation-protocol.md",
+            "references/verification/core/verification-core.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/orchestration/child-artifact-gate.md",
+        "references/verification/verification-status-authority.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/executor-index.md",
+        "references/execution/git-integration.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-validation.md",
+        "references/execution/execute-plan-checkpoints.md",
+        "references/execution/execute-plan-recovery.md",
+        "references/protocols/error-propagation-protocol.md"
+      ],
+      "writes_allowed": [
+        "GPD/phases",
+        "GPD/STATE.md"
+      ],
+      "produced_state": [
+        "gap reverification state",
+        "localized recovery routing state"
+      ],
+      "next_stages": [
+        "consistency_check"
+      ],
+      "checkpoints": [
+        "gap re-verification route completed",
+        "localized recovery outcome recorded"
+      ]
+    },
+    {
+      "id": "consistency_check",
+      "order": 14,
+      "purpose": "rapid consistency checker and convention-repair stop routing",
+      "mode_paths": [
+        "workflows/execute-phase/consistency-check.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "summary_plan_progress",
+        "contract_gate_status",
+        "reference_intake_context",
+        "reference_artifact_handles",
+        "execution_resume_context",
+        "execution_science_handles",
+        "verification_report_bridge_handles",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/consistency-check.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "checker_status_ambiguity_recovery",
+          "authorities": [
+            "references/verification/verification-status-authority.md"
+          ]
+        },
+        {
+          "when": "full_verification_policy",
+          "authorities": [
+            "references/verification/core/verification-core.md"
+          ]
+        },
+        {
+          "when": "report_contract_repair",
+          "authorities": [
+            "templates/contract-results-schema.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/verification/verification-status-authority.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/executor-index.md",
+        "references/execution/git-integration.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-validation.md",
+        "references/execution/execute-plan-checkpoints.md",
+        "references/execution/execute-plan-recovery.md",
+        "references/protocols/error-propagation-protocol.md"
+      ],
+      "produced_state": [
+        "consistency check state",
+        "convention repair stop state"
+      ],
+      "next_stages": [
+        "closeout"
+      ],
+      "checkpoints": [
+        "rapid consistency check completed",
+        "convention repair route resolved"
+      ]
+    },
+    {
+      "id": "closeout",
+      "order": 15,
+      "purpose": "status rendering, transition handoff, and cleanup",
+      "mode_paths": [
+        "workflows/execute-phase/closeout.md"
+      ],
+      "required_init_field_groups": [
+        "execution_phase_base",
+        "summary_plan_progress",
+        "contract_gate_status",
+        "execution_resume_context",
+        "state_integrity_context"
+      ],
+      "loaded_authorities": [
+        "workflows/execute-phase/closeout.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "transition_helper_ambiguity",
+          "authorities": [
+            "workflows/transition.md",
+            "templates/state-machine.md",
+            "references/orchestration/state-portability.md"
+          ]
+        },
+        {
+          "when": "next_up_rendering_recovery",
+          "authorities": [
+            "references/ui/ui-brand.md",
+            "references/orchestration/continuous-execution.md"
+          ]
+        },
+        {
+          "when": "release_or_branch_recovery",
+          "authorities": [
+            "references/execution/github-lifecycle.md",
+            "references/execution/git-integration.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "references/orchestration/checkpoints.md",
+        "references/orchestration/agent-infrastructure.md",
+        "references/orchestration/state-portability.md",
+        "references/orchestration/continuous-execution.md",
+        "references/verification/core/verification-core.md",
+        "references/execution/executor-index.md",
+        "references/execution/git-integration.md",
+        "references/execution/github-lifecycle.md",
+        "references/execution/execute-plan-validation.md",
+        "references/execution/execute-plan-checkpoints.md",
+        "references/execution/execute-plan-recovery.md",
+        "references/ui/ui-brand.md",
+        "references/protocols/error-propagation-protocol.md",
+        "templates/contract-results-schema.md",
+        "templates/recovery-plan.md",
+        "templates/state-machine.md",
+        "templates/paper/figure-tracker.md",
+        "templates/paper/experimental-comparison.md"
+      ],
+      "must_not_eager_load_groups": [
+        "execute_terminal_transition_deferrals"
+      ],
+      "writes_allowed": [
+        "GPD/ROADMAP.md",
+        "GPD/STATE.md",
+        "GPD/phases"
+      ],
+      "produced_state": [
+        "phase closeout state",
+        "transition handoff state"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "cleanup completed",
+        "transition handoff completed"
+      ]
+    }
+  ]
+}

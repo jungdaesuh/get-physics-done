@@ -5,7 +5,7 @@ type: reproducibility-manifest
 
 # Reproducibility Manifest Template
 
-Template for `paper/reproducibility-manifest.json` — the machine-readable manifest consumed by `gpd validate reproducibility-manifest` and strict review preflight checks.
+Template for `${PAPER_DIR}/reproducibility-manifest.json` — the machine-readable manifest consumed by `gpd validate reproducibility-manifest` and strict review preflight checks.
 
 ---
 
@@ -181,8 +181,8 @@ Template for `paper/reproducibility-manifest.json` — the machine-readable mani
 - Random seeds for stochastic computations
 
 **Current artifact path and validator:**
-- Store this file as `paper/reproducibility-manifest.json`
-- Validate with `gpd validate reproducibility-manifest paper/reproducibility-manifest.json --strict`
+- Store this file as `${PAPER_DIR}/reproducibility-manifest.json`
+- Validate with `gpd validate reproducibility-manifest "${PAPER_DIR}/reproducibility-manifest.json" --strict`
 - Use this template as the schema source of truth for manual manifests
 
 **Field linkage rules:**

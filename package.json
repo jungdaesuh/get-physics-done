@@ -1,18 +1,25 @@
 {
   "name": "get-physics-done",
-  "version": "1.1.0",
-  "gpdPythonVersion": "1.1.0",
-  "description": "Open-source AI copilot for physics research across supported AI runtimes",
+  "version": "1.2.2",
+  "gpdPythonVersion": "1.2.2",
+  "description": "Open-source agentic AI system for physics research across supported AI runtimes",
   "bin": {
     "get-physics-done": "bin/install.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "files": [
-    "bin/",
-    "src/gpd/adapters/runtime_catalog.json"
+    "bin/install.js",
+    "src/gpd/bootstrap/installer_metadata.json",
+    "src/gpd/adapters/runtime_catalog.json",
+    "src/gpd/adapters/runtime_catalog_schema.json",
+    "src/gpd/core/public_surface_contract_schema.json",
+    "src/gpd/core/public_surface_contract.json"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/psi-oss/get-physics-done"
+    "url": "git+https://github.com/psi-oss/get-physics-done.git"
   },
   "homepage": "https://github.com/psi-oss/get-physics-done#readme",
   "bugs": {
@@ -26,10 +33,8 @@
     "research",
     "ai",
     "agentic",
-    "claude",
-    "codex",
-    "gemini",
-    "opencode"
+    "ai runtimes",
+    "runtime adapters"
   ],
   "license": "Apache-2.0"
 }

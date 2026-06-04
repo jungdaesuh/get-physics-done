@@ -1,34 +1,83 @@
 ---
 name: gpd:arxiv-submission
-description: Prepare a paper for arXiv submission with validation and packaging
-argument-hint: "[paper directory path]"
-context_mode: project-required
+description: Prepare a GPD-owned manuscript for arXiv submission with validation and packaging
+argument-hint: "[manuscript root or .tex entrypoint]"
+context_mode: project-aware
 requires:
-  files: ["paper/*.tex", "manuscript/*.tex", "draft/*.tex"]
+  files: ["paper/*.tex", "manuscript/*.tex", "draft/*.tex", "GPD/publication/*/manuscript/*.tex"]
+command-policy:
+  schema_version: 1
+  subject_policy:
+    subject_kind: publication
+    resolution_mode: explicit_or_project_manuscript
+    explicit_input_kinds:
+      - manuscript_path
+      - manuscript_root
+    allow_external_subjects: false
+    allow_interactive_without_subject: false
+    supported_roots:
+      - paper
+      - manuscript
+      - draft
+    bootstrap_allowed: false
+  output_policy:
+    output_mode: managed
+    managed_root_kind: gpd_managed_durable
+    default_output_subtree: GPD/publication/{subject_slug}/arxiv
+    stage_artifact_policy: gpd_owned_outputs_only
 review-contract:
   review_mode: publication
   schema_version: 1
   required_outputs:
-    - arxiv-submission.tar.gz
+    - GPD/publication/{subject_slug}/arxiv/arxiv-submission.tar.gz
   required_evidence:
     - compiled manuscript
-    - bibliography audit
-    - artifact manifest
-    - peer-review review ledger when available
-    - peer-review referee decision when available
+    - manuscript-root bibliography audit
+    - manuscript-root artifact manifest
+    - manuscript-root reproducibility manifest
+    - latest peer-review review ledger
+    - latest peer-review referee decision
+    - latest response-round freshness status
   blocking_conditions:
     - missing project state
     - missing manuscript
+    - missing manuscript-root artifact manifest
+    - missing manuscript-root bibliography audit
+    - missing manuscript-root reproducibility manifest
     - missing compiled manuscript
     - missing conventions
+    - missing latest staged peer-review decision evidence
+    - manuscript-root reproducibility state is not ready for submission
     - unresolved publication blockers
-    - peer-review recommendation blocks submission when staged review artifacts are present
+    - same-round or newer response artifacts without newer staged peer-review clearance
+    - latest staged peer-review recommendation blocks submission packaging
     - degraded review integrity
   preflight_checks:
+    - command_context
     - project_state
     - manuscript
+    - artifact_manifest
+    - bibliography_audit
+    - bibliography_audit_clean
+    - reproducibility_manifest
+    - reproducibility_ready
     - compiled_manuscript
     - conventions
+    - publication_blockers
+    - review_ledger
+    - review_ledger_valid
+    - referee_decision
+    - referee_decision_valid
+    - publication_review_outcome
+    - manuscript_proof_review
+  conditional_requirements:
+    - when: theorem-bearing manuscripts are present
+      required_evidence:
+        - cleared manuscript proof review for theorem-bearing manuscripts
+      blocking_conditions:
+        - missing or stale manuscript proof review for theorem-bearing manuscripts
+      blocking_preflight_checks:
+        - manuscript_proof_review
 allowed-tools:
   - file_read
   - file_write
@@ -37,174 +86,49 @@ allowed-tools:
   - search_files
   - find_files
   - task
+help:
+  group: Writing and publication
+  order: 480
+  compact_description: Package a built manuscript for arXiv from the resolved GPD-owned manuscript root or entrypoint
+  display_signature: gpd:arxiv-submission [manuscript root or .tex entrypoint]
+  examples:
+    - gpd:arxiv-submission paper/
+  notes:
+    - Packages the GPD-owned manuscript root or a supported .tex entrypoint; it does not package arbitrary external material.
+  root_detail_order: 290
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Prepare a completed paper for arXiv submission. Handles the full submission pipeline: LaTeX validation, figure embedding, bibliography flattening, file packaging, and metadata generation.
+Prepare a completed paper for arXiv submission.
 
-**Why a dedicated command:** arXiv has specific requirements (no subdirectories in uploads, .bbl instead of .bib, specific figure formats, 00README.XXX for multi-file submissions). Getting these wrong means rejected submissions and wasted time. This command automates the tedious compliance steps.
+Keep the wrapper thin and let the workflow own validation, packaging, and submission-gate details.
+
+arXiv-specific upload rules stay in the workflow, not this wrapper.
 
 Output: A submission-ready tarball and checklist of manual steps remaining.
-
-The workflow's preflight gate checks the explicit paper target, the compiled manuscript, unresolved publication blockers, and, when staged review artifacts exist, the latest `REVIEW-LEDGER{round_suffix}.json` / `REFEREE-DECISION{round_suffix}.json` outcome before packaging begins.
 </objective>
 
 <execution_context>
-@{GPD_INSTALL_DIR}/workflows/arxiv-submission.md
+@{GPD_INSTALL_DIR}/workflows/arxiv-submission/bootstrap.md
 </execution_context>
 
 <context>
-Paper directory: $ARGUMENTS (optional; when omitted, resolve only from `paper/`, `manuscript/`, or `draft/`)
+Paper target: $ARGUMENTS (optional manuscript root or `.tex` entrypoint; when omitted, the workflow resolves the active GPD-owned manuscript root).
 
-@GPD/STATE.md
+Explicit manuscript subjects must stay under `paper/`, `manuscript/`, `draft/`, or `GPD/publication/{subject_slug}/manuscript/`.
+When `$ARGUMENTS` is omitted, use the current GPD project's resolved manuscript subject only; do not switch to standalone interactive intake or arbitrary external directories.
+This remains a project-backed manuscript workflow: package the resolved built manuscript root or its `.tex` entrypoint, not a standalone peer-review artifact such as `.pdf`, `.docx`, `.csv`, `.tsv`, or `.xlsx`.
 </context>
 
 <process>
-
-## 1. Locate Paper
-
-Find the paper directory:
-
-```bash
-ls paper/main.tex manuscript/main.tex draft/main.tex 2>/dev/null
-```
-
-If no paper found, suggest `/gpd:write-paper` first.
-
-## 2. Validate LaTeX
-
-If `PAPER-CONFIG.json` exists in the paper directory, refresh the derived manuscript first:
-
-```bash
-gpd paper-build "{paper_dir}/PAPER-CONFIG.json" --output-dir "{paper_dir}"
-```
-
-```bash
-cd {paper_dir} && pdflatex -interaction=nonstopmode main.tex 2>&1 | tail -20
-bibtex main 2>&1 | tail -10
-pdflatex -interaction=nonstopmode main.tex 2>&1 | tail -5
-pdflatex -interaction=nonstopmode main.tex 2>&1 | tail -5
-```
-
-Check for:
-- Undefined references
-- Missing citations
-- Overfull hboxes (warnings, not errors)
-- Missing figures
-
-## 3. Flatten for arXiv
-
-**3a. Flatten \input and \include:**
-
-```bash
-# Recursive resolution of \input{file} and \include{file}
-# For each \input{X} or \include{X}:
-#   1. Resolve path (try X, X.tex)
-#   2. Read file contents
-#   3. Replace the \input/\include line with file contents
-#   4. Recurse into the inserted content for nested \input
-# WARNING: \include adds \clearpage — preserve this behavior
-```
-
-**3b. Inline bibliography:**
-
-```bash
-# Find \bibliography{refs} command
-# Replace with contents of refs.bbl (must exist from compilation step)
-# Remove \bibliographystyle{} line
-# Verify: grep for remaining \bibliography commands
-```
-
-**3c. Figure format validation:**
-
-```bash
-# Check each file in \includegraphics:
-# - No TIFF files (arXiv rejects)
-# - EPS files: verify embedded fonts
-# - PNG/JPG: minimum 150 DPI for figures, 300 DPI for text
-# - PDF figures: add \pdfoutput=1 to first line of main.tex
-```
-
-**3d. Metadata checks:**
-
-```bash
-# Abstract length: extract abstract, count characters. Warn if > 1920
-# Title: verify no LaTeX commands in title (arXiv metadata field)
-# File size: total package < 50MB, individual files < 10MB
-# \pdfoutput=1: verify present on first line if using PDF figures
-```
-
-**3e. Ancillary files:**
-
-```bash
-# If computational scripts exist: create anc/ directory
-# Move: scripts, data files, notebooks
-# Add anc/README.md with execution instructions
-```
-
-**3f. Clean auxiliary files:**
-
-- Remove auxiliary files (.aux, .log, .out, .toc, .blg, .brf, .synctex.gz)
-
-## 4. Generate Metadata
-
-Create `00README.XXX` if multi-file:
-
-```
-main.tex       -- Main LaTeX file
-figures/       -- Figure files
-```
-
-## 5. Package
-
-```bash
-mkdir -p arxiv-submission/
-# Copy flattened files
-tar czf arxiv-submission.tar.gz -C arxiv-submission .
-```
-
-## 6. Checklist
-
-Present submission checklist:
-
-```
-## arXiv Submission Ready
-
-**Package:** arxiv-submission.tar.gz ({size})
-**Files:** {count} files
-
-### Pre-submission Checklist
-- [ ] Paper compiles without errors
-- [ ] All figures render correctly
-- [ ] Bibliography is complete (.bbl included)
-- [ ] Abstract is under 1920 characters
-- [ ] Title contains no LaTeX commands
-- [ ] Author list is correct
-- [ ] arXiv category selected (e.g., hep-th, cond-mat.str-el)
-- [ ] License selected (typically CC BY 4.0)
-
-### Manual Steps
-1. Go to https://arxiv.org/submit
-2. Upload arxiv-submission.tar.gz
-3. Verify PDF renders correctly in preview
-4. Add metadata (title, abstract, authors, categories)
-5. Submit
-```
-
+Follow the included arxiv-submission bootstrap authority exactly. Later stage loading is manifest-owned; do not use the root workflow index as active authority.
 </process>
 
-<success_criteria>
 
-- [ ] Paper located and validated
-- [ ] LaTeX compiles without errors
-- [ ] Bibliography flattened to .bbl
-- [ ] Figures in arXiv-compatible formats
-- [ ] Submission tarball created (not committed — binary artifact)
-- [ ] Submission manifest committed
-- [ ] *.tar.gz added to .gitignore
-- [ ] Metadata file generated
-- [ ] Pre-submission checklist presented
-      </success_criteria>
+<success_criteria>
+- [ ] Workflow ran end to end
+- [ ] `GPD/publication/{subject_slug}/arxiv/arxiv-submission.tar.gz` was created
+- [ ] The submission checklist was presented
+- [ ] The resolved manuscript root and its build, reproducibility, and staged-review artifacts satisfied the workflow gates
+</success_criteria>

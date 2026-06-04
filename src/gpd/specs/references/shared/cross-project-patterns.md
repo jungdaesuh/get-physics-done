@@ -7,7 +7,7 @@ How the global pattern library works -- a persistent knowledge base of physics e
 
 A sign error caused by metric signature confusion in one QFT project is the same sign error in every QFT project. A convergence failure from naive lattice discretization in one condensed matter calculation will recur in the next. The cross-project pattern library captures these lessons so they are available before the error is made, not after.
 
-The library lives outside any single project at the resolved global pattern-library root: `GPD_PATTERNS_ROOT` -> `GPD_DATA_DIR/learned-patterns` -> `~/GPD/learned-patterns`.
+The library lives outside any single project at the resolved global pattern-library root: `GPD_PATTERNS_ROOT` -> `GPD_DATA_DIR/learned-patterns` -> `~/.gpd/learned-patterns`.
 </core_principle>
 
 <location>
@@ -15,7 +15,7 @@ The library lives outside any single project at the resolved global pattern-libr
 ## Storage Location
 
 ```text
-~/GPD/learned-patterns/
+${GPD_DATA_DIR:-~/.gpd}/learned-patterns/
   patterns-by-domain/
     qft/
     condensed-matter/
@@ -128,7 +128,7 @@ Different agents read patterns at different points in the workflow.
 
 ### Planner reads before creating plans
 
-During the `consult_learned_patterns` step of plan creation:
+During the `consult_learned_patterns` step of plan creation, the planner consults both the project-local ledgers (`GPD/INSIGHTS.md`, `GPD/ERROR-PATTERNS.md`, and `GPD/BACKTRACKS.md`) and the global pattern library:
 
 1. Read `index.json`
 2. Filter by domain tags matching the current project's domain (from `GPD/PROJECT.md`)
@@ -196,7 +196,7 @@ Patterns evolve through a confidence progression and can eventually be archived.
 
 ## Integration with Agents
 
-> **Status:** Agent definitions reference the global pattern library. gpd-planner reads top 5 patterns by severity during `consult_learned_patterns`. gpd-verifier checks domain-matching patterns during verification setup. gpd-executor reads critical/high patterns before starting work. gpd-debugger reads existing patterns before investigating and writes/updates patterns after confirming root causes. Agents also use project-local `GPD/INSIGHTS.md` and `GPD/ERROR-PATTERNS.md` for within-project pattern learning.
+> **Status:** Agent definitions reference the global pattern library. gpd-planner reads top 5 patterns by severity during `consult_learned_patterns`. gpd-verifier checks domain-matching patterns during verification setup. gpd-executor reads critical/high patterns before starting work. gpd-debugger reads existing patterns before investigating and writes/updates patterns after confirming root causes. Agents also use project-local `GPD/INSIGHTS.md`, `GPD/ERROR-PATTERNS.md`, and `GPD/BACKTRACKS.md` for within-project pattern learning.
 
 Each agent integrates with the pattern library at specific points in its workflow.
 
@@ -216,7 +216,7 @@ Each agent integrates with the pattern library at specific points in its workflo
 
 | Agent        | When                            | What it reads                  | What it does with patterns                                   |
 | ------------ | ------------------------------- | ------------------------------ | ------------------------------------------------------------ |
-| gpd-planner  | `consult_learned_patterns` step | Top 5 by relevance             | Adds prevention steps to plans, contract links, and acceptance-test guards |
+| gpd-planner  | `consult_learned_patterns` step | Top 5 by relevance + project-local INSIGHTS.md / ERROR-PATTERNS.md / BACKTRACKS.md | Adds prevention steps to plans, contract links, and acceptance-test guards |
 | gpd-executor | Before starting task execution  | All critical/high for domain   | Watches for trigger conditions during derivation             |
 | gpd-verifier | During verification setup       | All patterns matching domain   | Adds pattern-specific checks to verification report          |
 | gpd-debugger | After confirming root cause     | Existing patterns for matching | Writes new pattern or updates existing one                   |
@@ -250,7 +250,7 @@ The global pattern library and project-local `GPD/INSIGHTS.md` serve complementa
 | Aspect     | INSIGHTS.md                           | Global Pattern Library                            |
 | ---------- | ------------------------------------- | ------------------------------------------------- |
 | Scope      | Single project                        | All projects                                      |
-| Location   | `GPD/INSIGHTS.md`               | `~/GPD/learned-patterns/` |
+| Location   | `GPD/INSIGHTS.md`               | `GPD_PATTERNS_ROOT` or `${GPD_DATA_DIR:-~/.gpd}/learned-patterns/` |
 | Content    | Project-specific findings and lessons | Generalized error patterns and prevention methods |
 | Lifetime   | Lives with the project                | Persists indefinitely                             |
 | Written by | Debugger, executor                    | Debugger, verifier                                |
@@ -268,7 +268,7 @@ When the pattern library does not yet exist (first GPD session on a machine):
 
 1. Agents that attempt to read `index.json` and find it missing should create the directory structure:
    ```
-   mkdir -p ~/GPD/learned-patterns/patterns-by-domain/{qft,condensed-matter,stat-mech,gr,amo,nuclear,classical,fluid,plasma,astro,mathematical,soft-matter,quantum-info}
+   mkdir -p "${GPD_DATA_DIR:-$HOME/.gpd}/learned-patterns/patterns-by-domain/"{qft,condensed-matter,stat-mech,gr,amo,nuclear,classical,fluid,plasma,astro,mathematical,soft-matter,quantum-info}
    ```
 2. Create an empty `index.json`:
    ```json

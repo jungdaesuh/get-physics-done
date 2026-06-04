@@ -13,31 +13,33 @@ Template for machine-readable internal comparisons such as analytics vs numerics
 
 ```markdown
 ---
-comparison_kind: benchmark|prior_work|experiment|cross_method|baseline|other
+comparison_kind: cross_method
 comparison_sources:
   - label: theory
-    kind: derivation|simulation|summary|verification|artifact|other
+    kind: derivation
     path: GPD/phases/01-example/01-SUMMARY.md
   - label: benchmark
-    kind: summary|verification|artifact|reference|other
+    kind: summary
     path: GPD/phases/02-example/02-VERIFICATION.md
-protocol_bundle_ids (optional):
+protocol_bundle_ids:
   - bundle-id
-bundle_expectations (optional):
+bundle_expectations:
   - "[additive decisive-artifact, estimator, or benchmark expectation recorded for provenance]"
 comparison_verdicts:
   - subject_id: claim-id
-    subject_kind: claim|deliverable|acceptance_test|reference
-    subject_role: decisive|supporting|supplemental|other
+    subject_kind: claim
+    subject_role: decisive
     reference_id: ref-id
-    comparison_kind: benchmark|prior_work|experiment|cross_method|baseline|other
-    metric: relative_error|chi2_ndof|pull|consistency
+    comparison_kind: cross_method
+    metric: consistency
     threshold: "<= 0.01"
-    verdict: pass|tension|fail|inconclusive
+    verdict: pass
     recommended_action: "[what to do next]"
 ---
 
 # Internal Comparison: [Short Title]
+
+If no selected protocol bundle materially informed the comparison, omit `protocol_bundle_ids` and `bundle_expectations` entirely.
 
 ## What Is Being Compared
 

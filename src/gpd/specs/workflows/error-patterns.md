@@ -20,12 +20,12 @@ test -f GPD/ERROR-PATTERNS.md && echo "EXISTS" || echo "MISSING"
 ```
 No error patterns recorded yet.
 
-Error patterns are captured by /gpd:debug when root causes are confirmed.
+Error patterns are captured by gpd:debug when root causes are confirmed.
 They help the verifier and planner proactively check for recurring issues.
 
 ---
 
-Start a debugging session with /gpd:debug to begin building the pattern database.
+Start a debugging session with gpd:debug to begin building the pattern database.
 ```
 
 Exit.
@@ -42,27 +42,18 @@ Parse the patterns table. Each row contains:
 <step name="filter_if_requested">
 **If $ARGUMENTS provided (category filter):**
 
-Normalize the category argument to match known categories:
+Normalize the category argument by trimming whitespace and lowercasing it. Accept only the live pattern-library categories:
 
-| Input           | Matches       |
-| --------------- | ------------- |
-| `sign`          | sign          |
-| `factor`        | factor        |
-| `convention`    | convention    |
-| `numerical`     | numerical     |
-| `approximation` | approximation |
-| `boundary`      | boundary      |
-| `gauge`         | gauge         |
-| `combinatorial` | combinatorial |
+`sign-error`, `factor-error`, `convention-pitfall`, `convergence-issue`, `approximation-failure`, `numerical-instability`, `conceptual-error`, `dimensional-error`
 
 **If category not recognized:**
 
 ```
 Unknown category: "{input}"
 
-Available categories: sign, factor, convention, numerical, approximation, boundary, gauge, combinatorial
+Available categories: sign-error, factor-error, convention-pitfall, convergence-issue, approximation-failure, numerical-instability, conceptual-error, dimensional-error
 
-Usage: /gpd:error-patterns [category]
+Usage: gpd:error-patterns [category]
 ```
 
 Exit.
@@ -84,7 +75,7 @@ Filter the patterns table to show only rows matching the category.
 
 ---
 
-Showing {N} of {total} patterns. Run `/gpd:error-patterns` to see all.
+Showing {N} of {total} patterns. Run `gpd:error-patterns` to see all.
 ```
 
 </step>
@@ -101,9 +92,9 @@ Showing {N} of {total} patterns. Run `/gpd:error-patterns` to see all.
 
 | Category | Count | Most Recent |
 |----------|-------|-------------|
-| sign | {N} | {date} |
-| factor | {N} | {date} |
-| convention | {N} | {date} |
+| sign-error | {N} | {date} |
+| factor-error | {N} | {date} |
+| convention-pitfall | {N} | {date} |
 {... for each category with entries}
 
 ## All Patterns
@@ -114,7 +105,7 @@ Showing {N} of {total} patterns. Run `/gpd:error-patterns` to see all.
 
 ---
 
-{total} patterns recorded. Filter by category: `/gpd:error-patterns sign`
+{total} patterns recorded. Filter by category: `gpd:error-patterns sign-error`
 ```
 
 </step>
@@ -126,9 +117,9 @@ Present available actions:
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:error-patterns <category>` -- filter by category
-- `/gpd:debug` -- start a debugging session (records new patterns)
-- `/gpd:verify-work` -- run verification (checks against known patterns)
+- `gpd:error-patterns <category>` -- filter by category
+- `gpd:debug` -- start a debugging session (records new patterns)
+- `gpd:verify-work` -- run verification (checks against known patterns)
 - `gpd pattern search "<keyword>"` -- search global cross-project pattern library
 - `gpd pattern list` -- list all global patterns (from all projects)
 

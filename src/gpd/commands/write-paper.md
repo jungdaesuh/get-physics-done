@@ -1,34 +1,99 @@
 ---
 name: gpd:write-paper
-description: Structure and write a physics paper from research results
-argument-hint: "[paper title or topic] [--from-phases 1,2,3]"
-context_mode: project-required
+description: Structure and write a physics paper from project research results or a bounded external-authoring intake
+argument-hint: "[--intake path/to/write-paper-authoring-input.json]"
+context_mode: project-aware
+command-policy:
+  schema_version: 1
+  subject_policy:
+    subject_kind: publication
+    resolution_mode: project_manuscript_or_bootstrap
+    explicit_input_kinds:
+      - authoring_intake_manifest
+    allow_external_subjects: false
+    allow_interactive_without_subject: false
+    supported_roots:
+      - paper
+      - manuscript
+      - draft
+    bootstrap_allowed: true
+  supporting_context_policy:
+    project_context_mode: project-aware
+    project_reentry_mode: disallowed
+  output_policy:
+    output_mode: manuscript_local_plus_gpd_auxiliary
+    managed_root_kind: gpd_managed_durable
+    default_output_subtree: GPD/publication/{subject_slug}/manuscript
+    stage_artifact_policy: allowed
 review-contract:
   review_mode: publication
   schema_version: 1
   required_outputs:
-    - paper/main.tex
+    - "${PAPER_DIR}/{topic_specific_stem}.tex"
+    - "${PAPER_DIR}/PAPER-CONFIG.json"
+    - "${PAPER_DIR}/ARTIFACT-MANIFEST.json"
+    - "${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json"
+    - "${PAPER_DIR}/reproducibility-manifest.json"
+    - "GPD/review/REVIEW-LEDGER{round_suffix}.json"
+    - "GPD/review/REFEREE-DECISION{round_suffix}.json"
     - "GPD/REFEREE-REPORT{round_suffix}.md"
     - "GPD/REFEREE-REPORT{round_suffix}.tex"
   required_evidence:
-    - manuscript scaffold target (existing draft or bootstrap target)
-    - phase summaries or milestone digest
-    - verification reports
-    - bibliography audit
-    - artifact manifest
-    - reproducibility manifest
+    - "project-backed lane: research artifacts and verification reports"
+    - "external-authoring lane: explicit `--intake` manifest with claim-to-evidence bindings"
+    - bibliography / citation-source input
   blocking_conditions:
-    - missing project state
-    - missing roadmap
-    - missing conventions
-    - no research artifacts
+    - missing project state for project-backed runs
+    - missing roadmap for project-backed runs
+    - missing conventions for project-backed runs without explicit intake conventions
+    - no research artifacts for project-backed runs
+    - missing or incomplete explicit `--intake` manifest for external-authoring runs
+    - claim without explicit evidence binding in the external-authoring intake
     - degraded review integrity
   preflight_checks:
+    - command_context
     - project_state
     - roadmap
     - conventions
     - research_artifacts
+    - verification_reports
     - manuscript
+    - artifact_manifest
+    - bibliography_audit
+    - bibliography_audit_clean
+    - reproducibility_manifest
+    - reproducibility_ready
+    - manuscript_proof_review
+  scope_variants:
+    - scope: explicit_intake_manifest
+      activation: validated explicit external authoring intake manifest was supplied outside a project
+      relaxed_preflight_checks:
+        - project_state
+        - roadmap
+        - conventions
+        - research_artifacts
+        - verification_reports
+        - manuscript_proof_review
+      optional_preflight_checks:
+        - artifact_manifest
+        - bibliography_audit
+        - bibliography_audit_clean
+        - reproducibility_manifest
+        - reproducibility_ready
+      required_outputs_override:
+        - "${PAPER_DIR}/{topic_specific_stem}.tex"
+        - "${PAPER_DIR}/PAPER-CONFIG.json"
+        - "${PAPER_DIR}/ARTIFACT-MANIFEST.json"
+        - "${PAPER_DIR}/BIBLIOGRAPHY-AUDIT.json"
+        - "${PAPER_DIR}/reproducibility-manifest.json"
+      required_evidence_override:
+        - validated external authoring intake manifest with explicit claim-to-evidence bindings
+      blocking_conditions_override:
+        - invalid or incomplete external authoring intake manifest
+  conditional_requirements:
+    - when: theorem-bearing claims are present
+      required_outputs:
+        - "GPD/review/PROOF-REDTEAM{round_suffix}.md"
 allowed-tools:
   - file_read
   - file_write
@@ -39,106 +104,55 @@ allowed-tools:
   - task
   - web_search
   - ask_user
+help:
+  group: Writing and publication
+  order: 450
+  compact_description: Draft a paper from current project results or one explicit external-authoring intake manifest into the resolved manuscript lane
+  display_signature: gpd:write-paper [--intake path/to/write-paper-authoring-input.json]
+  examples:
+    - gpd:write-paper
+    - gpd:write-paper --intake intake/write-paper-authoring-input.json
+  notes:
+    - Uses a bounded external-authoring lane driven by an explicit intake manifest only.
+    - GPD-authored outputs live under `GPD/publication/{subject_slug}/...`; `GPD/publication/{subject_slug}/intake/` stores intake/provenance state only.
+    - It does not mine arbitrary folders, and embedded external staged-review parity is out of scope.
+    - Project-backed review/response/package outputs remain in the resolved GPD manuscript lane.
+  root_detail_order: 260
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
-Structure and write a physics paper from completed research results. Handles the full pipeline from research digest through polished draft: paper-readiness audit, scope and outline, figure generation, wave-parallelized section drafting, notation audit, bibliography verification, staged pre-submission peer review, and revision handling.
+Structure and write a physics paper from completed research results or a bounded explicit external-authoring intake.
 
-**Orchestrator role:** Establish paper scope and structure, spawn gpd-paper-writer agents for section drafting (wave-parallelized), gpd-bibliographer for citation verification, run the staged peer-review panel (`gpd-review-reader`, `gpd-review-literature`, `gpd-review-math`, `gpd-review-physics`, `gpd-review-significance`, then `gpd-referee` as final adjudicator), coordinate revisions, ensure internal consistency.
+Keep the wrapper thin and let the workflow own the full pipeline.
 
-**Why subagent:** Paper writing requires holding the full research context while drafting coherent prose. Each section needs access to derivations, numerical results, and literature context. Fresh 200k context per section ensures quality. Main context coordinates the overall structure.
-
-Writing a physics paper is not writing a report. A paper has a narrative arc: it poses a question, develops the tools to answer it, presents the answer, and explains why the answer matters. Every equation must earn its place. Every figure must make a point. Every paragraph must advance the argument.
-
-Routes to the write-paper workflow which handles all logic including:
-
-1. Research digest loading (from milestone completion) with digest-to-paper section mapping
-2. Paper-readiness audit (SUMMARY completeness, convention consistency, numerical stability, figure readiness, citation readiness) with gate decision
-3. Scope establishment, artifact cataloging, and outline creation
-4. Figure generation before section drafting
-5. Wave-parallelized section drafting (Wave 1: Results+Methods, Wave 2: Introduction, Wave 3: Discussion, Wave 4: Conclusions, Wave 5: Abstract, Wave 6: Appendices)
-6. LaTeX compilation checks after each wave (if pdflatex available; cross-platform detection including Windows MiKTeX/TeX Live)
-7. Consistency check, notation audit, and RESULT PENDING placeholder resolution
-8. Bibliography verification via gpd-bibliographer
-9. Pre-submission staged peer review via specialist panel plus final gpd-referee adjudication
-10. Bounded revision loop (max 3 iterations) for addressing referee issues
+**Why subagent:** Publication drafting and review coordination burn context fast.
 </objective>
 
 <execution_context>
-@{GPD_INSTALL_DIR}/workflows/write-paper.md
-@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md
-@{GPD_INSTALL_DIR}/templates/paper/figure-tracker.md
-@{GPD_INSTALL_DIR}/templates/paper/reproducibility-manifest.md
+@{GPD_INSTALL_DIR}/workflows/write-paper/paper-bootstrap.md
 </execution_context>
 
 <context>
-Paper topic: $ARGUMENTS
+Project manuscript context or intake: $ARGUMENTS
 
-Check for existing drafts:
-
-```bash
-ls paper/ manuscript/ draft/ 2>/dev/null
-ls GPD/paper/*.md 2>/dev/null
-find . -name "*.tex" -maxdepth 2 2>/dev/null | head -10
-```
-
-Load research context:
-
-```bash
-cat GPD/ROADMAP.md 2>/dev/null
-ls GPD/phases/*/*SUMMARY.md 2>/dev/null
-cat GPD/research-map/FORMALISM.md 2>/dev/null
-```
-
+Use only the two frontmatter-authorized lanes: project-backed authoring, or the
+explicit `--intake path/to/write-paper-authoring-input.json` external-authoring
+manifest. External authoring is fail-closed: no workspace mining,
+positional-folder discovery, or `PAPER-CONFIG.json` as intake. Boundary
+reference: `{GPD_INSTALL_DIR}/references/publication/publication-pipeline-modes.md`.
+Stage 1 owns validation, manuscript-root binding, and durable
+`GPD/publication/{subject_slug}/...` routing; `.../intake/` is provenance only.
 </context>
 
 <process>
-**Follow the write-paper workflow** from `@{GPD_INSTALL_DIR}/workflows/write-paper.md`.
-
-When the workflow asks for constrained artifacts such as `${PAPER_DIR}/PAPER-CONFIG.json`, `GPD/paper/FIGURE_TRACKER.md`, or `${PAPER_DIR}/reproducibility-manifest.json`, use the canonical schema/template surfaces it loads there rather than inventing keys from memory.
-
-The workflow handles all logic including:
-
-1. **Init** — Load project context via `gpd init phase-op`, check pdflatex availability (cross-platform, including Windows MiKTeX/TeX Live), verify conventions
-2. **Load research digest** — Check for RESEARCH-DIGEST.md from milestone completion; map digest sections to paper structure; fall back to raw phase data if no digest found. Supports `--from-phases` flag to select specific phases.
-3. **Establish scope** — Target journal, paper type, key result (ONE sentence), audience, available artifacts
-4. **Catalog artifacts** — Gather derivations, numerical results, figures, literature, verification results from phases
-5. **Paper-readiness audit** — 5 checks (SUMMARY completeness, convention consistency, numerical stability, figure readiness, citation readiness) with gate decision (0 critical gaps to proceed, or user approval)
-6. **Create outline** — Detailed per-section outline (purpose, key content, equations, figures, citations, dependencies) adapted to journal format. Present for approval.
-7. **Generate files** — Create `${PAPER_DIR}/PAPER-CONFIG.json` using `@{GPD_INSTALL_DIR}/templates/paper/paper-config-schema.md`, then materialize the canonical manuscript scaffold with `gpd paper-build` (emits `${PAPER_DIR}/main.tex`, bibliography artifacts, and `${PAPER_DIR}/ARTIFACT-MANIFEST.json`)
-8. **Generate figures** — Generate matplotlib scripts from phase data, execute to `${PAPER_DIR}/figures/`, update FIGURE_TRACKER.md
-9. **Draft sections** — Wave-parallelized spawning of gpd-paper-writer agents:
-   - Wave 1: Results + Methods (no dependency)
-   - Wave 2: Introduction (depends on Results)
-   - Wave 3: Discussion (depends on Results + Methods)
-   - Wave 4: Conclusions
-   - Wave 5: Abstract (write LAST)
-   - Wave 6: Appendices
-   - LaTeX compilation check after each wave (if pdflatex available; Windows users: install MiKTeX or TeX Live)
-   - Per-wave checkpointing: skip waves whose .tex outputs already exist
-10. **Consistency check** — Notation audit, cross-reference audit, placeholder resolution (RESULT PENDING markers), physics consistency, narrative flow
-11. **Notation audit** — Cross-reference all symbols against NOTATION_GLOSSARY.md (if exists)
-12. **Verify references** — Spawn gpd-bibliographer to verify all citations against INSPIRE/ADS/arXiv, detect orphans, check formatting
-13. **Pre-submission review** — Run the same staged peer-review panel used by `/gpd:peer-review`
-14. **Final review** — Abstract standalone check, equation proofread, figure references, word/page count
-15. **Paper revision** — Bounded revision loop (max 3 iterations) for addressing referee issues; spawns paper-writer agents for targeted section fixes
-
-For a standalone rerun of the referee stage after the manuscript already exists, use `/gpd:peer-review`.
+Follow the included first-stage authority exactly. Later stage loading is
+manifest-owned. The root workflow index is only a staged-file map.
 </process>
 
 <success_criteria>
-- [ ] Project context loaded and research artifacts cataloged
-- [ ] Paper-readiness audit passed (0 critical gaps or user approved)
-- [ ] Paper scope established (journal, type, key result, audience)
-- [ ] Detailed outline created and approved
-- [ ] All sections drafted by gpd-paper-writer agents (Results first, Abstract last)
-- [ ] Every equation numbered, defined, and contextualized
-- [ ] Every figure captioned and discussed in text
-- [ ] Citations verified via gpd-bibliographer (no hallucinated references)
-- [ ] Pre-submission staged peer review completed with final gpd-referee adjudication
-- [ ] Internal consistency verified (notation, cross-references, conventions)
-- [ ] Paper directory created with buildable LaTeX structure
+- [ ] Workflow completed or returned a typed Stage 1 blocker
+- [ ] Review-contract outputs and evidence are satisfied for the active scope
+- [ ] External-authoring runs produced manuscript-root artifacts and routed review to standalone `gpd:peer-review`
+- [ ] Theorem-bearing manuscripts retain the proof-redteam gate
 </success_criteria>

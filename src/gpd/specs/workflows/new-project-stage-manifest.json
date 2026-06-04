@@ -1,0 +1,499 @@
+{
+  "schema_version": 1,
+  "workflow_id": "new-project",
+  "required_init_field_groups": {
+    "runtime_mode": [
+      "commit_docs",
+      "autonomy",
+      "research_mode"
+    ],
+    "startup_probe": [
+      "project_exists",
+      "state_exists",
+      "roadmap_exists",
+      "recoverable_project_exists",
+      "partial_project_exists",
+      "project_recovery_status",
+      "init_progress_exists",
+      "init_progress_status",
+      "init_progress_valid",
+      "init_progress_corrupt",
+      "init_progress_step",
+      "init_progress_description",
+      "init_progress_path",
+      "has_research_map",
+      "planning_exists",
+      "has_research_files",
+      "research_file_samples",
+      "has_project_manifest",
+      "needs_research_map"
+    ],
+    "git_platform": [
+      "has_git",
+      "platform"
+    ],
+    "contract_gate_status": [
+      "project_contract",
+      "project_contract_gate",
+      "project_contract_load_info",
+      "project_contract_validation"
+    ],
+    "approved_contract_gate": [
+      "project_contract_gate"
+    ],
+    "literature_models": [
+      "researcher_model",
+      "synthesizer_model"
+    ],
+    "roadmap_model": [
+      "roadmapper_model"
+    ],
+    "platform_context": [
+      "platform"
+    ]
+  },
+  "authority_groups": {
+    "new_project_contract_templates": [
+      "references/shared/canonical-schema-discipline.md",
+      "templates/project.md",
+      "templates/requirements.md",
+      "templates/state.md",
+      "templates/project-contract-grounding-linkage.md",
+      "templates/project-contract-schema.md"
+    ],
+    "new_project_ui_brand": [
+      "references/ui/ui-brand.md"
+    ]
+  },
+  "stage_defaults": {
+    "allowed_tools": [
+      "file_read",
+      "shell",
+      "file_write",
+      "task",
+      "ask_user"
+    ],
+    "conditional_authorities": [],
+    "writes_allowed": []
+  },
+  "stages": [
+    {
+      "id": "scope_intake",
+      "order": 1,
+      "purpose": "startup routing, lean scoping intake, and continuation detection",
+      "mode_paths": [
+        "workflows/new-project/scope-intake.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "startup_probe",
+        "git_platform",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/scope-intake.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "full_questioning_path",
+          "authorities": [
+            "references/research/questioning.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/scope-approval.md",
+        "references/research/questioning.md",
+        "references/ui/ui-brand.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_contract_templates"
+      ],
+      "allowed_tools": [
+        "file_read",
+        "ask_user",
+        "shell"
+      ],
+      "writes_allowed": [],
+      "produced_state": [
+        "intake routing state",
+        "scoping-contract gate state"
+      ],
+      "next_stages": [
+        "scope_approval"
+      ],
+      "checkpoints": [
+        "detect existing workspace state",
+        "surface the first scoping question",
+        "preserve contract gate visibility without assuming approval-stage authority"
+      ]
+    },
+    {
+      "id": "scope_approval",
+      "order": 2,
+      "purpose": "scoping contract approval and approval-state persistence",
+      "mode_paths": [
+        "workflows/new-project/scope-approval.md"
+      ],
+      "required_init_field_groups": [
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/scope-approval.md"
+      ],
+      "conditional_authorities": [
+        {
+          "when": "contract_schema_validation_or_linkage_repair",
+          "authorities": [
+            "templates/project-contract-schema.md",
+            "templates/project-contract-grounding-linkage.md",
+            "references/shared/canonical-schema-discipline.md"
+          ]
+        }
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "references/research/questioning.md",
+        "references/ui/ui-brand.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_contract_templates"
+      ],
+      "writes_allowed": [
+        "GPD/state.json",
+        "GPD/STATE.md",
+        "GPD/state.json.bak",
+        "GPD/state.json.lock"
+      ],
+      "produced_state": [
+        "approved project contract",
+        "approval-state persistence"
+      ],
+      "next_stages": [
+        "minimal_artifacts",
+        "workflow_preferences"
+      ],
+      "checkpoints": [
+        "approval gate has passed",
+        "project contract is ready for persistence"
+      ]
+    },
+    {
+      "id": "minimal_artifacts",
+      "order": 3,
+      "purpose": "minimal-mode core project artifacts after approved scope persistence",
+      "mode_paths": [
+        "workflows/new-project/minimal-artifacts.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "git_platform",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/minimal-artifacts.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/literature-survey.md",
+        "workflows/new-project/roadmap-authoring.md",
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/PROJECT.md",
+        "GPD/config.json",
+        "GPD/REQUIREMENTS.md",
+        "GPD/ROADMAP.md",
+        "GPD/STATE.md",
+        "GPD/state.json",
+        "GPD/state.json.bak",
+        "GPD/state.json.lock"
+      ],
+      "produced_state": [
+        "minimal project artifacts",
+        "approved project contract reflected in state"
+      ],
+      "next_stages": [
+        "completion"
+      ],
+      "checkpoints": [
+        "approved scope is persisted",
+        "minimal artifact set is ready"
+      ]
+    },
+    {
+      "id": "workflow_preferences",
+      "order": 4,
+      "purpose": "full-mode workflow preference selection before project artifact authoring",
+      "mode_paths": [
+        "workflows/new-project/workflow-preferences.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "git_platform",
+        "approved_contract_gate"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/workflow-preferences.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/literature-survey.md",
+        "workflows/new-project/roadmap-authoring.md",
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/config.json"
+      ],
+      "produced_state": [
+        "workflow preferences"
+      ],
+      "next_stages": [
+        "project_artifacts"
+      ],
+      "checkpoints": [
+        "approved scope is persisted",
+        "workflow preferences are ready for project artifact authoring"
+      ]
+    },
+    {
+      "id": "project_artifacts",
+      "order": 5,
+      "purpose": "full-mode project context artifact authoring",
+      "mode_paths": [
+        "workflows/new-project/project-artifacts.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "git_platform",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/project-artifacts.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/roadmap-authoring.md",
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/PROJECT.md",
+        "GPD/state.json",
+        "GPD/state.json.bak",
+        "GPD/state.json.lock",
+        "GPD/init-progress.json"
+      ],
+      "produced_state": [
+        "project context artifact"
+      ],
+      "next_stages": [
+        "literature_survey"
+      ],
+      "checkpoints": [
+        "project context is ready",
+        "survey decision stage can load next"
+      ]
+    },
+    {
+      "id": "literature_survey",
+      "order": 6,
+      "purpose": "optional full-mode literature survey and synthesis before requirements",
+      "mode_paths": [
+        "workflows/new-project/literature-survey.md"
+      ],
+      "required_init_field_groups": [
+        "literature_models",
+        "runtime_mode",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/literature-survey.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/roadmap-authoring.md",
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/literature/PRIOR-WORK.md",
+        "GPD/literature/METHODS.md",
+        "GPD/literature/COMPUTATIONAL.md",
+        "GPD/literature/PITFALLS.md",
+        "GPD/literature/SUMMARY.md",
+        "GPD/init-progress.json"
+      ],
+      "produced_state": [
+        "literature survey decision",
+        "literature survey artifacts when selected"
+      ],
+      "next_stages": [
+        "requirements_authoring"
+      ],
+      "checkpoints": [
+        "survey is completed or explicitly skipped",
+        "requirements authoring can load next"
+      ]
+    },
+    {
+      "id": "requirements_authoring",
+      "order": 7,
+      "purpose": "requirements artifact authoring from the approved scope and available context",
+      "mode_paths": [
+        "workflows/new-project/requirements-authoring.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/requirements-authoring.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/roadmap-authoring.md",
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/REQUIREMENTS.md",
+        "GPD/init-progress.json"
+      ],
+      "produced_state": [
+        "requirements artifact"
+      ],
+      "next_stages": [
+        "roadmap_authoring"
+      ],
+      "checkpoints": [
+        "requirements are authored",
+        "roadmap authoring can load next"
+      ]
+    },
+    {
+      "id": "roadmap_authoring",
+      "order": 8,
+      "purpose": "roadmap handoff and roadmap/state artifact updates after requirements",
+      "mode_paths": [
+        "workflows/new-project/roadmap-authoring.md"
+      ],
+      "required_init_field_groups": [
+        "roadmap_model",
+        "runtime_mode",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/roadmap-authoring.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md",
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/ROADMAP.md",
+        "GPD/STATE.md",
+        "GPD/state.json",
+        "GPD/state.json.bak",
+        "GPD/state.json.lock",
+        "GPD/init-progress.json"
+      ],
+      "produced_state": [
+        "roadmap artifact",
+        "roadmap-backed state updates"
+      ],
+      "next_stages": [
+        "conventions_handoff"
+      ],
+      "checkpoints": [
+        "roadmap is authored",
+        "conventions handoff can load next"
+      ]
+    },
+    {
+      "id": "conventions_handoff",
+      "order": 9,
+      "purpose": "notation and convention handoff after roadmap completion",
+      "mode_paths": [
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/conventions-handoff.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md"
+      ],
+      "must_not_eager_load_groups": [
+        "new_project_ui_brand"
+      ],
+      "writes_allowed": [
+        "GPD/CONVENTIONS.md",
+        "GPD/state.json",
+        "GPD/state.json.bak",
+        "GPD/state.json.lock",
+        "GPD/init-progress.json"
+      ],
+      "produced_state": [
+        "conventions handoff",
+        "convention lock updates"
+      ],
+      "next_stages": [
+        "completion"
+      ],
+      "checkpoints": [
+        "conventions handoff is complete",
+        "completion can load next"
+      ]
+    },
+    {
+      "id": "completion",
+      "order": 10,
+      "purpose": "final cleanup and next-step display after project initialization",
+      "mode_paths": [
+        "workflows/new-project/completion.md"
+      ],
+      "required_init_field_groups": [
+        "runtime_mode",
+        "platform_context",
+        "contract_gate_status"
+      ],
+      "loaded_authorities": [
+        "workflows/new-project/completion.md"
+      ],
+      "must_not_eager_load": [
+        "workflows/new-project.md"
+      ],
+      "writes_allowed": [
+        "GPD/init-progress.json"
+      ],
+      "produced_state": [
+        "final project initialization closeout"
+      ],
+      "next_stages": [],
+      "checkpoints": [
+        "initialization is complete",
+        "next step is ready to display"
+      ]
+    }
+  ]
+}

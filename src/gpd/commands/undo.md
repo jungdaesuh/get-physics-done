@@ -7,10 +7,13 @@ allowed-tools:
   - shell
   - search_files
   - find_files
+help:
+  group: Configuration and maintenance
+  order: 700
+  compact_description: Roll back the last GPD operation with a safety checkpoint
+  display_signature: gpd:undo
 ---
 
-<!-- Tool names and @ includes are platform-specific. The installer translates paths for your runtime. -->
-<!-- Allowed-tools are runtime-specific. Other platforms may use different tool interfaces. -->
 
 <objective>
 Safely rollback the last GPD-related git commit. Creates a safety checkpoint tag before reverting so the operation itself is reversible.
@@ -27,45 +30,21 @@ Use this when a plan, execution, or verification produced incorrect results and 
 </context>
 
 <process>
-If `--dry-run` flag is present, show the commit that would be reverted and files affected, without actually reverting.
+This wrapper runs the undo workflow directly. Any stopping points come from the workflow's own safety gates and confirmation steps.
 
-Execute the undo workflow from @{GPD_INSTALL_DIR}/workflows/undo.md end-to-end.
+Execute the included undo workflow end-to-end.
 Preserve all safety gates and confirmation steps.
+The workflow owns commit selection, impact preview, confirmation, checkpointing, revert behavior, state repair, and merge-commit rejection.
 
-## Step 1: Find Last GPD Commit
-
-Search recent git log for commits with GPD message patterns: `docs(gpd):`, `fix(gpd):`, `feat(gpd):`, `chore(gpd):`, `test(gpd):`, or any commit with `(phase-NN):` scope, plus `undo:` prefixes.
-
-## Step 2: Show What Would Be Undone
-
-Display the commit message, changed files, and diff summary.
-
-## Step 3: Confirm
-
-Ask user for confirmation before proceeding.
-
-## Step 4: Create Safety Checkpoint
-
-Tag the current state so the undo itself can be reversed.
-
-## Step 5: Revert
-
-Use `git revert --no-commit` followed by a commit with "undo: revert [original message]".
-
-## Step 6: Update STATE.md
-
-If the reverted commit affected STATE.md, update it to reflect the rollback.
+After the workflow completes its revert, preserve its record-backtrack offer: Enter = Y invokes the runtime-installed `gpd:record-backtrack` command with structured runtime arguments for `reverted_commit`, `trigger`, and inferable `phase`. The child workflow still collects remaining required row fields before append. `n` skips; `e` opens the form in-place for freeform edits.
+Preserve the `[Y/n/e]` prompt shape.
 
 **SAFETY:** Never undo merge commits. Never force-push. Always create checkpoint first.
 </process>
 
 <success_criteria>
 
-- [ ] Last GPD commit identified correctly
-- [ ] User shown what will be undone
-- [ ] User confirmed before any changes
-- [ ] Safety checkpoint tag created
-- [ ] Clean revert (no force operations)
-- [ ] STATE.md updated if affected
-- [ ] Merge commits rejected with explanation
-      </success_criteria>
+- [ ] Undo workflow executed as the authority for rollback mechanics
+- [ ] Workflow-owned safety gates and confirmation steps preserved
+- [ ] Record-backtrack child command described with structured runtime arguments
+</success_criteria>

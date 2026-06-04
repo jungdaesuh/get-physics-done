@@ -9,13 +9,11 @@ Usage:
     gpd-mcp-patterns
 """
 
-import logging
-import sys
 from pathlib import Path
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import WithJsonSchema
+from pydantic import Field, WithJsonSchema
 
 from gpd.core.errors import PatternError
 from gpd.core.observability import gpd_span
@@ -30,15 +28,24 @@ from gpd.core.patterns import (
     pattern_seed,
     patterns_root,
 )
-from gpd.mcp.servers import stable_mcp_error, stable_mcp_response
+from gpd.mcp.servers import (
+    configure_mcp_logging,
+    mutating_tool_annotations,
+    read_only_tool_annotations,
+    stable_mcp_error,
+    stable_mcp_response,
+    tighten_registered_tool_contracts,
+)
 
-logging.basicConfig(stream=sys.stderr, level=logging.INFO, format="%(name)s %(levelname)s: %(message)s")
-logger = logging.getLogger("gpd-patterns")
+logger = configure_mcp_logging("gpd-patterns")
 
 mcp = FastMCP("gpd-patterns")
 
-# Default patterns library root — used when GPD_PATTERNS_ROOT / GPD_DATA_DIR
-# env vars are not set. Falls back to the global ~/.gpd data directory.
+_PATTERN_MUTATION_TOOL_ANNOTATIONS = mutating_tool_annotations(destructive=False, idempotent=False)
+_PATTERN_SEED_TOOL_ANNOTATIONS = mutating_tool_annotations(destructive=False, idempotent=True)
+
+# Explicit override for tests or embedded callers. When unset, resolve the root
+# for each request so env changes do not leak across long-lived server processes.
 _DEFAULT_PATTERNS_ROOT: Path | None = None
 
 _PATTERN_DOMAIN_VALUES = sorted(VALID_DOMAINS)
@@ -65,16 +72,27 @@ PatternSeverityInput = Annotated[
     str,
     WithJsonSchema({"type": "string", "enum": _PATTERN_SEVERITY_VALUES}),
 ]
+PatternTitleInput = Annotated[
+    str,
+    Field(min_length=1, pattern=r"[A-Za-z0-9]"),
+    WithJsonSchema(
+        {
+            "type": "string",
+            "minLength": 1,
+            "pattern": r"[A-Za-z0-9]",
+            "description": "Pattern title must contain at least one ASCII letter or digit so it can produce a slug.",
+        }
+    ),
+]
 
 
 def _get_patterns_root() -> Path:
-    global _DEFAULT_PATTERNS_ROOT
-    if _DEFAULT_PATTERNS_ROOT is None:
-        _DEFAULT_PATTERNS_ROOT = patterns_root()
-    return _DEFAULT_PATTERNS_ROOT
+    if _DEFAULT_PATTERNS_ROOT is not None:
+        return _DEFAULT_PATTERNS_ROOT
+    return patterns_root()
 
 
-@mcp.tool()
+@mcp.tool(annotations=read_only_tool_annotations())
 def lookup_pattern(
     domain: PatternOptionalDomainInput = None,
     category: PatternOptionalCategoryInput = None,
@@ -123,10 +141,10 @@ def lookup_pattern(
             return stable_mcp_error(exc)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_PATTERN_MUTATION_TOOL_ANNOTATIONS)
 def add_pattern(
     domain: PatternDomainInput,
-    title: str,
+    title: PatternTitleInput,
     category: PatternCategoryInput = "conceptual-error",
     severity: PatternSeverityInput = "medium",
     description: str = "",
@@ -172,7 +190,7 @@ def add_pattern(
             return stable_mcp_error(exc)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_PATTERN_MUTATION_TOOL_ANNOTATIONS)
 def promote_pattern(pattern_id: str) -> dict:
     """Promote a pattern's confidence level.
 
@@ -192,7 +210,7 @@ def promote_pattern(pattern_id: str) -> dict:
             return stable_mcp_error(exc)
 
 
-@mcp.tool()
+@mcp.tool(annotations=_PATTERN_SEED_TOOL_ANNOTATIONS)
 def seed_patterns() -> dict:
     """Initialize the pattern library with canonical physics patterns.
 
@@ -210,7 +228,7 @@ def seed_patterns() -> dict:
             return stable_mcp_error(exc)
 
 
-@mcp.tool()
+@mcp.tool(annotations=read_only_tool_annotations())
 def list_domains() -> dict:
     """List all available physics domains and error categories.
 
@@ -240,6 +258,9 @@ def main() -> None:
     from gpd.mcp.servers import run_mcp_server
 
     run_mcp_server(mcp, "GPD Patterns MCP Server")
+
+
+tighten_registered_tool_contracts(mcp)
 
 
 if __name__ == "__main__":

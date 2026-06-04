@@ -1,7 +1,7 @@
 <purpose>
 Archive historical entries from STATE.md to reduce its size. As research projects grow, STATE.md accumulates decisions, session records, metrics, and resolved blockers from many phases. This workflow archives old entries to STATE-ARCHIVE.md, keeping STATE.md lean and under the target line budget.
 
-Triggered automatically when progress.md detects STATE.md exceeds 1500 lines, or manually via `/gpd:compact-state`.
+Suggested by progress.md when STATE.md grows large. Run manually via `gpd:compact-state`; transition workflows may also run compaction during phase changes when thresholds are exceeded.
 </purpose>
 
 <required_reading>
@@ -17,10 +17,10 @@ Read these files using the file_read tool:
 **Load state and check line count:**
 
 ```bash
-INIT=$(gpd init progress --include state)
+INIT=$(gpd --raw init progress --include state)
 if [ $? -ne 0 ]; then
   echo "ERROR: gpd initialization failed: $INIT"
-  # STOP — display the error to the user and do not proceed.
+  # STOP; surface the error.
 fi
 ```
 
@@ -52,12 +52,12 @@ If under 1500 and not forced (`--force` flag absent): offer to compact anyway or
 </step>
 
 <step name="run_compact">
-**Delegate to gpd state compact:**
+**Delegate to state compaction:**
 
 The gpd CLI handles the detailed archival logic:
 
 ```bash
-RESULT=$(gpd state compact)
+RESULT=$(gpd --raw state compact)
 if [ $? -ne 0 ]; then
   echo "ERROR: state compact failed: $RESULT"
   # STOP — STATE.md may be in an inconsistent state.
@@ -127,7 +127,7 @@ echo "Recovery method: ${RECOVERY_METHOD}"
 
 Report error and recovery method used, then exit.
 
-**If state.json sync failed:** Do not delete it blindly. Keep `GPD/state.json` (and `GPD/state.json.bak` if present), inspect `gpd state validate`, and use `/gpd:sync-state` or the recovery step above so JSON-only fields are preserved.
+**If state.json sync failed:** Do not delete it blindly. Keep `GPD/state.json` (and `GPD/state.json.bak` if present), inspect `gpd state validate`, and use `gpd:sync-state` or the recovery step above so JSON-only fields are preserved.
 </step>
 
 <step name="verify_archive">
@@ -194,7 +194,7 @@ Remaining entries are all current-phase content. To further reduce:
 <failure_handling>
 
 - **STATE.md not found:** Nothing to compact. Exit with message.
-- **gpd state compact fails:** Check error output. Common causes: file lock held by another process, corrupt STATE.md parsing. Suggest: `cat GPD/STATE.md | head -5` to verify file is readable.
+- **Compaction fails:** Check error output. Common causes: file lock held by another process, corrupt STATE.md parsing. Suggest: `cat GPD/STATE.md | head -5` to verify file is readable.
 - **Required sections missing after compaction:** Restore from git immediately. Report the bug.
 - **STATE-ARCHIVE.md write fails:** Check disk space and permissions. STATE.md changes are preserved regardless.
 
@@ -203,7 +203,7 @@ Remaining entries are all current-phase content. To further reduce:
 <success_criteria>
 
 - [ ] STATE.md line count checked against thresholds
-- [ ] gpd state compact executed
+- [ ] Compaction executed
 - [ ] Archived entries moved to STATE-ARCHIVE.md
 - [ ] Compacted STATE.md retains all required sections
 - [ ] state.json synced after compaction

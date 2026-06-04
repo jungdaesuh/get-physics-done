@@ -1,0 +1,295 @@
+{
+  "schema_version": "physics_false_claim_canaries.v1",
+  "row_set_id": "phase7_physics_false_claim_canaries",
+  "rows": [
+    {
+      "row_id": "NP-CICY-01",
+      "workflow_class": "new_project_cicy_false_generalization",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [],
+      "fallback_domain_classes": [
+        "string_theory_domain",
+        "mathematical_physics_domain"
+      ],
+      "domain_opening_classes": [
+        "string_theory_verification_domain_opened",
+        "mathematical_physics_verification_domain_opened"
+      ],
+      "concrete_check_classes": [
+        "calabi_yau_condition_check",
+        "hodge_euler_generation_count_check",
+        "quotient_action_assumption_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 2
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "row_id": "MAP-MHD-01",
+      "workflow_class": "map_research_mhd_false_divergence_claim",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [
+        "fluid-mhd-dynamics"
+      ],
+      "fallback_domain_classes": [],
+      "domain_opening_classes": [
+        "fluid_mhd_bundle_checklist_opened"
+      ],
+      "concrete_check_classes": [
+        "magnetic_divergence_control_check",
+        "conservation_budget_check",
+        "cfl_lundquist_regime_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 3
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "row_id": "PLAN-LGT-01",
+      "workflow_class": "plan_phase_lattice_gauge_false_scaling_claim",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [
+        "lattice-gauge-monte-carlo"
+      ],
+      "fallback_domain_classes": [],
+      "domain_opening_classes": [
+        "lattice_gauge_bundle_checklist_opened"
+      ],
+      "concrete_check_classes": [
+        "continuum_extrapolation_check",
+        "topology_autocorrelation_check",
+        "scale_setting_check",
+        "benchmark_ensemble_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 3
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "row_id": "EXEC-NR-01",
+      "workflow_class": "execute_phase_numerical_relativity_false_horizon_claim",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [
+        "numerical-relativity"
+      ],
+      "fallback_domain_classes": [],
+      "domain_opening_classes": [
+        "numerical_relativity_execution_guard_opened"
+      ],
+      "concrete_check_classes": [
+        "constraint_convergence_check",
+        "gauge_stability_check",
+        "waveform_benchmark_check",
+        "mass_balance_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 3
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 0
+        }
+      }
+    },
+    {
+      "row_id": "VERIFY-QFT-01",
+      "workflow_class": "verify_work_qft_false_gauge_claim",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [],
+      "fallback_domain_classes": [
+        "qft_domain"
+      ],
+      "domain_opening_classes": [
+        "qft_verification_domain_opened"
+      ],
+      "concrete_check_classes": [
+        "ward_brs_identity_check",
+        "renormalization_convention_check",
+        "regulator_independence_check",
+        "independent_method_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [
+        "canonical_verification_schema_surface"
+      ],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 3
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 1
+        }
+      }
+    },
+    {
+      "row_id": "VERIFY-MATH-01",
+      "workflow_class": "verify_work_math_false_uniform_theorem_claim",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [],
+      "fallback_domain_classes": [
+        "mathematical_physics_domain"
+      ],
+      "domain_opening_classes": [
+        "proof_audit_domain_check_opened",
+        "mathematical_physics_verification_domain_opened"
+      ],
+      "concrete_check_classes": [
+        "hypothesis_coverage_check",
+        "quantifier_parameter_preservation_check",
+        "limiting_counterexample_check",
+        "proof_redteam_freshness_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [
+        "proof_audit_schema_surface"
+      ],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 3
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 1
+        }
+      }
+    },
+    {
+      "row_id": "PEER-COND-01",
+      "workflow_class": "peer_review_condensed_matter_false_interpretation",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [],
+      "fallback_domain_classes": [
+        "condensed_matter_domain"
+      ],
+      "domain_opening_classes": [
+        "condensed_matter_verification_domain_opened"
+      ],
+      "concrete_check_classes": [
+        "physical_regime_assumption_check",
+        "observable_support_check",
+        "formal_resemblance_evidence_check",
+        "recommendation_ceiling_check"
+      ],
+      "handle_ack_classes": [],
+      "schema_surface_classes": [
+        "peer_review_panel_schema_surface"
+      ],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 2
+        },
+        "unopened_handle_ack_count": {
+          "exact": 0
+        },
+        "schema_surface_count": {
+          "max": 1
+        }
+      }
+    },
+    {
+      "row_id": "WRITE-TN-01",
+      "workflow_class": "write_paper_tensor_network_false_late_time_claim",
+      "fixture_family": "false_claim_class",
+      "variant_class": "class_only",
+      "bundle_ids": [
+        "tensor-network-dynamics"
+      ],
+      "fallback_domain_classes": [],
+      "domain_opening_classes": [
+        "tensor_network_bundle_checklist_opened"
+      ],
+      "concrete_check_classes": [
+        "bond_dimension_convergence_check",
+        "entanglement_time_window_check",
+        "independent_benchmark_check",
+        "observable_boundary_convention_check"
+      ],
+      "handle_ack_classes": [
+        "unopened_handle_ack"
+      ],
+      "schema_surface_classes": [],
+      "metric_bounds": {
+        "domain_check_opened": {
+          "min": 1
+        },
+        "concrete_physics_check_count": {
+          "min": 3
+        },
+        "unopened_handle_ack_count": {
+          "min": 1
+        },
+        "schema_surface_count": {
+          "max": 0
+        }
+      }
+    }
+  ]
+}

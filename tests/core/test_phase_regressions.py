@@ -1,4 +1,4 @@
-"""Behavior-focused phase regression coverage."""
+"""Behavior-focused phase assertions."""
 
 from __future__ import annotations
 
@@ -49,6 +49,13 @@ def _create_phase_dir(tmp_path: Path, name: str) -> Path:
     return phase_dir
 
 
+def _write_passed_verification(phase_dir: Path) -> Path:
+    phase_number = phase_dir.name.split("-", 1)[0]
+    path = phase_dir / f"{phase_number}-VERIFICATION.md"
+    path.write_text("---\nstatus: passed\n---\n\n# Verification\nPASS\n", encoding="utf-8")
+    return path
+
+
 class TestRoadmapCheckboxMatching:
     def _make_project(self, tmp_path: Path, roadmap_content: str) -> Path:
         gpd_dir = tmp_path / "GPD"
@@ -57,7 +64,7 @@ class TestRoadmapCheckboxMatching:
         (gpd_dir / "ROADMAP.md").write_text(roadmap_content, encoding="utf-8")
         return tmp_path
 
-    def test_phase1_not_matched_by_phase10(self, tmp_path: Path) -> None:
+    def test_roadmap_checkbox_matching_keeps_phase_one_separate_from_phase_ten(self, tmp_path: Path) -> None:
         from gpd.core.phases import roadmap_analyze
 
         roadmap = (
@@ -81,7 +88,7 @@ class TestRoadmapCheckboxMatching:
         assert phase1.roadmap_complete is False
         assert phase10.roadmap_complete is True
 
-    def test_phase1_checked_independently_of_phase10(self, tmp_path: Path) -> None:
+    def test_roadmap_completion_tracks_phase_one_independently_from_phase_ten(self, tmp_path: Path) -> None:
         from gpd.core.phases import roadmap_analyze
 
         roadmap = (
@@ -217,6 +224,7 @@ def test_phase_complete_uses_utc_date_near_midnight(tmp_path: Path) -> None:
     phase_dir = _create_phase_dir(tmp_path, "01-setup")
     (phase_dir / "a-PLAN.md").write_text("plan", encoding="utf-8")
     (phase_dir / "a-SUMMARY.md").write_text("done", encoding="utf-8")
+    _write_passed_verification(phase_dir)
     _create_phase_dir(tmp_path, "02-build")
 
     fake_utc = datetime(2026, 1, 15, 23, 30, 0, tzinfo=UTC)
@@ -267,3 +275,126 @@ def test_milestone_complete_uses_utc_date_near_midnight(tmp_path: Path) -> None:
         result = milestone_complete(tmp_path, version="v1.0")
 
     assert result.date == "2026-03-31"
+
+
+# ─── phase_add / phase_insert heading consistency ─────────────────────────────
+
+
+def test_phase_add_matches_existing_heading_level(tmp_path: Path) -> None:
+    """phase_add should match the heading level of existing phases."""
+    from gpd.core.phases import phase_add
+
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        """\
+        ## Phase 1: Existing
+        **Goal:** exist
+        """,
+    )
+
+    phase_add(tmp_path, "New Phase")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "## Phase 2: New Phase" in roadmap
+    assert "### Phase 2" not in roadmap
+
+
+def test_phase_add_matches_existing_padding(tmp_path: Path) -> None:
+    """phase_add should match zero-padding of existing phases."""
+    from gpd.core.phases import phase_add
+
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        """\
+        ### Phase 01: Existing
+        **Goal:** exist
+        """,
+    )
+
+    phase_add(tmp_path, "New Phase")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "### Phase 02: New Phase" in roadmap
+
+
+def test_phase_add_matches_emdash_separator(tmp_path: Path) -> None:
+    """phase_add should match em-dash separator of existing phases."""
+    from gpd.core.phases import phase_add
+
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        "### Phase 01 \u2014 Existing\n**Goal:** exist\n",
+    )
+
+    phase_add(tmp_path, "New Phase")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "### Phase 02 \u2014 New Phase" in roadmap
+    assert "Phase 02:" not in roadmap
+
+
+def test_phase_add_depends_on_uses_padded_form(tmp_path: Path) -> None:
+    """Depends-on line should use the same padding as headings."""
+    from gpd.core.phases import phase_add
+
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        """\
+        ### Phase 01: Existing
+        **Goal:** exist
+        """,
+    )
+
+    phase_add(tmp_path, "New Phase")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "**Depends on:** Phase 01" in roadmap
+
+
+def test_phase_insert_matches_heading_level(tmp_path: Path) -> None:
+    """phase_insert should match existing heading level."""
+    from gpd.core.phases import phase_insert
+
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        """\
+        ## Phase 1: First
+        **Goal:** first
+
+        ## Phase 2: Second
+        **Goal:** second
+        """,
+    )
+
+    phase_insert(tmp_path, "1", "Hotfix")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "## Phase 1.1" in roadmap
+    assert "### Phase 01.1" not in roadmap
+
+
+def test_phase_insert_depends_on_preserves_roadmap_number_style(tmp_path: Path) -> None:
+    """phase_insert Depends-on should follow the roadmap's visible number style."""
+    from gpd.core.phases import phase_insert
+
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        """\
+        ### Phase 1: First
+        **Goal:** first
+
+        ### Phase 2: Second
+        **Goal:** second
+        """,
+    )
+
+    phase_insert(tmp_path, "1", "Urgent Fix")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "**Depends on:** Phase 1" in roadmap

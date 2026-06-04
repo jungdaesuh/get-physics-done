@@ -12,20 +12,20 @@ Read all files referenced by the invoking prompt's execution_context before star
 **Load roadmap and phase inventory:**
 
 ```bash
-ROADMAP=$(gpd roadmap analyze)
+ROADMAP=$(gpd --raw roadmap analyze)
 ```
 
 Extract: phase list with names, goals, dependencies, and disk status.
 
 **If no roadmap found:**
 
-```
+```text
 ╔══════════════════════════════════════════════════════════════╗
 ║  ERROR                                                       ║
 ╚══════════════════════════════════════════════════════════════╝
 
 No ROADMAP.md found. Create a project first:
-  /gpd:new-project
+  gpd:new-project
 ```
 
 Exit.
@@ -198,11 +198,13 @@ Parallelizable phases: {list of phases NOT on critical path}
 
 ───────────────────────────────────────────────────────────────
 
-Write this analysis to `GPD/DEPENDENCY-GRAPH.md`? (y/n)
+Persist dependency analysis to `GPD/DEPENDENCY-GRAPH.md` ({N} nodes, {M} edges)? [Y/n/e]  (Enter = Y; e opens freeform for scope notes)
 
 ───────────────────────────────────────────────────────────────
 
 ````
+
+**Edit branch:** If the user chooses `e`, collect the scope notes, update the proposed write scope or output path if needed, and re-present the updated `[Y/n/e]` prompt once before writing `GPD/DEPENDENCY-GRAPH.md`. Do not treat the edit text itself as approval.
 
 **If yes:**
 
@@ -221,9 +223,9 @@ gpd commit "docs: generate dependency graph" --files GPD/DEPENDENCY-GRAPH.md
 ───────────────────────────────────────────────────────────────
 
 **Also available:**
-- `/gpd:show-phase <N>` -- inspect a specific phase in detail
-- `/gpd:plan-phase <N>` -- plan an unstarted phase
-- `/gpd:progress` -- overall research progress
+- `gpd:show-phase <N>` -- inspect a specific phase in detail
+- `gpd:plan-phase <N>` -- plan an unstarted phase
+- `gpd:progress` -- overall research progress
 
 ───────────────────────────────────────────────────────────────
 ```

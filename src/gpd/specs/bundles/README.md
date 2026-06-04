@@ -56,6 +56,7 @@ Bundle assets are organized by role, not topic:
 - `verification_domains`
 - `protocols_core`
 - `protocols_optional`
+- `planning_guides`
 - `execution_guides`
 
 ## Contribution Fields

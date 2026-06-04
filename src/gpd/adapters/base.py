@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import abc
+import fnmatch
 import json
 import logging
 import os
+import shutil
+import tempfile
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from gpd.adapters.install_utils import (
     AGENTS_DIR_NAME,
@@ -17,12 +22,15 @@ from gpd.adapters.install_utils import (
     GPD_INSTALL_DIR_NAME,
     HOOKS_DIR_NAME,
     MANIFEST_NAME,
+    PATCHES_DIR_NAME,
     UPDATE_CACHE_FILENAME,
     build_runtime_cli_bridge_command,
+    bundled_hook_relpaths,
     compute_path_prefix,
     convert_tool_references_in_body,
     copy_hook_scripts,
     install_gpd_content,
+    installed_hook_scripts_matching_source,
     managed_hook_paths,
     pre_install_cleanup,
     process_settings_commit_attribution,
@@ -34,36 +42,314 @@ from gpd.adapters.install_utils import (
     write_manifest,
     write_version_file,
 )
-from gpd.adapters.runtime_catalog import get_runtime_descriptor, resolve_global_config_dir
+from gpd.adapters.runtime_catalog import (
+    get_managed_install_surface_policy,
+    get_runtime_descriptor,
+    get_shared_install_metadata,
+    managed_install_glob_static_root,
+    managed_install_globs_have_files,
+    path_contains_regular_file,
+    resolve_global_config_dir,
+)
 from gpd.adapters.tool_names import (
     build_runtime_alias_map,
     reference_translation_map,
     translate_for_runtime,
 )
-from gpd.registry import AgentDef, load_agents_from_dir
+from gpd.command_labels import rewrite_runtime_command_surfaces_to_public, validated_public_command_prefix
+
+if TYPE_CHECKING:
+    from gpd.registry import AgentDef
 
 logger = logging.getLogger(__name__)
+INSTALL_ROLLBACK_RESULT_KEY = "__gpd_install_rollback_snapshot__"
 
 
-def _normalize_manifest_runtime(runtime: object) -> str | None:
-    """Return the canonical runtime name for manifest/runtime metadata when possible."""
-    if not isinstance(runtime, str):
-        return None
+class _InstallRollbackSnapshot:
+    """Snapshot install-owned paths so a failed install can leave the prior state intact."""
 
-    normalized = runtime.strip()
-    if not normalized:
-        return None
+    def __init__(self, paths: tuple[Path, ...]):
+        self._paths = self._dedupe_paths(paths)
+        self._root = Path(tempfile.mkdtemp(prefix="gpd-install-rollback-"))
+        self._records: list[tuple[Path, Path, bool]] = []
+        self._created_parent_dirs = self._missing_parent_dirs(self._paths)
 
-    from gpd.hooks.runtime_detect import normalize_runtime_name
+        for index, path in enumerate(self._paths):
+            backup = self._root / str(index)
+            existed = path.exists() or path.is_symlink()
+            if existed:
+                self._copy_path(path, backup)
+            self._records.append((path, backup, existed))
 
-    return normalize_runtime_name(normalized)
+    @staticmethod
+    def _dedupe_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+        expanded = tuple(_InstallRollbackSnapshot._expand_symlink_paths(paths))
+        resolved: list[tuple[Path, Path, bool]] = []
+        seen: set[Path] = set()
+        for path in expanded:
+            candidate = Path(path).expanduser()
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            candidate_resolved = candidate.expanduser().resolve(strict=False)
+            candidate_is_symlink = candidate.is_symlink()
+            if any(
+                candidate_resolved == existing or candidate_resolved.is_relative_to(existing)
+                for _, existing, existing_is_symlink in resolved
+                if not candidate_is_symlink and not existing_is_symlink
+            ):
+                continue
+            resolved.append((candidate, candidate_resolved, candidate_is_symlink))
+        return tuple(path for path, _, _ in resolved)
+
+    @staticmethod
+    def _expand_symlink_paths(paths: tuple[Path, ...]) -> tuple[Path, ...]:
+        expanded: list[Path] = []
+        for path in paths:
+            candidate = Path(path)
+            expanded.append(candidate)
+            if not candidate.is_symlink() or candidate.is_dir():
+                continue
+            try:
+                referent = candidate.resolve(strict=False)
+            except OSError:
+                continue
+            if referent != candidate:
+                expanded.append(referent)
+        return tuple(expanded)
+
+    @staticmethod
+    def _missing_parent_dirs(paths: tuple[Path, ...]) -> set[Path]:
+        missing: set[Path] = set()
+        for path in paths:
+            parent = path.parent
+            while parent != parent.parent and not parent.exists() and not parent.is_symlink():
+                missing.add(parent)
+                parent = parent.parent
+        return missing
+
+    @staticmethod
+    def _copy_path(src: Path, dest: Path) -> None:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_symlink():
+            dest.symlink_to(os.readlink(src))
+            return
+        if src.is_dir():
+            shutil.copytree(src, dest, symlinks=True)
+            return
+        shutil.copy2(src, dest)
+
+    @staticmethod
+    def _remove_path(path: Path) -> None:
+        if path.is_symlink() or path.is_file():
+            path.unlink()
+            return
+        if path.is_dir():
+            shutil.rmtree(path)
+
+    def restore(self) -> None:
+        for path, backup, existed in reversed(self._records):
+            if path.exists() or path.is_symlink():
+                self._remove_path(path)
+            if existed:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                self._copy_path(backup, path)
+        for directory in sorted(self._created_parent_dirs, key=lambda path: len(path.parts), reverse=True):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+        self.discard()
+
+    def discard(self) -> None:
+        if self._root.exists():
+            shutil.rmtree(self._root)
 
 
-def _paths_equal(left: Path, right: Path) -> bool:
+def _managed_install_surface(target_dir: Path):
+    """Return the shared managed-surface snapshot for *target_dir*."""
+    from gpd.hooks.install_metadata import inspect_managed_install_surface
+
+    return inspect_managed_install_surface(target_dir)
+
+
+def _catalog_command_surface_label(pattern: str) -> str:
+    """Return a stable missing-artifact label for a catalog command glob."""
+    normalized = pattern.replace("\\", "/")
+    if "/**" in normalized:
+        label = normalized.split("/**", 1)[0].rstrip("/")
+        if label:
+            return label
+    return normalized
+
+
+def _existing_catalog_glob_paths(target_dir: Path, patterns: tuple[str, ...]) -> tuple[Path, ...]:
+    """Return existing paths selected by catalog globs."""
+    matches: list[Path] = []
+    for pattern in patterns:
+        try:
+            matches.extend(target_dir.glob(pattern))
+        except OSError:
+            continue
+    return tuple(matches)
+
+
+def _planned_flat_command_paths(gpd_root: Path, root: Path, *, prefix: str, suffix: str) -> tuple[Path, ...]:
+    """Return flat command paths generated from canonical command sources."""
+    commands_src = gpd_root / "commands"
+    if not commands_src.is_dir():
+        return ()
+
+    def _walk(src_dir: Path, current_prefix: str) -> tuple[Path, ...]:
+        planned: list[Path] = []
+        for entry in sorted(src_dir.iterdir()):
+            if entry.is_dir():
+                planned.extend(_walk(entry, f"{current_prefix}-{entry.name}"))
+            elif entry.suffix == ".md":
+                planned.append(root / f"{current_prefix}-{entry.stem}{suffix}")
+        return tuple(planned)
+
+    return _walk(commands_src, prefix)
+
+
+def _planned_agent_surface_paths(adapter: RuntimeAdapter, gpd_root: Path, target_dir: Path) -> tuple[Path, ...]:
+    """Return runtime agent paths generated from canonical agent sources."""
+    agents_src = gpd_root / "agents"
+    if not agents_src.is_dir():
+        return ()
+    agents_dest = target_dir / AGENTS_DIR_NAME
+    paths = [agents_dest / entry.name for entry in sorted(agents_src.glob("*.md"))]
+    paths.extend(agents_dest / f"{agent.name}.toml" for agent in adapter.load_runtime_agents(gpd_root))
+    return tuple(paths)
+
+
+def _scoped_install_rollback_paths(adapter: RuntimeAdapter, gpd_root: Path, target_dir: Path) -> tuple[Path, ...]:
+    """Return owned install surfaces that may be mutated by the shared installer."""
+    paths: list[Path] = [
+        target_dir / GPD_INSTALL_DIR_NAME,
+        target_dir / MANIFEST_NAME,
+        target_dir / PATCHES_DIR_NAME,
+        target_dir / CACHE_DIR_NAME / UPDATE_CACHE_FILENAME,
+        target_dir / CACHE_DIR_NAME / f"{UPDATE_CACHE_FILENAME}.inflight",
+    ]
+    paths.extend(target_dir / relpath for relpath in bundled_hook_relpaths())
+    paths.extend(target_dir / relpath for relpath in adapter.runtime_install_required_relpaths())
+
     try:
-        return left.expanduser().resolve() == right.expanduser().resolve()
-    except OSError:
-        return left.expanduser() == right.expanduser()
+        policy = get_managed_install_surface_policy(adapter.runtime_name)
+    except KeyError:
+        policy = None
+    if policy is not None:
+        for pattern in policy.nested_command_globs:
+            static_root = managed_install_glob_static_root(pattern)
+            if static_root:
+                paths.append(target_dir / static_root)
+        paths.extend(_existing_catalog_glob_paths(target_dir, policy.flat_command_globs))
+        paths.extend(_existing_catalog_glob_paths(target_dir, policy.managed_agent_globs))
+        if policy.flat_command_globs:
+            paths.extend(
+                _planned_flat_command_paths(
+                    gpd_root,
+                    target_dir / FLAT_COMMANDS_DIR_NAME,
+                    prefix="gpd",
+                    suffix=".md",
+                )
+            )
+        if policy.managed_agent_globs:
+            paths.extend(_planned_agent_surface_paths(adapter, gpd_root, target_dir))
+
+    return tuple(paths)
+
+
+def _remove_catalog_owned_files(target_dir: Path, patterns: tuple[str, ...], *, stop_at: Path) -> int:
+    """Remove files selected by catalog globs and prune emptied managed roots."""
+    removed = 0
+    parents: set[Path] = set()
+    roots: set[Path] = set()
+    for pattern in patterns:
+        static_root = managed_install_glob_static_root(pattern)
+        if static_root:
+            roots.add(target_dir / static_root)
+        try:
+            entries = list(target_dir.glob(pattern))
+        except OSError:
+            continue
+        for entry in entries:
+            selected_files = (entry,) if entry.is_file() else tuple(path for path in entry.rglob("*") if path.is_file())
+            for selected_file in selected_files:
+                try:
+                    selected_file.unlink()
+                except FileNotFoundError:
+                    continue
+                removed += 1
+                parents.add(selected_file.parent)
+            if entry.is_dir():
+                parents.add(entry)
+    for parent in sorted(parents | roots, key=lambda path: len(path.parts), reverse=True):
+        prune_empty_ancestors(parent, stop_at=stop_at)
+    return removed
+
+
+def _prune_catalog_roots(target_dir: Path, patterns: tuple[str, ...], *, stop_at: Path) -> None:
+    """Prune empty static roots for catalog-owned managed-surface globs."""
+    for pattern in patterns:
+        static_root = managed_install_glob_static_root(pattern)
+        if static_root:
+            prune_empty_ancestors(target_dir / static_root, stop_at=stop_at)
+
+
+def _has_only_agent_residue(target_dir: Path) -> bool:
+    """Return whether *target_dir* contains only agent-surface residue.
+
+    Agent installs are replaced in place and stale ``gpd-*`` agent files are
+    removed during install, so an explicit target that only contains an
+    ``agents/`` directory is still safe to repair without a trusted manifest.
+    Richer managed surfaces such as hooks, commands, or bundled content remain
+    blocked until ownership is established by a valid manifest.
+    """
+
+    if not target_dir.exists() or not target_dir.is_dir():
+        return False
+
+    surface = _managed_install_surface(target_dir)
+    has_managed_hooks = any((target_dir / rel_path).is_file() for rel_path in managed_hook_paths(target_dir))
+    if (
+        not surface.has_managed_agents
+        or surface.has_gpd_content
+        or surface.has_nested_commands
+        or surface.has_flat_commands
+        or has_managed_hooks
+    ):
+        return False
+
+    for entry in target_dir.iterdir():
+        if entry.name != AGENTS_DIR_NAME:
+            if not entry.is_dir():
+                return False
+            if path_contains_regular_file(entry, on_error=True):
+                return False
+            continue
+        if not entry.is_dir():
+            return False
+
+    return (target_dir / AGENTS_DIR_NAME).is_dir()
+
+
+def _has_blocking_manifestless_install_surface(target_dir: Path) -> bool:
+    """Return whether *target_dir* contains managed surfaces that require ownership.
+
+    Bundled prompt content and command directories are not safe to remove or
+    overwrite blindly when the authoritative manifest is missing. Agent, hook,
+    cache, and local-patch residue is handled by narrower cleanup code and may
+    be repaired without a manifest.
+    """
+
+    surface = _managed_install_surface(target_dir)
+    if surface.has_gpd_content or surface.has_nested_commands or surface.has_flat_commands:
+        return True
+
+    has_managed_hooks = any((target_dir / rel_path).is_file() for rel_path in managed_hook_paths(target_dir))
+    return surface.has_managed_agents and has_managed_hooks
 
 
 class RuntimeAdapter(abc.ABC):
@@ -140,6 +426,11 @@ class RuntimeAdapter(abc.ABC):
         return self.runtime_descriptor.command_prefix
 
     @property
+    def public_command_surface_prefix(self) -> str:
+        """Public runtime command prefix used on shared surfaces."""
+        return validated_public_command_prefix(self.runtime_descriptor)
+
+    @property
     def tool_alias_map(self) -> Mapping[str, str]:
         """Runtime-native tool aliases back to canonical GPD names."""
         return build_runtime_alias_map(self.tool_name_map)
@@ -167,7 +458,9 @@ class RuntimeAdapter(abc.ABC):
 
     def translate_shared_command_references(self, content: str) -> str:
         """Rewrite shared command references for this runtime."""
-        return content
+        public_prefix = self.public_command_surface_prefix
+        content = content.replace("`gpd:`", f"`{public_prefix}`")
+        return rewrite_runtime_command_surfaces_to_public(content, public_prefix=public_prefix)
 
     def translate_shared_markdown(
         self,
@@ -184,12 +477,43 @@ class RuntimeAdapter(abc.ABC):
             content = strip_sub_tags(content)
         return convert_tool_references_in_body(content, self.tool_reference_translation_map())
 
+    def project_markdown_surface(
+        self,
+        content: str,
+        *,
+        surface_kind: str,
+        path_prefix: str,
+        command_name: str | None = None,
+        bridge_command: str | None = None,
+    ) -> str:
+        """Return the runtime-visible prompt surface for compiled shared markdown."""
+
+        del path_prefix, command_name, bridge_command
+        if surface_kind not in {"agent", "command"}:
+            raise ValueError("surface_kind must be 'agent' or 'command'")
+        return self.translate_shared_command_references(content)
+
+    def commit_attribution_config_path(self, *, explicit_config_dir: str | None = None) -> Path | None:
+        """Return the runtime-owned config file that stores commit attribution.
+
+        Runtimes expose this through their own install contract instead of a
+        shared filename assumption, so the lookup stays adapter-driven.
+        """
+        config_dir = self.resolve_global_config_dir()
+        if explicit_config_dir:
+            config_dir = Path(explicit_config_dir).expanduser()
+        for relpath in self.runtime_install_required_relpaths():
+            relpath_path = Path(relpath)
+            if relpath_path.suffix in {".json", ".jsonc", ".toml", ".yaml", ".yml"}:
+                return config_dir / relpath_path
+        return None
+
     def get_commit_attribution(self, *, explicit_config_dir: str | None = None) -> str | None:
         """Return commit attribution override for this runtime."""
-        settings_path = self.resolve_global_config_dir() / "settings.json"
-        if explicit_config_dir:
-            settings_path = Path(explicit_config_dir).expanduser() / "settings.json"
-        return process_settings_commit_attribution(settings_path)
+        config_path = self.commit_attribution_config_path(explicit_config_dir=explicit_config_dir)
+        if config_path is None:
+            return None
+        return process_settings_commit_attribution(config_path)
 
     @property
     def runtime_descriptor(self):
@@ -215,13 +539,13 @@ class RuntimeAdapter(abc.ABC):
         return Path(cwd or os.getcwd()) / self.local_config_dir_name
 
     def format_command(self, action: str) -> str:
-        """Format a runtime-native GPD command."""
-        return f"{self.command_prefix}{action}"
+        """Format a public runtime GPD command."""
+        return f"{self.public_command_surface_prefix}{action}"
 
     @property
     def update_command(self) -> str:
         """Public bootstrap command that updates this runtime install."""
-        base = "npx -y get-physics-done"
+        base = get_shared_install_metadata().bootstrap_command
         return f"{base} {self.install_flag}".strip()
 
     def install_detection_relpaths(self) -> tuple[str, ...]:
@@ -252,7 +576,14 @@ class RuntimeAdapter(abc.ABC):
         Adapters may extend it when their installed surface requires additional
         runtime-owned files.
         """
-        return self.install_detection_relpaths()
+        return (
+            *self.install_detection_relpaths(),
+            *self.runtime_install_required_relpaths(),
+        )
+
+    def runtime_install_required_relpaths(self) -> tuple[str, ...]:
+        """Return runtime-owned artifacts required for a complete install."""
+        return ()
 
     def missing_install_artifacts(self, target_dir: Path) -> tuple[str, ...]:
         """Return missing strict install artifacts relative to *target_dir*."""
@@ -260,6 +591,21 @@ class RuntimeAdapter(abc.ABC):
         for relpath in self.install_completeness_relpaths():
             if not (target_dir / relpath).exists():
                 missing.append(relpath)
+        try:
+            command_policy = get_managed_install_surface_policy(self.runtime_name)
+        except KeyError:
+            command_policy = None
+        if command_policy is not None:
+            for pattern in (*command_policy.nested_command_globs, *command_policy.flat_command_globs):
+                if not managed_install_globs_have_files(target_dir, (pattern,), on_error=False):
+                    missing.append(_catalog_command_surface_label(pattern))
+            manifest_files = self._read_install_manifest(target_dir).get("files")
+            tracked_paths = tuple(str(path) for path in manifest_files) if isinstance(manifest_files, dict) else ()
+            for pattern in command_policy.managed_agent_globs:
+                if not any(fnmatch.fnmatchcase(path, pattern) for path in tracked_paths):
+                    continue
+                if not managed_install_globs_have_files(target_dir, (pattern,), on_error=False):
+                    missing.append(_catalog_command_surface_label(pattern))
         return tuple(missing)
 
     def install_verification_relpaths(self) -> tuple[str, ...]:
@@ -285,71 +631,77 @@ class RuntimeAdapter(abc.ABC):
         """Return whether *target_dir* satisfies the shared install contract."""
         return not self.missing_install_artifacts(target_dir)
 
-    def _installed_manifest_runtime(self, target_dir: Path) -> str | None:
-        """Return the manifest runtime for *target_dir* when present."""
-        manifest_path = target_dir / MANIFEST_NAME
-        try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, json.JSONDecodeError):
-            return None
-        if not isinstance(payload, dict):
-            return None
-        return _normalize_manifest_runtime(payload.get("runtime"))
-
     def validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
         """Validate that an explicit target belongs to this runtime's install surface."""
         self._validate_target_runtime(target_dir, action=action)
 
+    @contextmanager
+    def defer_install_rollback_discard(self):
+        """Keep the install rollback snapshot alive for caller-owned finalization."""
+        previous = getattr(self, "_defer_install_rollback_discard", False)
+        self._defer_install_rollback_discard = True
+        try:
+            yield
+        finally:
+            self._defer_install_rollback_discard = previous
+
+    def _has_authoritative_install_manifest(self, target_dir: Path) -> bool:
+        """Return whether *target_dir* has a trusted manifest for this runtime."""
+        from gpd.hooks.install_metadata import assess_install_target
+
+        assessment = assess_install_target(target_dir, expected_runtime=self.runtime_name)
+        return assessment.manifest_state == "ok" and assessment.state in {"owned_complete", "owned_incomplete"}
+
     def _validate_target_runtime(self, target_dir: Path, *, action: str) -> None:
         """Internal runtime-ownership validation behind the public adapter contract."""
-        from gpd.hooks.install_metadata import (
-            load_install_manifest_state,
-        )
+        from gpd.hooks.install_metadata import assess_install_target
 
-        manifest_state, manifest = load_install_manifest_state(target_dir)
+        assessment = assess_install_target(target_dir, expected_runtime=self.runtime_name)
         explicit_target = getattr(self, "_install_explicit_target", False)
-        if explicit_target and manifest_state in {"corrupt", "invalid"}:
+        if explicit_target and assessment.manifest_state in {"corrupt", "invalid"}:
             raise RuntimeError(
                 f"Refusing to {action} `{target_dir}` because its GPD manifest cannot be trusted.\n"
-                "Ownership cannot be determined safely."
+                "Ownership cannot be determined safely. If this is your target, move the corrupt manifest or "
+                "clear the GPD-managed artifacts before reinstalling."
             )
-
-        has_gpd_markers = any(
-            (
-                (target_dir / COMMANDS_DIR_NAME / "gpd").exists(),
-                (target_dir / FLAT_COMMANDS_DIR_NAME).exists(),
-                (target_dir / GPD_INSTALL_DIR_NAME).exists(),
-            )
-        )
-        if manifest_state == "ok" and isinstance(manifest, dict):
-            normalized_manifest_runtime = _normalize_manifest_runtime(manifest.get("runtime"))
-            if normalized_manifest_runtime is None:
-                raise RuntimeError(
-                    f"Refusing to {action} `{target_dir}` because its GPD manifest cannot be trusted.\n"
-                    "Ownership cannot be determined safely."
-                )
-            if normalized_manifest_runtime == self.runtime_name:
-                return
-            other_runtime = normalized_manifest_runtime or "unknown"
+        if assessment.state == "foreign_runtime":
+            other_runtime = assessment.manifest_runtime or "unknown"
             try:
                 other_runtime_label = get_runtime_descriptor(other_runtime).display_name
             except KeyError:
                 other_runtime_label = other_runtime
             raise RuntimeError(
                 f"Refusing to {action} `{target_dir}`.\n"
-                f'Its GPD manifest belongs to {other_runtime_label} (`{other_runtime}`), '
-                f"not {self.display_name} (`{self.runtime_name}`)."
+                f"Its GPD manifest belongs to {other_runtime_label} (`{other_runtime}`), "
+                f"not {self.display_name} (`{self.runtime_name}`). Use the owning runtime's repair/uninstall "
+                "path for this target, or choose a different --target-dir."
             )
 
-        if manifest_state in {"corrupt", "invalid"}:
+        if assessment.state == "untrusted_manifest":
+            if (
+                action.startswith("uninstall")
+                and assessment.manifest_state == "missing"
+                and not _has_blocking_manifestless_install_surface(target_dir)
+            ):
+                return
+            if action.startswith("install") and _has_only_agent_residue(target_dir):
+                return
+            if assessment.manifest_state != "missing":
+                raise RuntimeError(
+                    f"Refusing to {action} `{target_dir}` because its GPD manifest cannot be trusted.\n"
+                    "Ownership cannot be determined safely. If this is your target, move the corrupt manifest or "
+                    "clear the GPD-managed artifacts before reinstalling."
+                )
+            if assessment.has_managed_markers:
+                raise RuntimeError(
+                    f"Refusing to {action} `{target_dir}` because it already contains GPD artifacts but no manifest "
+                    "to establish ownership. Restore the manifest or move the GPD-managed artifacts aside before "
+                    "retrying."
+                )
             raise RuntimeError(
                 f"Refusing to {action} `{target_dir}` because its GPD manifest cannot be trusted.\n"
-                "Ownership cannot be determined safely."
-            )
-
-        if manifest_state == "missing" and has_gpd_markers:
-            raise RuntimeError(
-                f"Refusing to {action} `{target_dir}` because it already contains GPD artifacts but no manifest to establish ownership."
+                "Ownership cannot be determined safely. If this is your target, move the corrupt manifest or "
+                "clear the GPD-managed artifacts before reinstalling."
             )
 
     def runtime_cli_bridge_command(self, target_dir: Path) -> str:
@@ -367,7 +719,7 @@ class RuntimeAdapter(abc.ABC):
         manifest_path = target_dir / MANIFEST_NAME
         try:
             parsed = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, OSError, json.JSONDecodeError):
+        except (FileNotFoundError, OSError, UnicodeDecodeError, json.JSONDecodeError):
             return {}
         return parsed if isinstance(parsed, dict) else {}
 
@@ -459,24 +811,43 @@ class RuntimeAdapter(abc.ABC):
             try:
                 self._validate(gpd_root)
                 self._validate_target_runtime(target_dir, action="install into")
-                path_prefix = self._compute_path_prefix(target_dir, is_global)
-                self._pre_cleanup(target_dir)
-                install_version = version_for_gpd_root(gpd_root) or __version__
+                self._preflight_runtime_config(target_dir, is_global)
+                rollback = _InstallRollbackSnapshot(self._install_rollback_paths(gpd_root, target_dir, is_global))
+                deferred_rollback = None
+                defer_rollback_discard = bool(getattr(self, "_defer_install_rollback_discard", False))
+                try:
+                    path_prefix = self._compute_path_prefix(target_dir, is_global)
+                    self._pre_cleanup(target_dir)
+                    install_version = version_for_gpd_root(gpd_root) or __version__
 
-                failures: list[str] = []
-                command_count = self._install_commands(gpd_root, target_dir, path_prefix, failures)
-                self._install_content(gpd_root, target_dir, path_prefix, failures)
-                agent_count = self._install_agents(gpd_root, target_dir, path_prefix, failures)
-                self._install_version(target_dir, install_version, failures)
-                self._install_hooks(gpd_root, target_dir, failures)
+                    failures: list[str] = []
+                    command_count = self._install_commands(gpd_root, target_dir, path_prefix, failures)
+                    self._install_content(gpd_root, target_dir, path_prefix, failures)
+                    agent_count = self._install_agents(gpd_root, target_dir, path_prefix, failures)
+                    self._install_version(target_dir, install_version, failures)
+                    self._install_hooks(gpd_root, target_dir, failures)
 
-                if failures:
-                    span.set_attribute("gpd.install_failures", ", ".join(failures))
-                    raise RuntimeError(f"Installation incomplete! Failed: {', '.join(failures)}")
+                    if failures:
+                        span.set_attribute("gpd.install_failures", ", ".join(failures))
+                        raise RuntimeError(f"Installation incomplete! Failed: {', '.join(failures)}")
 
-                extra = self._configure_runtime(target_dir, is_global)
-                self._write_manifest(target_dir, install_version)
-                self._verify(target_dir)
+                    extra = self._configure_runtime(target_dir, is_global)
+                    self._write_manifest(target_dir, install_version)
+                    self._verify(target_dir)
+                except Exception:
+                    try:
+                        rollback.restore()
+                    except Exception:
+                        logger.exception(
+                            "Failed to roll back %s install after install error",
+                            self.runtime_name,
+                        )
+                    raise
+                else:
+                    if defer_rollback_discard:
+                        deferred_rollback = rollback
+                    else:
+                        rollback.discard()
 
                 span.set_attribute("gpd.commands_count", command_count)
                 span.set_attribute("gpd.agents_count", agent_count)
@@ -495,6 +866,8 @@ class RuntimeAdapter(abc.ABC):
                 }
                 if extra:
                     summary.update(extra)
+                if deferred_rollback is not None:
+                    summary[INSTALL_ROLLBACK_RESULT_KEY] = deferred_rollback
                 return summary
             finally:
                 self._install_explicit_target = previous_explicit_target
@@ -521,6 +894,32 @@ class RuntimeAdapter(abc.ABC):
         """Clean up files from previous installations."""
         pre_install_cleanup(target_dir)
 
+    def _preflight_runtime_config(self, target_dir: Path, is_global: bool) -> None:
+        """Validate runtime-owned config before install mutates GPD files."""
+        del target_dir, is_global
+
+    def _project_cwd_for_runtime_config(self, target_dir: Path, is_global: bool) -> Path | None:
+        """Return the project cwd whose runtime-adjacent config may be read."""
+        if is_global or getattr(self, "_install_explicit_target", False):
+            return None
+        return target_dir.parent
+
+    def _preflight_project_integrations_config(self, target_dir: Path, is_global: bool) -> None:
+        """Validate project-owned optional integration config before copying files."""
+        project_cwd = self._project_cwd_for_runtime_config(target_dir, is_global)
+        if project_cwd is None:
+            return
+
+        from gpd.mcp import managed_integrations as _managed_integrations
+
+        for integration in _managed_integrations.list_managed_integrations().values():
+            integration.project_record(project_cwd)
+
+    def _install_rollback_paths(self, gpd_root: Path, target_dir: Path, is_global: bool) -> tuple[Path, ...]:
+        """Return paths that must be restored if install fails after mutation starts."""
+        del is_global
+        return _scoped_install_rollback_paths(self, gpd_root, target_dir)
+
     def _install_commands(self, gpd_root: Path, target_dir: Path, path_prefix: str, failures: list[str]) -> int:
         """Install commands in runtime-specific format.
 
@@ -538,6 +937,7 @@ class RuntimeAdapter(abc.ABC):
                 self.runtime_name,
                 install_scope=self._current_install_scope_flag(),
                 markdown_transform=self.translate_shared_markdown,
+                explicit_target=getattr(self, "_install_explicit_target", False),
             )
         )
 
@@ -556,6 +956,12 @@ class RuntimeAdapter(abc.ABC):
     def _install_hooks(self, gpd_root: Path, target_dir: Path, failures: list[str]) -> None:
         """Copy hook scripts."""
         failures.extend(copy_hook_scripts(gpd_root, target_dir))
+        self._installed_hook_scripts = installed_hook_scripts_matching_source(gpd_root, target_dir)
+
+    def _installed_hook_script_available(self, hook_filename: str) -> bool:
+        """Return whether this install owns a runnable hook script by filename."""
+        installed = getattr(self, "_installed_hook_scripts", set())
+        return hook_filename in installed
 
     def _current_install_scope_flag(self) -> str:
         """Return the active install scope as a bootstrap-friendly flag."""
@@ -563,6 +969,8 @@ class RuntimeAdapter(abc.ABC):
 
     def load_runtime_agents(self, gpd_root: Path) -> tuple[AgentDef, ...]:
         """Load runtime-projected agent metadata from an install source root."""
+        from gpd.registry import load_agents_from_dir
+
         agents = load_agents_from_dir(gpd_root / "agents")
         projected = (self.project_agent_metadata(agent) for _, agent in sorted(agents.items()))
         return tuple(projected)
@@ -620,39 +1028,65 @@ class RuntimeAdapter(abc.ABC):
         import shutil
 
         from gpd.core.observability import gpd_span
+        from gpd.hooks.install_metadata import assess_install_target
 
         with gpd_span("adapter.uninstall", runtime=self.runtime_name, target=str(target_dir)) as span:
+            assessment = assess_install_target(target_dir, expected_runtime=self.runtime_name)
             self._validate_target_runtime(target_dir, action="uninstall from")
             removed: list[str] = []
 
-            # Remove nested commands/gpd/ directory
-            gpd_commands = target_dir / COMMANDS_DIR_NAME / "gpd"
-            if gpd_commands.is_dir():
-                shutil.rmtree(gpd_commands)
-                removed.append(f"{COMMANDS_DIR_NAME}/gpd/")
+            try:
+                managed_surface = get_managed_install_surface_policy(self.runtime_name)
+            except KeyError:
+                managed_surface = get_managed_install_surface_policy()
 
-            # Remove flat command/ directory used by some runtimes.
-            flat_commands = target_dir / FLAT_COMMANDS_DIR_NAME
-            if flat_commands.is_dir():
-                shutil.rmtree(flat_commands)
-                removed.append(f"{FLAT_COMMANDS_DIR_NAME}/")
+            removed_nested_commands = _remove_catalog_owned_files(
+                target_dir,
+                managed_surface.nested_command_globs,
+                stop_at=target_dir,
+            )
+            if removed_nested_commands:
+                nested_labels = tuple(
+                    label
+                    for pattern in managed_surface.nested_command_globs
+                    if (label := _catalog_command_surface_label(pattern))
+                )
+                if len(nested_labels) == 1:
+                    removed.append(f"{nested_labels[0]}/")
+                else:
+                    removed.append(f"{removed_nested_commands} nested GPD commands")
+
+            removed_flat_commands = _remove_catalog_owned_files(
+                target_dir,
+                managed_surface.flat_command_globs,
+                stop_at=target_dir,
+            )
+            if removed_flat_commands:
+                removed.append(f"{removed_flat_commands} flat GPD commands")
+
+            removed_managed_agents = _remove_catalog_owned_files(
+                target_dir,
+                managed_surface.managed_agent_globs,
+                stop_at=target_dir,
+            )
+            if removed_managed_agents:
+                removed.append(f"{removed_managed_agents} GPD agents")
+
+            _prune_catalog_roots(
+                target_dir,
+                (
+                    *managed_surface.nested_command_globs,
+                    *managed_surface.flat_command_globs,
+                    *managed_surface.managed_agent_globs,
+                ),
+                stop_at=target_dir,
+            )
 
             # Remove the shared GPD install root.
             gpd_dir = target_dir / GPD_INSTALL_DIR_NAME
             if gpd_dir.is_dir():
                 shutil.rmtree(gpd_dir)
                 removed.append(f"{GPD_INSTALL_DIR_NAME}/")
-
-            # Remove gpd-*.md agent files
-            agents_dir = target_dir / AGENTS_DIR_NAME
-            if agents_dir.is_dir():
-                agent_count = 0
-                for f in agents_dir.iterdir():
-                    if f.name.startswith("gpd-") and f.suffix == ".md":
-                        f.unlink()
-                        agent_count += 1
-                if agent_count:
-                    removed.append(f"{agent_count} GPD agents")
 
             # Remove GPD hooks
             hooks_dir = target_dir / HOOKS_DIR_NAME
@@ -680,19 +1114,20 @@ class RuntimeAdapter(abc.ABC):
             if removed_cache:
                 removed.append(f"{CACHE_DIR_NAME}/{UPDATE_CACHE_FILENAME}")
 
-            removed.extend(self._cleanup_runtime_config(target_dir))
+            if assessment.manifest_state == "ok":
+                removed.extend(self._cleanup_runtime_config(target_dir))
 
             # Remove file manifest
-            manifest = target_dir / "gpd-file-manifest.json"
+            manifest = target_dir / MANIFEST_NAME
             if manifest.exists():
                 manifest.unlink()
-                removed.append("gpd-file-manifest.json")
+                removed.append(MANIFEST_NAME)
 
             # Remove local patches directory
-            patches_dir = target_dir / "gpd-local-patches"
+            patches_dir = target_dir / PATCHES_DIR_NAME
             if patches_dir.is_dir():
                 shutil.rmtree(patches_dir)
-                removed.append("gpd-local-patches/")
+                removed.append(f"{PATCHES_DIR_NAME}/")
 
             for path in (
                 target_dir / COMMANDS_DIR_NAME,

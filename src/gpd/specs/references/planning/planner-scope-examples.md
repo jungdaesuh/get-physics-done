@@ -67,3 +67,27 @@ When the project profile is known (from PROJECT.md or orchestrator context), app
 **paper-writing:** Publication preparation where notation consistency and presentation matter. Every plan must include a notation consistency task that checks all symbols are defined, equations in the paper text match derivation files, and figures match data. Add a task to verify references exist and are correctly cited. Prioritize readability and logical flow of argument.
 
 **If profile is not specified:** Use standard depth calibration with no profile adjustments.
+
+## Execution Time Heuristics
+
+Use rough estimates only to catch obvious scope creep; do not present them as
+calendar promises.
+
+- Convention setup usually fits 5-10 minutes.
+- Standard derivations and data analysis usually fit 15-30 minutes.
+- Multi-step derivations, proofs, or simulations usually fit 30-90 minutes.
+- Split a plan that clearly exceeds one coherent executor run, especially when
+  it crosses physical regimes, uses unrelated techniques, or touches unrelated
+  artifact paths.
+
+Task-size rule of thumb:
+
+| Work class | Plan shape | Context target |
+| --- | --- | --- |
+| Simple | 3 related tasks | 30-45% |
+| Standard | 2 focused tasks | 40-50% |
+| Complex | 1-2 high-risk tasks | 30-50% |
+
+Do not let a time estimate override contract completeness. If the task is long
+because the proof or benchmark is decisive, split the plan rather than dropping
+the check.

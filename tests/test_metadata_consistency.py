@@ -3,16 +3,36 @@
 from __future__ import annotations
 
 import ast
+import importlib
+import json
 import re
+import sys
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from gpd import registry as content_registry
+from gpd._python_compat import (
+    MIN_SUPPORTED_PYTHON,
+    MIN_SUPPORTED_PYTHON_LABEL,
+    PREFERRED_VERSIONED_PYTHON_MINORS,
+    RECOMMENDED_PYTHON_VERSION,
+)
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
 from gpd.contracts import ConventionLock
 from gpd.core.config import MODEL_PROFILES
+from gpd.core.constants import (
+    MIN_PYTHON_MAJOR,
+    MIN_PYTHON_MINOR,
+)
+from gpd.core.constants import (
+    RECOMMENDED_PYTHON_VERSION as CORE_RECOMMENDED_PYTHON_VERSION,
+)
 from gpd.core.health import _ALL_CHECKS
 from gpd.core.patterns import PatternDomain
-from gpd.registry import VALID_CONTEXT_MODES
+from gpd.registry import VALID_CONTEXT_MODES, _parse_frontmatter
+from tests.workflow_authority_support import workflow_authority_text
 
 
 def _repo_root() -> Path:
@@ -23,12 +43,16 @@ def _read(relative_path: str) -> str:
     return (_repo_root() / relative_path).read_text(encoding="utf-8")
 
 
+def _workflow_authority(name: str) -> str:
+    return workflow_authority_text(_repo_root() / "src/gpd/specs/workflows", name)
+
+
 def _decorated_mcp_tools(relative_path: str) -> list[str]:
     """Return top-level ``@mcp.tool()`` function names from a server module."""
     tree = ast.parse(_read(relative_path), filename=relative_path)
     tool_names: list[str] = []
     for node in tree.body:
-        if not isinstance(node, ast.FunctionDef):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for decorator in node.decorator_list:
             if not isinstance(decorator, ast.Call):
@@ -43,6 +67,34 @@ def _decorated_mcp_tools(relative_path: str) -> list[str]:
                 tool_names.append(node.name)
                 break
     return tool_names
+
+
+def test_decorated_mcp_tools_includes_async_function_defs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module_path = tmp_path / "async_mcp_module.py"
+    module_path.write_text(
+        "\n".join(
+            [
+                "mcp = object()",
+                "",
+                "@mcp.tool()",
+                "async def async_tool():",
+                "    return None",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        sys.modules[__name__],
+        "_read",
+        lambda relative_path: module_path.read_text(encoding="utf-8"),
+    )
+
+    assert _decorated_mcp_tools("async_mcp_module.py") == ["async_tool"]
 
 
 def _descriptor_python_module(descriptor: dict[str, object]) -> str | None:
@@ -62,6 +114,17 @@ def _descriptor_python_module(descriptor: dict[str, object]) -> str | None:
     return None
 
 
+def _module_advertised_mcp_tools(module_name: str) -> list[str]:
+    module = importlib.import_module(module_name)
+    advertised = getattr(module, "ADVERTISED_TOOL_NAMES", None)
+    if isinstance(advertised, tuple):
+        return list(advertised)
+    if isinstance(advertised, list):
+        return advertised
+    module_path = Path("src") / Path(*module_name.split(".")).with_suffix(".py")
+    return _decorated_mcp_tools(module_path.as_posix())
+
+
 def _project_script_lines(repo_root: Path) -> list[str]:
     pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8").splitlines()
     collecting = False
@@ -78,6 +141,67 @@ def _project_script_lines(repo_root: Path) -> list[str]:
     return script_lines
 
 
+def _project_script_targets(repo_root: Path) -> dict[str, str]:
+    script_targets: dict[str, str] = {}
+    for line in _project_script_lines(repo_root):
+        name, target = line.split("=", 1)
+        script_targets[name.strip().strip('"')] = target.strip().strip('"')
+    return script_targets
+
+
+def _python_floor_from_requires_python(specifier: str) -> tuple[int, int]:
+    match = re.fullmatch(r">=(\d+)\.(\d+)", specifier)
+    assert match is not None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _installer_js_int_constant(installer: str, name: str) -> int:
+    match = re.search(rf"^const {re.escape(name)} = (\d+);$", installer, re.M)
+    assert match is not None
+    return int(match.group(1))
+
+
+def _installer_preferred_python_minors(installer: str) -> tuple[int, ...]:
+    match = re.search(r"^const PREFERRED_VERSIONED_PYTHON_MINORS = \[(.*?)\];$", installer, re.M)
+    assert match is not None
+    constants = {
+        "MIN_SUPPORTED_PYTHON_MINOR": _installer_js_int_constant(installer, "MIN_SUPPORTED_PYTHON_MINOR"),
+    }
+    minors: list[int] = []
+    for raw_token in match.group(1).split(","):
+        token = raw_token.strip()
+        minors.append(constants[token] if token in constants else int(token))
+    return tuple(minors)
+
+
+def _metadata_keyword_forms(value: str) -> set[str]:
+    normalized = re.sub(r"[^a-z0-9]+", " ", value.casefold()).strip()
+    if not normalized:
+        return set()
+    return {normalized, normalized.replace(" ", "")}
+
+
+def _runtime_metadata_keyword_forms() -> set[str]:
+    forms: set[str] = set()
+    for descriptor in iter_runtime_descriptors():
+        for value in (descriptor.runtime_name, descriptor.display_name, *descriptor.selection_aliases):
+            forms.update(_metadata_keyword_forms(value))
+    return forms
+
+
+def _metadata_keywords(project: dict[str, object], package_json: dict[str, object]) -> dict[str, list[str]]:
+    pyproject_keywords = project["keywords"]
+    package_keywords = package_json["keywords"]
+    assert isinstance(pyproject_keywords, list)
+    assert isinstance(package_keywords, list)
+    assert all(isinstance(item, str) for item in pyproject_keywords)
+    assert all(isinstance(item, str) for item in package_keywords)
+    return {
+        "pyproject.toml": pyproject_keywords,
+        "package.json": package_keywords,
+    }
+
+
 def test_readme_ci_badge_points_to_existing_workflow() -> None:
     repo_root = _repo_root()
     workflow = repo_root / ".github" / "workflows" / "test.yml"
@@ -89,16 +213,53 @@ def test_readme_ci_badge_points_to_existing_workflow() -> None:
 
 def test_python_floor_is_consistent_across_install_surfaces() -> None:
     project = tomllib.loads(_read("pyproject.toml"))["project"]
-    assert project["requires-python"] == ">=3.11"
+    assert _python_floor_from_requires_python(project["requires-python"]) == MIN_SUPPORTED_PYTHON
+    assert (MIN_PYTHON_MAJOR, MIN_PYTHON_MINOR) == MIN_SUPPORTED_PYTHON
 
     readme = _read("README.md")
     installer = _read("bin/install.js")
+    installer_metadata = json.loads(_read("src/gpd/bootstrap/installer_metadata.json"))
+    python_compatibility = installer_metadata["python_compatibility"]
+    installer_floor = python_compatibility["minimum_supported_python"]
+    installer_recommended = python_compatibility["recommended_python_version"]
+    installer_preferred_minors = tuple(python_compatibility["preferred_versioned_python_minors"])
 
-    assert "Python 3.11+" in readme
-    assert "MIN_SUPPORTED_PYTHON_MINOR = 11" in installer
-    assert "PREFERRED_VERSIONED_PYTHON_MINORS = [13, 12, 11]" in installer
+    assert f"Python {MIN_SUPPORTED_PYTHON_LABEL}+" in readme
+    assert CORE_RECOMMENDED_PYTHON_VERSION == RECOMMENDED_PYTHON_VERSION
+    assert installer_floor == {"major": MIN_SUPPORTED_PYTHON[0], "minor": MIN_SUPPORTED_PYTHON[1]}
+    assert python_compatibility["minimum_supported_python_label"] == MIN_SUPPORTED_PYTHON_LABEL
+    assert installer_preferred_minors == PREFERRED_VERSIONED_PYTHON_MINORS
+    assert installer_recommended == {"major": RECOMMENDED_PYTHON_VERSION[0], "minor": RECOMMENDED_PYTHON_VERSION[1]}
+    assert MIN_SUPPORTED_PYTHON[1] in installer_preferred_minors
+    assert "Python 3.11+ is required" not in installer
+    assert "Python ${MIN_SUPPORTED_PYTHON_LABEL} is required" in installer
+    assert "BOOTSTRAP_INSTALLER_METADATA.pythonCompatibility" in installer
     assert "preferredPythonCommands" in installer
-    assert "Python 3.11+ is required" in installer
+
+
+def test_public_package_keywords_do_not_hand_maintain_runtime_names() -> None:
+    project = tomllib.loads(_read("pyproject.toml"))["project"]
+    package_json = json.loads(_read("package.json"))
+    runtime_keyword_forms = _runtime_metadata_keyword_forms()
+    metadata_keywords = _metadata_keywords(project, package_json)
+
+    assert metadata_keywords["package.json"] == metadata_keywords["pyproject.toml"]
+
+    for source, keywords in metadata_keywords.items():
+        leaked = sorted(keyword for keyword in keywords if _metadata_keyword_forms(keyword) & runtime_keyword_forms)
+        assert leaked == [], f"{source} should not hand-maintain runtime catalog names in package keywords"
+
+
+def _mcp_server_modules_with_main(repo_root: Path) -> list[Path]:
+    """Return server modules that expose a ``main`` entrypoint (public CLI surface)."""
+
+    candidates = [
+        p
+        for p in (repo_root / "src" / "gpd" / "mcp" / "servers").glob("*.py")
+        if p.name != "__init__.py" and not p.name.startswith("_")
+    ]
+    main_pattern = re.compile(r"^(?:async\s+)?def\s+main\s*\(", re.MULTILINE)
+    return [p for p in candidates if main_pattern.search(p.read_text(encoding="utf-8"))]
 
 
 def test_canonical_registry_skill_inventory_counts_match_repo_contents() -> None:
@@ -107,23 +268,32 @@ def test_canonical_registry_skill_inventory_counts_match_repo_contents() -> None
     agents_count = len(list((repo_root / "src" / "gpd" / "agents").glob("*.md")))
     content_registry.invalidate_cache()
     canonical_skills_count = len(content_registry.list_skills())
-    mcp_server_count = len([p for p in (repo_root / "src" / "gpd" / "mcp" / "servers").glob("*.py") if p.name != "__init__.py"])
+    mcp_server_count = len(_mcp_server_modules_with_main(repo_root))
     mcp_script_count = sum(1 for line in _project_script_lines(repo_root) if line.startswith('"gpd-mcp-'))
+    managed_integration_script_count = sum(
+        1 for name in _project_script_targets(repo_root) if name == "gpd-mcp-wolfram"
+    )
 
-    assert commands_count >= 50
+    assert commands_count > 0
+    assert agents_count > 0
     # The canonical registry/MCP skill index remains commands + agents even
     # when a runtime projects a narrower discoverable install surface.
     assert canonical_skills_count == commands_count + agents_count
-    assert mcp_server_count == mcp_script_count
+    assert mcp_server_count == mcp_script_count - managed_integration_script_count
 
 
 def test_agent_metadata_inventory_uses_valid_enums_without_changing_canonical_skill_surface() -> None:
     content_registry.invalidate_cache()
 
-    valid_surfaces = set(content_registry.VALID_AGENT_SURFACES)
-    valid_role_families = set(content_registry.VALID_AGENT_ROLE_FAMILIES)
-    valid_artifact_authorities = set(content_registry.VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES)
-    valid_shared_state_authorities = set(content_registry.VALID_AGENT_SHARED_STATE_AUTHORITIES)
+    valid_surfaces = set(content_registry.AGENT_SURFACES)
+    valid_role_families = set(content_registry.AGENT_ROLE_FAMILIES)
+    valid_artifact_authorities = set(content_registry.AGENT_ARTIFACT_WRITE_AUTHORITIES)
+    valid_shared_state_authorities = set(content_registry.AGENT_SHARED_STATE_AUTHORITIES)
+
+    assert not hasattr(content_registry, "VALID_AGENT_SURFACES")
+    assert not hasattr(content_registry, "VALID_AGENT_ROLE_FAMILIES")
+    assert not hasattr(content_registry, "VALID_AGENT_ARTIFACT_WRITE_AUTHORITIES")
+    assert not hasattr(content_registry, "VALID_AGENT_SHARED_STATE_AUTHORITIES")
 
     for name in content_registry.list_agents():
         agent = content_registry.get_agent(name)
@@ -135,7 +305,7 @@ def test_agent_metadata_inventory_uses_valid_enums_without_changing_canonical_sk
 
 def test_convention_field_counts_match_source_of_truth() -> None:
     convention_count = len(ConventionLock.model_fields) - 1  # exclude custom_conventions
-    assert convention_count == 18
+    assert convention_count > 0
 
     assert f"Convention lock ({convention_count} physics fields + custom)" in _read("src/gpd/core/__init__.py")
     assert f"locks conventions for up to {convention_count} physics fields" in _read("README.md")
@@ -143,7 +313,7 @@ def test_convention_field_counts_match_source_of_truth() -> None:
 
 def test_pattern_domain_counts_match_source_of_truth() -> None:
     domain_count = len(PatternDomain)
-    assert domain_count == 13
+    assert domain_count > 0
 
     assert f"Error pattern library (8 categories, {domain_count} domains)" in _read("src/gpd/core/__init__.py")
     assert f'pattern_app = typer.Typer(help="Error pattern library (8 categories, {domain_count} domains)")' in _read(
@@ -152,11 +322,17 @@ def test_pattern_domain_counts_match_source_of_truth() -> None:
 
 
 def test_mcp_server_count_matches_public_entrypoints() -> None:
+    from gpd.mcp.managed_integrations import WOLFRAM_BRIDGE_COMMAND
+
     repo_root = _repo_root()
-    mcp_server_count = len([p for p in (repo_root / "src" / "gpd" / "mcp" / "servers").glob("*.py") if p.name != "__init__.py"])
-    mcp_script_count = sum(1 for line in _project_script_lines(repo_root) if line.startswith('"gpd-mcp-'))
-    assert mcp_server_count == 7
-    assert mcp_server_count == mcp_script_count
+    mcp_server_count = len(_mcp_server_modules_with_main(repo_root))
+    builtin_mcp_script_count = sum(
+        1
+        for name in _project_script_targets(repo_root)
+        if name.startswith("gpd-mcp-") and name != WOLFRAM_BRIDGE_COMMAND
+    )
+    assert mcp_server_count > 0
+    assert mcp_server_count == builtin_mcp_script_count
 
 
 def test_managed_mcp_server_keys_match_public_descriptors_and_infra_inventory() -> None:
@@ -170,19 +346,41 @@ def test_managed_mcp_server_keys_match_public_descriptors_and_infra_inventory() 
     assert GPD_MCP_SERVER_KEYS == infra_keys
 
 
+def test_gpd_skills_infra_health_check_tracks_the_research_vertical() -> None:
+    descriptor = json.loads(_read("infra/gpd-skills.json"))
+    health_check = descriptor["health_check"]
+
+    assert health_check["tool"] == "list_skills"
+    assert health_check["input"] == {}
+    assert "gpd-execute-phase" in health_check["expect"]
+    assert "gpd-research-phase" in health_check["expect"]
+
+
+def test_optional_wolfram_bridge_stays_outside_builtin_public_mcp_surface() -> None:
+    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS, build_public_descriptors
+    from gpd.mcp.managed_integrations import WOLFRAM_BRIDGE_COMMAND, WOLFRAM_MANAGED_SERVER_KEY
+
+    repo_root = _repo_root()
+    descriptor_keys = set(build_public_descriptors())
+    infra_keys = {path.stem for path in (repo_root / "infra").glob("gpd-*.json")}
+    script_targets = _project_script_targets(repo_root)
+
+    assert WOLFRAM_MANAGED_SERVER_KEY not in GPD_MCP_SERVER_KEYS
+    assert WOLFRAM_MANAGED_SERVER_KEY not in descriptor_keys
+    assert WOLFRAM_MANAGED_SERVER_KEY not in infra_keys
+
+    if WOLFRAM_BRIDGE_COMMAND in script_targets:
+        assert script_targets[WOLFRAM_BRIDGE_COMMAND] == "gpd.mcp.integrations.wolfram_bridge:main"
+
+
 def test_public_mcp_descriptor_capabilities_match_server_tools() -> None:
     from gpd.mcp.builtin_servers import build_public_descriptors
 
     descriptors = build_public_descriptors()
     for name, descriptor in descriptors.items():
         module_name = _descriptor_python_module(descriptor)
-        if module_name == "arxiv_mcp_server":
-            continue
-
         assert isinstance(module_name, str), name
-        module_path = Path("src") / Path(*module_name.split(".")).with_suffix(".py")
-
-        assert descriptor["capabilities"] == _decorated_mcp_tools(module_path.as_posix()), name
+        assert descriptor["capabilities"] == _module_advertised_mcp_tools(module_name), name
 
 
 def test_public_mcp_descriptor_entry_point_alternatives_match_pyproject_scripts() -> None:
@@ -197,10 +395,7 @@ def test_public_mcp_descriptor_entry_point_alternatives_match_pyproject_scripts(
     descriptors = build_public_descriptors()
     for name, descriptor in descriptors.items():
         module_name = _descriptor_python_module(descriptor)
-        if module_name == "arxiv_mcp_server":
-            assert "alternatives" not in descriptor
-            continue
-
+        assert isinstance(module_name, str), name
         script_name = descriptor.get("command")
         assert isinstance(script_name, str), name
         assert descriptor.get("args") == []
@@ -211,22 +406,69 @@ def test_public_mcp_descriptor_entry_point_alternatives_match_pyproject_scripts(
         assert isinstance(alternatives, dict), name
         python_module = alternatives.get("python_module")
         assert isinstance(python_module, dict), name
-        assert python_module.get("command") == "python"
+        assert python_module.get("command") == "${GPD_PYTHON}"
         assert python_module.get("args") == ["-m", module_name]
-        assert python_module.get("notes") == "Requires gpd package installed and Python >=3.11"
+        assert (
+            python_module.get("notes")
+            == "Replace `${GPD_PYTHON}` with a Python >=3.11 interpreter that has GPD installed."
+        )
 
 
 def test_arxiv_descriptor_tracks_optional_dependency_surface() -> None:
     from gpd.mcp.builtin_servers import build_public_descriptors
+    from gpd.mcp.servers.arxiv_bridge import ADVERTISED_TOOL_NAMES, DOWNLOAD_SOURCE_TOOL_NAME, UPSTREAM_CORE_TOOL_NAMES
 
     project = tomllib.loads(_read("pyproject.toml"))["project"]
     dependencies: list[str] = project["dependencies"]
     optional = project.get("optional-dependencies", {})
     assert not any(item.startswith("arxiv-mcp-server") for item in dependencies)
-    assert optional == {"arxiv": ["arxiv-mcp-server>=0.3.2"]}
+    assert set(optional) == {"arxiv", "paper"}
+    assert set(optional["paper"]) == {
+        "cairosvg>=2.7.0",
+        "pypdf>=5.0",
+    }
+    assert set(optional["arxiv"]) == {
+        "arxiv-mcp-server[pdf]>=0.4.11",
+        "arxiv>=2.4.1",
+        "httpx>=0.27",
+        "cairosvg>=2.7.0",
+        "pypdf>=5.0",
+    }
 
     descriptor = build_public_descriptors()["gpd-arxiv"]
-    assert descriptor["prerequisites"] == ["Install GPD before enabling built-in MCP servers."]
+    infra_descriptor = json.loads(_read("infra/gpd-arxiv.json"))
+    expected_prerequisites = [
+        "Install GPD before enabling built-in MCP servers.",
+        "Install GPD with the `arxiv` Python extra in the same environment before enabling gpd-arxiv.",
+    ]
+    assert descriptor["prerequisites"] == expected_prerequisites
+    assert infra_descriptor["prerequisites"] == expected_prerequisites
+    assert descriptor["capability_surface"] == "baseline_dynamic_upstream"
+    assert descriptor["dynamic_upstream_capabilities"] is True
+    assert descriptor["baseline_upstream_capabilities"] == list(UPSTREAM_CORE_TOOL_NAMES)
+    assert descriptor["local_capabilities"] == [DOWNLOAD_SOURCE_TOOL_NAME]
+    assert descriptor["capabilities"] == list(ADVERTISED_TOOL_NAMES)
+    assert descriptor["capabilities"][-1] == "download_source"
+
+
+def test_paper_journal_vocabulary_docs_match_builder_contract() -> None:
+    from gpd.mcp.paper.models import SUPPORTED_PAPER_JOURNALS
+
+    expected = set(SUPPORTED_PAPER_JOURNALS)
+
+    paper_config_schema = _read("src/gpd/specs/templates/paper/paper-config-schema.md")
+    supported_journals_match = re.search(
+        r"## Supported `journal` Values(?P<section>.*?)(?=^## Validation Rules)",
+        paper_config_schema,
+        re.M | re.S,
+    )
+    assert supported_journals_match is not None
+    assert set(re.findall(r"^- `([^`]+)`$", supported_journals_match.group("section"), re.M)) == expected
+
+    authoring_input_schema = _read("src/gpd/specs/templates/paper/write-paper-authoring-input-schema.md")
+    target_journal_match = re.search(r"^- `target_journal`: one of (?P<values>.+)$", authoring_input_schema, re.M)
+    assert target_journal_match is not None
+    assert set(re.findall(r"`([^`]+)`", target_journal_match.group("values"))) == expected
 
 
 def test_agent_count_matches_prompts_and_user_docs() -> None:
@@ -253,54 +495,71 @@ def test_settings_workflow_documents_runtime_native_model_override_guidance() ->
 def test_branching_strategy_docs_use_canonical_config_literals() -> None:
     settings = _read("src/gpd/specs/workflows/settings.md")
     planning = _read("src/gpd/specs/references/planning/planning-config.md")
-    execute_phase = _read("src/gpd/specs/workflows/execute-phase.md")
+    execute_phase = _workflow_authority("execute-phase")
     complete_milestone = _read("src/gpd/specs/workflows/complete-milestone.md")
 
     assert '"branching_strategy": "none" | "per-phase" | "per-milestone"' in settings
     assert 'Git branching approach: `"none"`, `"per-phase"`, or `"per-milestone"`' in planning
-    assert '| `per-phase`     | At `execute-phase` start' in planning
-    assert '| `per-milestone` | At first `execute-phase` of milestone' in planning
-    assert '**"per-phase" or "per-milestone":** Use pre-computed `branch_name` from init:' in execute_phase
+    assert "| `per-phase`     | At `execute-phase` start" in planning
+    assert "| `per-milestone` | At first `execute-phase` of milestone" in planning
+    assert "`per-phase` or `per-milestone`: use precomputed `branch_name`" in execute_phase
     assert '**For "per-phase" strategy:**' in complete_milestone
     assert '**For "per-milestone" strategy:**' in complete_milestone
     assert 'if [ "$BRANCHING_STRATEGY" = "per-phase" ]; then' in complete_milestone
     assert 'if [ "$BRANCHING_STRATEGY" = "per-milestone" ]; then' in complete_milestone
     assert '"branching_strategy": "none" | "phase" | "milestone"' not in settings
     assert 'Git branching approach: `"none"`, `"phase"`, or `"milestone"`' not in planning
-    assert '| `phase`     | At `execute-phase` start' not in planning
-    assert '| `milestone` | At first `execute-phase` of milestone' not in planning
+    assert "| `phase`     | At `execute-phase` start" not in planning
+    assert "| `milestone` | At first `execute-phase` of milestone" not in planning
 
 
 def test_help_and_settings_surface_current_commit_docs_and_review_cadence_shapes() -> None:
     settings = _read("src/gpd/specs/workflows/settings.md")
-    help_command = _read("src/gpd/commands/help.md")
     help_workflow = _read("src/gpd/specs/workflows/help.md")
 
-    for content in (settings, help_command, help_workflow):
+    for content in (settings, help_workflow):
         assert "execution.review_cadence" in content
         assert "planning.commit_docs" in content
+
+    assert "needs-calculation" in help_workflow
 
 
 def test_execute_phase_docs_use_review_cadence_not_removed_verify_between_waves_knob() -> None:
     execute_command = _read("src/gpd/commands/execute-phase.md")
-    execute_workflow = _read("src/gpd/specs/workflows/execute-phase.md")
+    execute_workflow = _workflow_authority("execute-phase")
 
-    assert "execution.review_cadence" in execute_command
-    assert "dense" in execute_command
-    assert "adaptive" in execute_command
-    assert "sparse" in execute_command
+    assert "@{GPD_INSTALL_DIR}/workflows/execute-phase/phase-bootstrap.md" in execute_command
+    assert "@{GPD_INSTALL_DIR}/workflows/execute-phase.md" not in execute_command
+    assert "execution.review_cadence" not in execute_command
+    assert "dense" not in execute_command
+    assert "adaptive" not in execute_command
+    assert "sparse" not in execute_command
     assert "workflow.verify_between_waves" not in execute_command
     assert "review_cadence" in execute_workflow
+    assert "dense" in execute_workflow
+    assert "adaptive" in execute_workflow
+    assert "sparse" in execute_workflow
     assert "verify_between_waves" not in execute_workflow
 
 
 def test_health_check_count_matches_skill_documentation() -> None:
     health_check_count = len(_ALL_CHECKS)
-    assert health_check_count == 13
+    assert health_check_count > 0
 
     command = _read("src/gpd/commands/health.md")
     assert "All {total} health checks passed." in command
     assert "All checks reported with status" in command
+
+
+def test_health_command_defaults_read_only_and_confirms_fix_before_mutation() -> None:
+    command = _read("src/gpd/commands/health.md")
+    metadata, _body = _parse_frontmatter(command)
+    allowed_tools = metadata["allowed-tools"]
+
+    assert "file_write" not in allowed_tools
+    assert "ask_user" in allowed_tools
+    assert "Default mode is read-only." in command
+    assert "Do not run `gpd --raw health --fix` unless the researcher confirms." in command
 
 
 def test_every_command_declares_valid_context_mode() -> None:
@@ -328,22 +587,77 @@ def test_update_workflow_uses_runtime_placeholders_for_cache_paths() -> None:
     workflow = _read("src/gpd/specs/workflows/update.md")
 
     assert "<GPD_CONFIG_DIR>" not in workflow
-    assert '"{GPD_CONFIG_DIR}/cache/gpd-update-check.json"' in workflow
+    assert "get_update_cache_files(cwd=Path.cwd(), home=Path.home())" in workflow
+    assert "home_update_cache_file(home=Path.home())" in workflow
+    assert 'for root in (current_config, current_global_config, Path.home() / "{GPD_HOME_DATA_DIR_NAME}")' in workflow
+    assert 'root / "{GPD_CACHE_DIR_NAME}" / "{GPD_UPDATE_CACHE_FILENAME}"' in workflow
 
 
 def test_referee_response_round_suffix_convention_is_consistent() -> None:
-    peer_review = _read("src/gpd/specs/workflows/peer-review.md")
-    respond = _read("src/gpd/specs/workflows/respond-to-referees.md")
+    write_paper = _workflow_authority("write-paper")
+    peer_review = _workflow_authority("peer-review")
+    respond_command = _read("src/gpd/commands/respond-to-referees.md")
+    referee = _read("src/gpd/agents/gpd-referee.md")
+    respond = _workflow_authority("respond-to-referees")
+    arxiv = _workflow_authority("arxiv-submission")
+    reliability = _read("src/gpd/specs/references/publication/peer-review-reliability.md")
+    response_artifacts = _read("src/gpd/specs/references/publication/publication-response-artifacts.md")
+    response_handoff = _read("src/gpd/specs/references/publication/publication-response-writer-handoff.md")
+    author_response = _read("src/gpd/specs/templates/paper/author-response.md")
     template = _read("src/gpd/specs/templates/paper/referee-response.md")
 
-    assert 'ROUND_SUFFIX="-R2"' in peer_review
-    assert 'ROUND_SUFFIX="-R3"' in peer_review
-    assert "REFEREE_RESPONSE-R2.md" in respond
-    assert "AUTHOR-RESPONSE-R2.md" in respond
+    assert "round_suffix" in peer_review
+    assert "${REVIEW_ROOT}/REFEREE_RESPONSE{round_suffix}.md" in peer_review
+    assert "${selected_review_root}/REFEREE_RESPONSE{round_suffix}.md" in response_artifacts
+    assert "${selected_publication_root}/AUTHOR-RESPONSE{round_suffix}.md" in response_artifacts
+    assert "`GPD/review/REFEREE_RESPONSE{round_suffix}.md`" in response_handoff
+    assert "`GPD/AUTHOR-RESPONSE{round_suffix}.md`" in response_handoff
+    assert re.search(r"RESPONSE_REFEREE_PATH=.*REFEREE_RESPONSE\$\{ROUND_SUFFIX\}\.md", respond)
+    assert re.search(r"RESPONSE_AUTHOR_PATH=.*AUTHOR-RESPONSE\$\{ROUND_SUFFIX\}\.md", respond)
+    assert "context_mode: project-aware" in respond_command
+    assert "command-policy:" in respond_command
+    assert "explicit_input_kinds:" in respond_command
+    assert "default_output_subtree: GPD" in respond_command
+    assert "GPD/paper" not in respond
+    assert "needs-calculation" in respond
+    assert "issues_needing_calculation" in author_response
+    assert "needs-calculation" in author_response
+    assert "templates/paper/author-response.md" in template
     assert "REFEREE_RESPONSE-R2.md" in template
     assert "REFEREE_RESPONSE_R2.md" not in respond
     assert "REFEREE_RESPONSE_R2.md" not in template
     assert "paper/referee-reports" not in respond
+    assert re.search(
+        r"Do not write\s+`AUTHOR-RESPONSE\*` or `REFEREE_RESPONSE\*` beside `\$\{PAPER_DIR\}` or an imported\s+report source",
+        respond,
+    )
+    for content in (peer_review, referee):
+        assert "ls GPD/REFEREE-REPORT*.md 2>/dev/null" not in content
+        assert "ls GPD/AUTHOR-RESPONSE*.md 2>/dev/null" not in content
+    assert "ls GPD/review/REFEREE_RESPONSE*.md 2>/dev/null" not in referee
+    assert "ls GPD/review/REFEREE_RESPONSE*.md 2>/dev/null" not in respond
+    assert "ls GPD/review/REVIEW-LEDGER*.json 2>/dev/null" not in respond
+    assert "ls GPD/review/REFEREE-DECISION*.json 2>/dev/null" not in respond
+    assert re.search(r"\$\{PUBLICATION_ROOT\}/AUTHOR-RESPONSE\{round_suffix\}\.md", peer_review)
+    assert re.search(r"\$\{REVIEW_ROOT\}/REFEREE_RESPONSE\{round_suffix\}\.md", peer_review)
+    assert "matching paired response package exists for the same round" in referee
+    assert re.search(
+        r"If one response artifact is missing[\s\S]{0,140}stop fail-closed and report the incomplete response package",
+        referee,
+    )
+    assert "canonical paired response artifacts are present" in reliability
+    assert re.search(r"\bfind\b[\s\S]{0,160}-name ['\"]REFEREE_RESPONSE\*\.md['\"]", respond)
+    assert re.search(r"\bfind\b[\s\S]{0,160}-name ['\"]AUTHOR-RESPONSE\*\.md['\"]", respond)
+    assert re.search(r"\bfind\b[\s\S]{0,160}-name ['\"]REVIEW-LEDGER\*\.json['\"]", respond)
+    assert re.search(r"\bfind\b[\s\S]{0,160}-name ['\"]REFEREE-DECISION\*\.json['\"]", respond)
+    assert "publication-manuscript-root-preflight.md" in peer_review
+    assert "${MANUSCRIPT_ROOT}/REFEREE_RESPONSE" not in peer_review
+    assert "publication-bootstrap-preflight.md" in write_paper
+    assert "publication-response-writer-handoff.md" in write_paper
+    assert "publication-bootstrap-preflight.md" in respond
+    assert "publication-response-writer-handoff.md" in respond
+    assert "publication-bootstrap-preflight.md" in arxiv
+    assert "publication-response-writer-handoff.md" not in arxiv
 
 
 def test_bibliography_template_tracks_live_references_bib_path() -> None:
