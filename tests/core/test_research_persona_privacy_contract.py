@@ -18,7 +18,6 @@ WORKFLOWS_DIR = REPO_ROOT / "src" / "gpd" / "specs" / "workflows"
 
 _RUNTIME_SURFACE_FILES = (
     REPO_ROOT / "pyproject.toml",
-    REPO_ROOT / "src" / "gpd" / "cli.py",
     REPO_ROOT / "src" / "gpd" / "registry.py",
     REPO_ROOT / "src" / "gpd" / "core" / "commands.py",
     REPO_ROOT / "src" / "gpd" / "core" / "registry_frontmatter.py",
@@ -87,7 +86,7 @@ def _iter_text_atoms(value: object, *, path: str = "$") -> list[tuple[str, str]]
     return atoms
 
 
-def test_research_persona_phase1_adds_no_commands_agents_or_frontmatter_assumptions() -> None:
+def test_research_persona_adds_no_runtime_markdown_registry_or_frontmatter_assumptions() -> None:
     hits: list[str] = []
     for path in _runtime_integration_files():
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -95,8 +94,9 @@ def test_research_persona_phase1_adds_no_commands_agents_or_frontmatter_assumpti
                 relative = path.relative_to(REPO_ROOT).as_posix()
                 hits.append(f"{relative}:{line_number}: {line.strip()}")
 
-    assert not hits, "Research Persona Phase 1 must not integrate into runtime/frontmatter surfaces:\n" + "\n".join(
-        hits
+    assert not hits, (
+        "Research Persona may have a local CLI group, but must not integrate into runtime markdown, "
+        "registry, frontmatter, workflow manifests, or public surface contracts:\n" + "\n".join(hits)
     )
 
 
