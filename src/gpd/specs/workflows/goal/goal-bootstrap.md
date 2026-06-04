@@ -73,7 +73,7 @@ Repeat until a terminal state:
    `budget_stopped`, record
    `gpd observe event goal stop --status ok --data '{"terminal": "budget_stopped"}'`,
    and show the receipt plus resume instructions:
-   `/gpd:goal --resume [--budget-usd <new>] [--max-phases <new>]`.
+   `gpd:goal --resume [--budget-usd <new>] [--max-phases <new>]`.
 6. **Blocked.** If a phase iteration reports an unrecoverable block, set
    `goal_contract.status` to `blocked`, record the stop event with
    `"terminal": "blocked"`, and surface the blocker with the receipt.

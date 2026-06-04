@@ -4493,7 +4493,7 @@ def _goal_gate_payload() -> dict:
     payload = (loaded.state or {}).get("goal_contract")
     if payload is None:
         _error(
-            'No goal contract found. Start one with /gpd:goal "<statement>" '
+            'No goal contract found. Start one with gpd:goal "<statement>" '
             "--budget-usd <amount> and/or --max-phases <n>."
         )
     issues = validate_goal_contract_payload(payload)
