@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from gpd.core.ideate_sources import normalize_ideate_sources, parse_ideate_arguments
+from tests.assertion_taxonomy_support import assert_prompt_contracts, semantic_concept
 
 
 def _write_knowledge_doc(
@@ -93,7 +94,10 @@ def test_normalize_ideate_sources_topic_only_creates_blocked_context_row(tmp_pat
     assert source.normalized_ref == "matrix model chaos"
     assert source.status == "blocked"
     assert source.digest_path == ""
-    assert "source-grounded claims" in source.warnings[0]
+    assert_prompt_contracts(
+        source.warnings[0],
+        *semantic_concept("ideate topic-only grounding warning", required="source-grounded claims"),
+    )
     assert manifest.source_inputs == ()
     assert manifest.blocked is True
 

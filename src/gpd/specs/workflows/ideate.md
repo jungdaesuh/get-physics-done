@@ -9,25 +9,9 @@ Final ranked ideas require source support. A topic can frame the session, but it
 <process>
 
 <step name="validate_and_load_context" priority="first">
-Run centralized command-context preflight before creating artifacts:
+Run centralized command-context preflight before creating artifacts; stop and surface the validator output on failure.
 
-```bash
-CONTEXT=$(gpd --raw validate command-context ideate "$ARGUMENTS")
-if [ $? -ne 0 ]; then
-  echo "$CONTEXT"
-  exit 1
-fi
-```
-
-Load current-workspace context without recent-project reentry:
-
-```bash
-INIT=$(gpd --raw init progress --include state,roadmap,config,references --no-project-reentry)
-if [ $? -ne 0 ]; then
-  echo "ERROR: gpd initialization failed: $INIT"
-  # STOP; surface the error.
-fi
-```
+Load current-workspace state, roadmap, config, and reference context without recent-project reentry; stop and surface initialization errors.
 
 Parse `workspace_root`, `project_exists`, `state_exists`, `roadmap_exists`, `autonomy`, `research_mode`, and available reference/knowledge fields. The workflow may run before a GPD project exists; in that case all durable files stay under `./GPD/blackboards/` in the invoking workspace.
 </step>
@@ -45,11 +29,7 @@ If `ask_user` is unavailable, present those three options in plain text and wait
 </step>
 
 <step name="initialize_artifacts">
-Create the durable root:
-
-```bash
-mkdir -p GPD/blackboards
-```
+Ensure the durable root `GPD/blackboards/` exists before writing session files.
 
 Derive a stable ASCII topic slug from the explicit topic, the first source title/stem, or `ideation-session` when no better stem exists. Allocate collision-safe sibling paths:
 
@@ -161,18 +141,14 @@ The blocked report state must not contain a `## Ranked Research Questions` list 
 <step name="digest_sources">
 For each pending non-topic source, spawn `gpd-paper-digester` with the session paths and the `SRC-NNN` row. Existing current-workspace `GPD/knowledge/K-*.md` documents may be marked `reused` when they already provide a usable source-grounded surface; otherwise digest them like other source surfaces.
 
-Resolve the digester model:
-
-```bash
-DIGESTER_MODEL=$(gpd resolve-model gpd-paper-digester)
-```
+Resolve the digester model through the standard model-profile path; omit the model argument when no runtime-specific override is configured.
 
 @{GPD_INSTALL_DIR}/references/orchestration/runtime-delegation-note.md
 
 ```
 task(
   subagent_type="gpd-paper-digester",
-  model="{DIGESTER_MODEL}",
+  model="{resolved_digester_model_if_any}",
   readonly=false,
   prompt="First, read {GPD_AGENTS_DIR}/gpd-paper-digester.md for your role and instructions.
 
@@ -227,17 +203,12 @@ For each round:
 7. Parent appends the readable turn to the transcript and updates blackboard sections.
 8. If the depth requires steering, ask whether to continue, narrow, broaden, add sources, or stop early.
 
-Resolve ideator and critic models:
-
-```bash
-IDEATOR_MODEL=$(gpd resolve-model gpd-ideator)
-CRITIC_MODEL=$(gpd resolve-model gpd-ideation-critic)
-```
+Resolve ideator and critic models through the standard model-profile path; omit model arguments when no runtime-specific override is configured.
 
 ```
 task(
   subagent_type="gpd-ideator",
-  model="{IDEATOR_MODEL}",
+  model="{resolved_ideator_model_if_any}",
   readonly=false,
   prompt="First, read {GPD_AGENTS_DIR}/gpd-ideator.md for your role and instructions.
 
@@ -272,7 +243,7 @@ Respect the source gate and return instead of inventing unsupported source links
 ```
 task(
   subagent_type="gpd-ideation-critic",
-  model="{CRITIC_MODEL}",
+  model="{resolved_critic_model_if_any}",
   readonly=false,
   prompt="First, read {GPD_AGENTS_DIR}/gpd-ideation-critic.md for your role and instructions.
 
@@ -384,7 +355,7 @@ If the source gate is blocked, return `status: blocked`, point to the blackboard
 </process>
 
 <success_criteria>
-- [ ] Command context validated with `gpd --raw validate command-context ideate`
+- [ ] Command context validated before artifact creation
 - [ ] Durable root is `GPD/blackboards`
 - [ ] Exactly three session files initialized: blackboard, transcript, and report
 - [ ] Source manifest contains stable `SRC-NNN` rows

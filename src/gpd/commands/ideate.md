@@ -77,13 +77,7 @@ Validated command-context owns optional current-workspace project context. Use t
 <process>
 ## 0. Validate Context
 
-```bash
-CONTEXT=$(gpd --raw validate command-context ideate "$ARGUMENTS")
-if [ $? -ne 0 ]; then
-  echo "$CONTEXT"
-  exit 1
-fi
-```
+Run `gpd --raw validate command-context ideate "$ARGUMENTS"` before delegation; if it fails, stop and surface the validator output.
 
 ## 1. Delegate To Workflow
 

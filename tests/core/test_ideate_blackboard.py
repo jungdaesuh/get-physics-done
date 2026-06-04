@@ -16,6 +16,7 @@ from gpd.core.ideate_blackboard import (
     merge_blackboard_update,
     slugify_ideate_topic,
 )
+from tests.assertion_taxonomy_support import assert_prompt_contracts, semantic_concept
 
 TODAY = date(2026, 5, 5)
 
@@ -104,9 +105,14 @@ def test_initialize_ideate_artifacts_renders_linked_templates(tmp_path: Path) ->
     assert report["related_artifacts"]["blackboard"] == "GPD/blackboards/ideate-2026-05-05-matrix-models.md"
     assert blackboard["source_inputs"] == ["2303.00000", "papers/main.tex"]
     assert report["knowledge_docs"] == ["GPD/knowledge/K-001.md"]
-    assert "## Source Manifest" in blackboard_body
-    assert "source_id: SRC-001" in blackboard_body
-    assert "## Ranked Research Questions" in paths.report.read_text(encoding="utf-8")
+    assert_prompt_contracts(
+        blackboard_body,
+        *semantic_concept("ideate blackboard source manifest", required=("## Source Manifest", "source_id: SRC-001")),
+    )
+    assert_prompt_contracts(
+        paths.report.read_text(encoding="utf-8"),
+        *semantic_concept("ideate report template sections", required="## Ranked Research Questions"),
+    )
 
 
 def test_initialize_ideate_artifacts_replaces_template_placeholders(tmp_path: Path) -> None:
@@ -115,10 +121,13 @@ def test_initialize_ideate_artifacts_replaces_template_placeholders(tmp_path: Pa
 
     for path in paths.all:
         content = path.read_text(encoding="utf-8")
-        assert "{{" not in content
-        assert "}}" not in content
-        assert "YYYY-MM-DD" not in content
-        assert "<topic-slug>" not in content
+        assert_prompt_contracts(
+            content,
+            *semantic_concept(
+                "ideate template placeholder cleanup",
+                forbidden=("{{", "}}", "YYYY-MM-DD", "<topic-slug>"),
+            ),
+        )
 
 
 def test_append_transcript_turn_preserves_turn_and_thread_shape(tmp_path: Path) -> None:
@@ -139,13 +148,21 @@ def test_append_transcript_turn_preserves_turn_and_thread_shape(tmp_path: Path) 
     content = paths.transcript.read_text(encoding="utf-8")
     metadata = _meta(paths.transcript)
     assert metadata["turn_count"] == 1
-    assert "## Turn 1" in content
-    assert "- turn_id: TURN-001" in content
-    assert "- thread_id: TH-001" in content
-    assert "### Summary" in content
-    assert "### gpd-ideator" in content
-    assert "### gpd-ideation-critic" in content
-    assert "No turns recorded." not in content
+    assert_prompt_contracts(
+        content,
+        *semantic_concept(
+            "ideate transcript turn shape",
+            required=(
+                "## Turn 1",
+                "- turn_id: TURN-001",
+                "- thread_id: TH-001",
+                "### Summary",
+                "### gpd-ideator",
+                "### gpd-ideation-critic",
+            ),
+            forbidden="No turns recorded.",
+        ),
+    )
 
 
 def test_merge_blackboard_update_replaces_manifest_and_appends_sections(tmp_path: Path) -> None:
@@ -181,5 +198,13 @@ def test_merge_blackboard_update_replaces_manifest_and_appends_sections(tmp_path
     metadata = _meta(paths.blackboard)
     assert metadata["turn"] == 1
     assert "status: completed" in content
-    assert "- RQ-001: Check whether the saddle survives the deformation." in content
-    assert "- The idea needs an explicit order-of-limits check." in content
+    assert_prompt_contracts(
+        content,
+        *semantic_concept(
+            "ideate blackboard appended sections",
+            required=(
+                "- RQ-001: Check whether the saddle survives the deformation.",
+                "- The idea needs an explicit order-of-limits check.",
+            ),
+        ),
+    )
