@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-class Difficulty(str, enum.Enum):
+class Difficulty(enum.StrEnum):
     """Task difficulty level.
 
     INTRODUCTORY: Undergraduate-level, straightforward application of known results.
@@ -28,7 +28,7 @@ class Difficulty(str, enum.Enum):
     RESEARCH = "research"
 
 
-class TaskType(str, enum.Enum):
+class TaskType(enum.StrEnum):
     """Classification of what the task tests.
 
     DERIVATION: Derive a result from first principles or stated assumptions.
@@ -47,7 +47,7 @@ class TaskType(str, enum.Enum):
     CONCEPTUAL = "conceptual"
 
 
-class OutputFormat(str, enum.Enum):
+class OutputFormat(enum.StrEnum):
     """Expected format of the answer.
 
     LATEX: A LaTeX expression (symbolic result).
