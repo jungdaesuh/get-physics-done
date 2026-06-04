@@ -278,7 +278,7 @@ def test_compact_workflow_reference_command_diagnostics_stay_under_baseline_budg
             metric = metrics_by_runtime[runtime]
             assert metric.native_include_support is False
             assert metric.include_count == 0
-            assert metric.char_count <= budget["chars"]
+            assert normalized_runtime_projection_char_count(metric) <= budget["chars"]
             assert metric.line_count <= budget["lines"]
 
 
