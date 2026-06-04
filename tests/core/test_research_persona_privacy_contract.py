@@ -38,7 +38,8 @@ _APPROVED_RESEARCH_PERSONA_RUNTIME_PATHS = {
     WORKFLOWS_DIR / "build-persona" / "source-ingestion.md",
     WORKFLOWS_DIR / "build-persona" / "persona-synthesis.md",
     WORKFLOWS_DIR / "build-persona" / "approval-and-apply.md",
-    REPO_ROOT / "src" / "gpd" / "specs" / "references" / "research-persona-applications.md",
+    WORKFLOWS_DIR / "help.md",
+    REPO_ROOT / "src" / "gpd" / "specs" / "references" / "research" / "research-persona-applications.md",
 }
 
 _PROJECT_GPD_FORBIDDEN_LOAD_PATHS = (

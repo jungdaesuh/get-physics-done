@@ -27,7 +27,6 @@
         "workflows/build-persona/persona-intake.md"
       ],
       "must_not_eager_load": [
-        "workflows/build-persona.md",
         "workflows/build-persona/source-ingestion.md",
         "workflows/build-persona/persona-synthesis.md",
         "workflows/build-persona/approval-and-apply.md"
@@ -57,7 +56,6 @@
         "workflows/build-persona/source-ingestion.md"
       ],
       "must_not_eager_load": [
-        "workflows/build-persona.md",
         "workflows/build-persona/persona-synthesis.md",
         "workflows/build-persona/approval-and-apply.md"
       ],
@@ -99,7 +97,6 @@
         "workflows/build-persona/persona-synthesis.md"
       ],
       "must_not_eager_load": [
-        "workflows/build-persona.md",
         "workflows/build-persona/source-ingestion.md",
         "workflows/build-persona/approval-and-apply.md"
       ],
@@ -132,7 +129,6 @@
         "workflows/build-persona/approval-and-apply.md"
       ],
       "must_not_eager_load": [
-        "workflows/build-persona.md"
       ],
       "produced_state": [
         "approval decision",

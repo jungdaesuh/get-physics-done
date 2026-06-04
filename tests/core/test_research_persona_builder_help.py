@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from gpd import registry as content_registry
+from gpd.adapters.runtime_catalog import iter_runtime_descriptors
+from gpd.command_labels import runtime_public_command_prefixes
 from gpd.core import help_renderer
 from tests.markdown_test_support import assert_forbidden_fragments, assert_required_fragments
 
@@ -28,6 +30,15 @@ def _extract_block(text: str, block_id: str) -> str:
     start = text.index(start_marker) + len(start_marker)
     end = text.index(end_marker, start)
     return text[start:end]
+
+
+def _runtime_specific_fallback_forbidden_fragments() -> tuple[str, str]:
+    prefix = next(prefix for prefix in runtime_public_command_prefixes() if prefix.startswith("/"))
+    descriptor = next(
+        descriptor for descriptor in iter_runtime_descriptors() if descriptor.public_command_surface_prefix == prefix
+    )
+    surface_label = descriptor.validated_command_surface.removeprefix("public_runtime_").replace("_", "-")
+    return prefix, surface_label
 
 
 def test_build_persona_help_fallback_inventory_has_compact_and_detailed_entries() -> None:
@@ -68,7 +79,7 @@ def test_build_persona_help_fallback_inventory_is_runtime_neutral() -> None:
 
     assert_forbidden_fragments(
         fallback_inventory,
-        ("/gpd:", "slash-command"),
+        _runtime_specific_fallback_forbidden_fragments(),
         context="build-persona help fallback inventory",
     )
 

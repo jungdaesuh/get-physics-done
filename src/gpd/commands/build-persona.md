@@ -84,7 +84,7 @@ private profile in prompt context.
 </objective>
 
 <execution_context>
-@{GPD_INSTALL_DIR}/workflows/build-persona.md
+@{GPD_INSTALL_DIR}/workflows/build-persona/persona-intake.md
 </execution_context>
 
 <context>
@@ -98,7 +98,8 @@ building.
 </context>
 
 <process>
-Follow the included build-persona workflow end-to-end.
+Follow the included first-stage build-persona authority exactly. Later source
+ingestion, synthesis, approval, and application-preview stages are manifest-owned.
 
 Preserve these command-surface invariants while delegating mechanics to the
 workflow:

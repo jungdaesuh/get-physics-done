@@ -83,7 +83,7 @@ WORKFLOW_STAGE_FILES = (
     WORKFLOW_STAGE_DIR / "persona-synthesis.md",
     WORKFLOW_STAGE_DIR / "approval-and-apply.md",
 )
-REFERENCE_PATH = SRC_ROOT / "specs" / "references" / "research-persona-applications.md"
+REFERENCE_PATH = SRC_ROOT / "specs" / "references" / "research" / "research-persona-applications.md"
 BUILDER_AGENT_PATH = SRC_ROOT / "agents" / "gpd-persona-builder.md"
 APPLICATION_AGENT_PATHS: Mapping[str, Path] = {
     "doppelganger": SRC_ROOT / "agents" / "gpd-researcher-doppelganger.md",

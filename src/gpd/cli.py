@@ -4704,6 +4704,24 @@ def init_new_milestone(
     _output(payload)
 
 
+@init_app.command("build-persona")
+def init_build_persona(
+    stage: str | None = typer.Option(
+        None,
+        "--stage",
+        help="Load the staged build-persona context for a specific stage id.",
+    ),
+) -> None:
+    """Assemble context for research-persona builder stages."""
+    from gpd.core.context import init_build_persona
+
+    try:
+        payload = init_build_persona(_get_cwd(), stage=stage)
+    except ValueError as exc:
+        _error(str(exc))
+    _output(payload)
+
+
 @init_app.command("write-paper")
 def init_write_paper(
     subject: list[str] = typer.Argument(

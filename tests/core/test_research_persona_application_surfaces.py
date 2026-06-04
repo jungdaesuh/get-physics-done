@@ -9,7 +9,7 @@ from tests.markdown_test_support import has_line_with_terms, tag_blocks
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_DIR = REPO_ROOT / "src" / "gpd" / "agents"
-REFERENCE_PATH = REPO_ROOT / "src" / "gpd" / "specs" / "references" / "research-persona-applications.md"
+REFERENCE_PATH = REPO_ROOT / "src" / "gpd" / "specs" / "references" / "research" / "research-persona-applications.md"
 
 APPLICATION_AGENTS = {
     "gpd-researcher-doppelganger": {
