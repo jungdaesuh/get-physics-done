@@ -548,6 +548,8 @@ GPD stores project-local observability under `GPD/observability/` and detailed p
 | `gpd observe export [--format {jsonl,json,markdown}] [--session ...] [--command ...] [--phase ...] [--last N] [--no-traces] [--output-dir ...]` | Export filtered observability sessions, events, and optional traces to files |
 | `gpd observe execution` | Show read-only live execution status for the current workspace, including progress / waiting state, conservative `possibly stalled` wording, and the next read-only checks to run |
 | `gpd cost` | Show the read-only machine-local usage / cost summary from recorded local telemetry, optional USD budget guardrails, and the current profile tier mix; advisory only, not live budget enforcement or provider billing truth. If telemetry is missing, the USD view stays partial or estimated rather than exact |
+| `gpd goal status` | Show the read-only receipt for the active gpd:goal run: spend against the USD budget where telemetry exists, phases used against the phase cap, per-criterion outcomes, and whether the goal is achieved |
+| `gpd goal gate` | Emit the machine gate decision for the active gpd:goal run (`continue`, `wrap_up`, or `stop`, plus criteria status); the goal run loop shells out to this with `--raw` |
 | `gpd observe event <category> <name> [--action ...] [--status ...] [--command ...] [--phase ...] [--plan ...] [--session ...] [--data <json>]` | Append an explicit observability event with optional structured metadata |
 | `gpd trace start <phase> <plan>` | Start a plan-local trace session |
 | `gpd trace log <event> [--data <json>]` | Append an event to the active trace |

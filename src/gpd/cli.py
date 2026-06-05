@@ -4486,14 +4486,21 @@ def _goal_gate_payload() -> dict:
     from gpd.core.goal_gate import GoalGateError, goal_gate_summary
     from gpd.core.state import state_load_readonly
 
-    cwd = _get_cwd()
     # goal gate/status are read-only inspectors; mirror `gpd state load` and use
-    # the read-only loader so we never acquire a lock or write recovery state.
+    # the project-scoped resolver plus the read-only loader so we never acquire
+    # a lock or write recovery state, even when invoked from a nested directory.
+    cwd = _read_only_project_scoped_cwd()
     loaded = state_load_readonly(cwd)
     payload = (loaded.state or {}).get("goal_contract")
     if payload is None:
+        goal_command = format_active_runtime_command(
+            "goal",
+            cwd=cwd,
+            detect_runtime=detect_runtime_for_gpd_use,
+            fallback="the active runtime's `goal` command",
+        )
         _error(
-            'No goal contract found. Start one with gpd:goal "<statement>" '
+            f'No goal contract found. Start one with {goal_command} "<statement>" '
             "--budget-usd <amount> and/or --max-phases <n>."
         )
     issues = validate_goal_contract_payload(payload)

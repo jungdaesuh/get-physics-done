@@ -4,7 +4,7 @@
 
 **Goal:** Add `gpd:goal "<statement>" [--budget-usd X] [--max-phases N]` — a goal-directed autonomous run under a binding dual cap (USD where cost telemetry exists, phase count everywhere), with completion gated on verified plan-contract claims, plus a `gpd goal status` receipt.
 
-**Architecture:** Pure-Python core modules hold the typed goal contract (`goal_contract.py`), the dual-cap gate + criteria decisions (`goal_gate.py`), and the VERIFICATION.md claim-outcome aggregator (`goal_evidence.py`). A typed `goal_contract` field is added to `ResearchState` (mirroring `project_contract`). A `gpd goal` typer sub-app exposes `status` and `gate`; `gpd validate goal-contract` follows the JSON+pydantic validator pattern of `review-ledger`/`referee-decision`. A new `goal.md` command descriptor delegates to its own `workflows/goal/goal-bootstrap.md` (the `autonomous` workflow and its stage manifest are NOT modified — its topology tests forbid that). No staged-init registration in v1.
+**Architecture:** Pure-Python core modules hold the typed goal contract (`goal_contract.py`), the dual-cap gate + criteria decisions (`goal_gate.py`), and the VERIFICATION.md claim-outcome aggregator (`goal_evidence.py`). A typed `goal_contract` field is added to `ResearchState` (mirroring `project_contract`). A `gpd goal` Typer sub-app exposes `status` and `gate`; `gpd validate goal-contract` follows the JSON+pydantic validator pattern of `review-ledger`/`referee-decision`. A new `goal.md` command descriptor delegates to its own `workflows/goal/goal-bootstrap.md` (the `autonomous` workflow and its stage manifest are NOT modified — its topology tests forbid that). No staged-init registration in v1.
 
 **Tech Stack:** Python 3.11+, pydantic v2, typer, pytest (`-n 0` for targeted runs). Spec: `docs/superpowers/specs/2026-06-04-goal-command-design.md` (amended revision).
 
@@ -39,7 +39,7 @@ exploratory work), after which the gate stops." It returns `stop` at
 
 ---
 
-### Task 1: Goal contract models and state field
+## Task 1: Goal contract models and state field
 
 **Files:**
 - Create: `src/gpd/core/goal_contract.py`
@@ -287,7 +287,7 @@ git commit -m "feat: add typed goal contract and ResearchState.goal_contract fie
 
 ---
 
-### Task 2: Dual-cap budget gate and criteria evaluation
+## Task 2: Dual-cap budget gate and criteria evaluation
 
 **Files:**
 - Create: `src/gpd/core/goal_gate.py`
@@ -720,7 +720,7 @@ git commit -m "feat: add dual-cap goal gate and criteria evaluation logic"
 
 ---
 
-### Task 3: Claim-outcome aggregation from VERIFICATION.md files
+## Task 3: Claim-outcome aggregation from VERIFICATION.md files
 
 **Files:**
 - Create: `src/gpd/core/goal_evidence.py`
@@ -906,7 +906,7 @@ git commit -m "feat: aggregate plan-contract claim outcomes for the goal gate"
 
 ---
 
-### Task 4: CLI surface — `gpd goal status`, `gpd goal gate`, `gpd validate goal-contract`
+## Task 4: CLI surface — `gpd goal status`, `gpd goal gate`, `gpd validate goal-contract`
 
 **Files:**
 - Modify: `src/gpd/cli.py` (new `goal_app` sub-app near the `stage_app` block around line 4477; new `@validate_app.command("goal-contract")` next to the JSON validators around line 9924)
@@ -1179,7 +1179,7 @@ git commit -m "feat: add gpd goal status/gate CLI and validate goal-contract"
 
 ---
 
-### Task 5: Command descriptor and goal workflow
+## Task 5: Command descriptor and goal workflow
 
 **Files:**
 - Create: `src/gpd/commands/goal.md`
@@ -1369,7 +1369,7 @@ git commit -m "feat: add gpd:goal command descriptor and goal run workflow"
 
 ---
 
-### Task 6: End-to-end gate-plumbing smoke test
+## Task 6: End-to-end gate-plumbing smoke test
 
 **Files:**
 - Test: `tests/core/test_goal_smoke.py`
@@ -1510,7 +1510,7 @@ git commit -m "test: add end-to-end gate-plumbing smoke for gpd:goal"
 
 ---
 
-### Task 7: Changelog, full suite, and PR
+## Task 7: Changelog, full suite, and PR
 
 **Files:**
 - Modify: `CHANGELOG.md` (add under `## vNEXT`)

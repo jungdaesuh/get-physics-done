@@ -58,7 +58,7 @@ Also corrected: the JSON validator precedent is `gpd validate review-ledger` /
 
 ## User surface
 
-```
+```text
 /gpd:goal "Derive the dispersion relation for X and verify the long-wavelength limit" --budget-usd 5 --max-phases 6
 /gpd:goal --resume [--budget-usd 8] [--max-phases 10]
 gpd goal status        # terminal receipt: spend, phases, criteria, status

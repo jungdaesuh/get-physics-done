@@ -84,3 +84,19 @@ def test_goal_gate_fails_closed_without_enforceable_cap(tmp_path: Path) -> None:
     assert result.exit_code != 0
     combined = (result.output + result.stderr).lower()
     assert "max-phases" in combined or "max_phases" in combined
+
+
+def test_goal_gate_resolves_project_root_from_nested_directory(tmp_path: Path) -> None:
+    # goal gate/status are project inspectors: like `gpd state load`, they must
+    # walk up to the enclosing project root instead of reading the launch cwd.
+    _write_project_state(tmp_path, goal_contract=GOAL_CONTRACT)
+    # Root markers so ancestor walk-up can verify the project root.
+    (tmp_path / "GPD" / "PROJECT.md").write_text("# Project\n", encoding="utf-8")
+    (tmp_path / "GPD" / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
+    nested = tmp_path / "analysis" / "notebooks"
+    nested.mkdir(parents=True)
+    result = runner.invoke(app, ["--raw", "--cwd", str(nested), "goal", "gate"])
+    assert result.exit_code == 0, result.output + result.stderr
+    payload = _raw_payload_from_result(result)
+    assert payload["max_phases"] == 6
+    assert payload["criteria"][0]["claim_ref"] == "goal-gc-1"
