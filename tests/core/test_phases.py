@@ -37,7 +37,7 @@ from gpd.core.phases import (
     validate_phase_waves,
     validate_waves,
 )
-from gpd.core.state import default_state_dict, generate_state_markdown
+from gpd.core.state import default_state_dict, generate_state_markdown, state_validate
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1690,6 +1690,79 @@ def test_phase_complete_uses_roadmap_for_unscaffolded_next_phase(tmp_path: Path)
     assert "**Current Phase:** 02" in state
     assert "**Current Phase Name:** Build" in state
     assert "**Status:** Ready to plan" in state
+    validation = state_validate(tmp_path)
+    assert not any("has no matching directory" in issue for issue in validation.issues)
+
+
+def test_phase_complete_updates_only_phase_checklist_and_status_table(tmp_path: Path) -> None:
+    _setup_project(tmp_path)
+    _create_roadmap(
+        tmp_path,
+        """\
+        ## Milestone Table
+
+        | Phase | Milestone | Coherent outcome | Primary requirements | Entry/exit gate |
+        | --- | --- | --- | --- | --- |
+        | 1 | Foundation | Durable SSOT | 4 | Preserve this gate text |
+
+        ## Phases
+
+        - [ ] **Phase 1: Foundation** — Establish the source of truth.
+        - [ ] **Phase 2: Build** — Build the next result.
+
+        ## Dependency DAG
+
+        | Phase | Depends on | Enables | On critical path? |
+        | --- | --- | --- | --- |
+        | 1 | — | 2 | Yes |
+
+        ### Phase 1: Foundation
+        **Goal:** establish
+        **Plans:** 1 plans
+
+        ### Phase 2: Build
+        **Goal:** build
+        **Plans:** 0 plans
+
+        - [ ] TBD (run planning after Phase 1 is verified)
+
+        ## Risk Register
+
+        | Phase | Risk | Likelihood | Impact | Trigger | Required response |
+        | --- | --- | --- | --- | --- | --- |
+        | 1 | Convention drift | Low | High | A mismatch appears | Stop and repair |
+
+        ## Progress
+
+        | Phase | Plans complete | Status | Completed |
+        | --- | --- | --- | --- |
+        | 1. Foundation | 1/1 | Verification pending | — |
+        | 2. Build | 0/0 | Not started | — |
+        """,
+    )
+    _seed_state_pair(
+        tmp_path,
+        current_phase="01",
+        current_phase_name="Foundation",
+        total_phases=2,
+        status="Verified",
+    )
+    phase_dir = _create_phase_dir(tmp_path, "01-foundation")
+    (phase_dir / "01-PLAN.md").write_text("plan", encoding="utf-8")
+    (phase_dir / "01-SUMMARY.md").write_text("summary", encoding="utf-8")
+    _write_passed_verification(phase_dir)
+
+    phase_complete(tmp_path, "1")
+
+    roadmap = (tmp_path / "GPD" / "ROADMAP.md").read_text(encoding="utf-8")
+    assert "| 1 | Foundation | Durable SSOT | 4 | Preserve this gate text |" in roadmap
+    assert "| 1 | — | 2 | Yes |" in roadmap
+    assert "| 1 | Convention drift | Low | High | A mismatch appears | Stop and repair |" in roadmap
+    assert "- [ ] TBD (run planning after Phase 1 is verified)" in roadmap
+    assert "- [x] **Phase 1: Foundation** — Establish the source of truth. (completed " in roadmap
+    assert "| 1. Foundation | 1/1 | Complete |" in roadmap
+    assert "**Plans:** 1/1 plans complete" in roadmap
+    assert state_validate(tmp_path).valid is True
 
 
 def test_phase_complete_handles_padded_em_dash_roadmap_heading(tmp_path: Path) -> None:

@@ -2034,7 +2034,7 @@ def _mark_roadmap_phase_complete(content: str, phase_num: str, today: str) -> st
         return f"{match.group('prefix')}x{match.group('suffix')} (completed {today})"
 
     return re.sub(
-        r"(?m)^(?P<prefix>\s*-\s*\[)(?P<mark>[ xX])(?P<suffix>\]\s*.*?\bPhase\s+"
+        r"(?m)^(?P<prefix>\s*-\s*\[)(?P<mark>[ xX])(?P<suffix>\]\s*(?:\*\*)?Phase\s+"
         r"(?P<number>\d+(?:\.\d+)*)[^\n]*)$",
         _replace,
         content,
@@ -2059,9 +2059,17 @@ def _update_roadmap_phase_plan_count(content: str, phase_num: str, summary_count
 
 
 def _update_roadmap_phase_table_status(content: str, phase_num: str, today: str) -> str:
-    """Update a progress-table row for one phase by normalized identity."""
+    """Update a phase-status table row for one phase by normalized identity.
+
+    Roadmaps can contain several unrelated tables whose first column is a
+    phase number (milestones, dependencies, and risk registers). Only tables
+    with explicit ``Status`` and ``Updated`` or ``Completed`` columns own
+    lifecycle status.
+    """
     normalized = phase_normalize(phase_num)
     lines: list[str] = []
+    status_cell_index: int | None = None
+    date_cell_index: int | None = None
     for line in content.splitlines(keepends=True):
         newline = ""
         body = line
@@ -2069,12 +2077,28 @@ def _update_roadmap_phase_table_status(content: str, phase_num: str, today: str)
             body = body[:-1]
             newline = "\n"
         cells = body.split("|")
-        if len(cells) >= 5:
-            phase_match = re.match(r"\s*(\d+(?:\.\d+)*)\.?\b", cells[1])
-            if phase_match and phase_normalize(phase_match.group(1)) == normalized:
-                cells[-3] = " Complete    "
-                cells[-2] = f" {today} "
-                body = "|".join(cells)
+        if body.lstrip().startswith("|") and len(cells) >= 5:
+            labels = [cell.strip().casefold() for cell in cells[1:-1]]
+            if labels and labels[0] == "phase":
+                status_cell_index = None
+                date_cell_index = None
+                date_label = None
+                if "completed" in labels:
+                    date_label = "completed"
+                elif "updated" in labels:
+                    date_label = "updated"
+                if "status" in labels and date_label is not None:
+                    status_cell_index = labels.index("status") + 1
+                    date_cell_index = labels.index(date_label) + 1
+            elif status_cell_index is not None and date_cell_index is not None:
+                phase_match = re.match(r"\s*(\d+(?:\.\d+)*)\.?\b", cells[1])
+                if phase_match and phase_normalize(phase_match.group(1)) == normalized:
+                    cells[status_cell_index] = " Complete "
+                    cells[date_cell_index] = f" {today} "
+                    body = "|".join(cells)
+        else:
+            status_cell_index = None
+            date_cell_index = None
         lines.append(body + newline)
     return "".join(lines)
 

@@ -5879,7 +5879,9 @@ def state_validate(
 
     # Cross-check: phase directory exists
     current_phase = json_pos.get("current_phase") if isinstance(json_pos, dict) else None
-    if current_phase is not None:
+    current_status = str(json_pos.get("status") or "").strip().casefold() if isinstance(json_pos, dict) else ""
+    phase_directory_required = current_status != "ready to plan"
+    if current_phase is not None and phase_directory_required:
         phases_dir = ProjectLayout(cwd).phases_dir
         if phases_dir.exists():
             normalized = phase_normalize(str(current_phase))
