@@ -14,6 +14,7 @@ Key features:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -643,6 +644,50 @@ def convention_check(lock: ConventionLock) -> ConventionCheckResult:
 # --- ASSERT_CONVENTION Parsing ---
 
 
+def _split_assertion_pairs(payload: str) -> list[str]:
+    """Split key-value assertions without treating commas inside quotes as separators."""
+
+    pairs: list[str] = []
+    start = 0
+    quote: str | None = None
+    escaped = False
+
+    for index, character in enumerate(payload):
+        if escaped:
+            escaped = False
+            continue
+        if quote is not None and character == "\\":
+            escaped = True
+            continue
+        if character in {'"', "'"}:
+            if quote is None:
+                quote = character
+            elif quote == character:
+                quote = None
+            continue
+        if character != "," or quote is not None:
+            continue
+        if re.match(r"\s*\w+\s*=", payload[index + 1 :]) is None:
+            continue
+        pairs.append(payload[start:index].strip())
+        start = index + 1
+
+    pairs.append(payload[start:].strip())
+    return pairs
+
+
+def _decode_assertion_value(value: str) -> str:
+    """Decode a double-quoted assertion value while preserving legacy bare values."""
+
+    if len(value) < 2 or value[0] != '"' or value[-1] != '"':
+        return value
+    try:
+        decoded = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    return decoded if isinstance(decoded, str) else value
+
+
 def parse_assert_conventions(content: str) -> list[tuple[str, str]]:
     """Parse ASSERT_CONVENTION directives from file content.
 
@@ -651,21 +696,23 @@ def parse_assert_conventions(content: str) -> list[tuple[str, str]]:
         % ASSERT_CONVENTION: key=value, key=value         (LaTeX)
         # ASSERT_CONVENTION: key=value, key=value         (Python)
 
+    Double-quote values that contain their own `, name=` fragments.
+
     Returns a list of (canonical_key, value) pairs.
     """
     pairs: list[tuple[str, str]] = []
     for match in _ASSERT_LINE_RE.finditer(content):
         payload = match.group(1)
-        # Split on commas followed by a key= pattern to avoid splitting
-        # values that contain commas (e.g., metric=(-,+,+,+))
-        raw_pairs = re.split(r",\s*(?=\w+=)", payload)
+        # Quoted values may contain arbitrary `, name=` fragments. Bare values
+        # retain the legacy comma-separated syntax for short assertions.
+        raw_pairs = _split_assertion_pairs(payload)
         for raw in raw_pairs:
             raw = raw.strip()
             kv = _KV_PAIR_RE.match(raw)
             if not kv:
                 continue
             key = normalize_key(kv.group(1).strip())
-            val = kv.group(2).strip()
+            val = _decode_assertion_value(kv.group(2).strip())
             pairs.append((key, val))
     return pairs
 

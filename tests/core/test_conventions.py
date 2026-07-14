@@ -295,6 +295,25 @@ def test_parse_assert_python():
     assert ("gauge_choice", "Lorenz") in pairs
 
 
+def test_parse_assert_quoted_values_preserve_embedded_assignments():
+    fourier = "Forward-normalized FFT, kappa=2*pi*fftfreq(N_x,d=L_x/N_x), and d_x maps to +i*kappa"
+    units = "n_ref=n_b0+n_t0, omega_p=sqrt(n_ref*e^2/(m_e*epsilon_0)), t_ref=1/omega_p"
+    content = f'<!-- ASSERT_CONVENTION: fourier_convention="{fourier}", natural_units="{units}" -->'
+
+    pairs = parse_assert_conventions(content)
+
+    assert pairs == [("fourier_convention", fourier), ("natural_units", units)]
+    lock = ConventionLock(fourier_convention=fourier, natural_units=units)
+    result = check_assertions(
+        content,
+        lock,
+        filename="verification.md",
+        require_assertions=True,
+        required_keys=["fourier_convention", "natural_units"],
+    )
+    assert result.passed is True
+
+
 def test_parse_assert_no_assertions():
     content = "Just regular text with no assertions."
     pairs = parse_assert_conventions(content)
