@@ -1012,3 +1012,64 @@ def test_server_exits_immediately_when_client_died_during_startup(tmp_path: Path
         time.sleep(0.1)
     os.kill(orphan_pid, 9)
     pytest.fail("orphaned server kept running instead of exiting immediately")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="stdio lifecycle guard is POSIX-only")
+def test_takeover_skips_when_locking_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import fcntl
+
+    from gpd.mcp.servers import _terminate_superseded_instance
+
+    def broken_flock(fd: object, operation: int) -> None:
+        raise OSError("flock unsupported on this filesystem")
+
+    monkeypatch.setattr(fcntl, "flock", broken_flock)
+
+    # Must skip quietly, never crash server startup.
+    _terminate_superseded_instance("gpd-test", os.getpid(), tmp_path, "decoy_server")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="stdio lifecycle guard is POSIX-only")
+def test_server_blocked_in_takeover_still_exits_when_client_dies(tmp_path: Path) -> None:
+    import subprocess
+    import time
+
+    # The takeover blocks on a per-key lock; the watchdog must already be
+    # running so a starter stuck behind a hung lock holder still dies with
+    # its client instead of leaking.
+    pid_path = tmp_path / "blocked.pid"
+    script = (
+        "import os, sys, time\n"
+        "import gpd.mcp.servers as servers\n"
+        "servers._terminate_superseded_instance = lambda *args, **kwargs: time.sleep(30)\n"
+        "servers._LIFECYCLE_POLL_SECONDS = 0.05\n"
+        "if os.fork() == 0:\n"
+        f"    open({str(pid_path)!r}, 'w').write(str(os.getpid()))\n"
+        "    servers._install_stdio_lifecycle_guard('gpd-test')\n"
+        "    os._exit(7)\n"
+        "time.sleep(0.5)\n"
+        "os._exit(0)\n"
+    )
+    subprocess.run([sys.executable, "-c", script], timeout=15)
+
+    deadline = time.monotonic() + 10
+    blocked_pid = None
+    while time.monotonic() < deadline:
+        if pid_path.exists() and pid_path.read_text().strip():
+            blocked_pid = int(pid_path.read_text())
+            break
+        time.sleep(0.05)
+    assert blocked_pid is not None, "blocked probe never reported its pid"
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            os.kill(blocked_pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+    os.kill(blocked_pid, 9)
+    pytest.fail("server blocked in takeover leaked after its client died")

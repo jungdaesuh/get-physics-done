@@ -239,7 +239,12 @@ def _terminate_superseded_instance(
     except OSError:
         return
     try:
-        fcntl.flock(lock_handle, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock_handle, fcntl.LOCK_EX)
+        except OSError:
+            # Locking is unavailable (e.g. NFS-backed tmp); skip the takeover
+            # rather than crash startup — the reparent watchdog still guards.
+            return
         try:
             previous_pid = int(pid_file.read_text().strip())
         except (OSError, ValueError):
@@ -284,17 +289,20 @@ def _install_stdio_lifecycle_guard(server_name: str) -> None:
         return
     parent_pid = os.getppid()
     pid_dir = _client_pid_dir()
-    if parent_pid != 1 and pid_dir is not None:
-        # The entry-point name identifies this server type in a predecessor's
-        # command line for both `python -m gpd.mcp.servers.X` and console-
-        # script invocations, since the same client uses the same registration.
-        _terminate_superseded_instance(server_name, parent_pid, pid_dir, Path(sys.argv[0]).stem)
+    # The watchdog must be running before the takeover: the takeover blocks on
+    # a per-key lock, and a starter waiting behind a hung holder still needs
+    # to exit when its own client dies.
     threading.Thread(
         target=_exit_when_reparented,
         args=(parent_pid, _LIFECYCLE_POLL_SECONDS),
         daemon=True,
         name="gpd-mcp-lifecycle-guard",
     ).start()
+    if parent_pid != 1 and pid_dir is not None:
+        # The entry-point name identifies this server type in a predecessor's
+        # command line for both `python -m gpd.mcp.servers.X` and console-
+        # script invocations, since the same client uses the same registration.
+        _terminate_superseded_instance(server_name, parent_pid, pid_dir, Path(sys.argv[0]).stem)
 
 
 def run_mcp_server(mcp: object, description: str) -> None:
