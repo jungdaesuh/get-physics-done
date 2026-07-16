@@ -189,8 +189,13 @@ def _client_pid_dir() -> Path | None:
     return base
 
 
-def _is_gpd_server_spawned_by(pid: int, parent_pid: int) -> bool:
-    """Return whether ``pid`` is a live GPD MCP server process whose parent is ``parent_pid``."""
+def _is_gpd_server_spawned_by(pid: int, parent_pid: int, invocation_token: str) -> bool:
+    """Return whether ``pid`` is a live GPD MCP server whose parent is ``parent_pid``.
+
+    ``invocation_token`` (the replacement instance's own entry-point name) must
+    appear in the candidate's command line so that a recycled pid pointing at a
+    *different* GPD server under the same client is never treated as ours.
+    """
     try:
         listing = subprocess.run(
             ["ps", "-o", "ppid=,command=", "-p", str(pid)],
@@ -205,36 +210,57 @@ def _is_gpd_server_spawned_by(pid: int, parent_pid: int) -> bool:
     reported = listing.stdout.strip().split(None, 1)
     if len(reported) != 2:
         return False
-    return reported[0] == str(parent_pid) and "gpd.mcp.servers" in reported[1]
+    return reported[0] == str(parent_pid) and "gpd.mcp.servers" in reported[1] and invocation_token in reported[1]
 
 
-def _terminate_superseded_instance(server_name: str, parent_pid: int, pid_dir: Path) -> None:
+def _terminate_superseded_instance(
+    server_name: str,
+    parent_pid: int,
+    pid_dir: Path,
+    invocation_token: str,
+) -> None:
     """SIGTERM the previous instance of ``server_name`` that the same client spawned and abandoned.
 
     MCP clients that restart their stdio servers (startup-timeout retries,
     reconnects) can leave the previous instance running with its pipes held
     open, so it never sees EOF and outlives every session. Each instance
     records its pid in a file keyed by (server, client pid); the next instance
-    verifies the recorded process is still that client's GPD server before
-    terminating it. Stale files from exited instances fail verification and
-    are simply overwritten.
+    verifies the recorded process is still that client's instance of the same
+    server before terminating it. Stale files from exited instances fail
+    verification and are simply overwritten. The whole read-verify-kill-record
+    sequence holds a per-key lock so concurrent replacements cannot interleave
+    and leave a live instance unrecorded.
     """
+    import fcntl  # POSIX-only, matching the guard's platform gate
+
     pid_file = pid_dir / f"{server_name}-client{parent_pid}.pid"
     try:
-        previous_pid = int(pid_file.read_text().strip())
-    except (OSError, ValueError):
-        previous_pid = None
-    if previous_pid is not None and previous_pid != os.getpid() and _is_gpd_server_spawned_by(previous_pid, parent_pid):
+        lock_handle = open(pid_dir / f"{server_name}-client{parent_pid}.lock", "w")
+    except OSError:
+        return
+    try:
+        fcntl.flock(lock_handle, fcntl.LOCK_EX)
         try:
-            os.kill(previous_pid, signal.SIGTERM)
+            previous_pid = int(pid_file.read_text().strip())
+        except (OSError, ValueError):
+            previous_pid = None
+        if (
+            previous_pid is not None
+            and previous_pid != os.getpid()
+            and _is_gpd_server_spawned_by(previous_pid, parent_pid, invocation_token)
+        ):
+            try:
+                os.kill(previous_pid, signal.SIGTERM)
+            except OSError:
+                pass
+        try:
+            staging = pid_file.parent / f"{pid_file.name}.{os.getpid()}.tmp"
+            staging.write_text(str(os.getpid()))
+            staging.replace(pid_file)
         except OSError:
             pass
-    try:
-        staging = pid_file.with_suffix(".tmp")
-        staging.write_text(str(os.getpid()))
-        staging.replace(pid_file)
-    except OSError:
-        pass
+    finally:
+        lock_handle.close()
 
 
 def _exit_when_reparented(initial_parent_pid: int, poll_seconds: float) -> None:
@@ -259,7 +285,10 @@ def _install_stdio_lifecycle_guard(server_name: str) -> None:
     parent_pid = os.getppid()
     pid_dir = _client_pid_dir()
     if parent_pid != 1 and pid_dir is not None:
-        _terminate_superseded_instance(server_name, parent_pid, pid_dir)
+        # The entry-point name identifies this server type in a predecessor's
+        # command line for both `python -m gpd.mcp.servers.X` and console-
+        # script invocations, since the same client uses the same registration.
+        _terminate_superseded_instance(server_name, parent_pid, pid_dir, Path(sys.argv[0]).stem)
     threading.Thread(
         target=_exit_when_reparented,
         args=(parent_pid, _LIFECYCLE_POLL_SECONDS),

@@ -836,19 +836,78 @@ def test_lifecycle_guard_terminates_superseded_sibling(tmp_path: Path) -> None:
     from gpd.mcp.servers import _terminate_superseded_instance
 
     decoy = subprocess.Popen(
-        [sys.executable, "-c", "import time  # gpd.mcp.servers decoy\ntime.sleep(60)"],
+        [sys.executable, "-c", "import time  # gpd.mcp.servers.decoy_server\ntime.sleep(60)"],
     )
     try:
         pid_file = tmp_path / f"gpd-test-client{os.getpid()}.pid"
         pid_file.write_text(str(decoy.pid))
 
-        _terminate_superseded_instance("gpd-test", os.getpid(), tmp_path)
+        _terminate_superseded_instance("gpd-test", os.getpid(), tmp_path, "decoy_server")
 
         assert decoy.wait(timeout=10) == -15, "superseded instance was not SIGTERMed"
         assert pid_file.read_text() == str(os.getpid()), "pid file must record the new instance"
     finally:
         if decoy.poll() is None:
             decoy.kill()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="stdio lifecycle guard is POSIX-only")
+def test_lifecycle_guard_spares_a_different_gpd_server_type(tmp_path: Path) -> None:
+    import subprocess
+
+    from gpd.mcp.servers import _terminate_superseded_instance
+
+    # A recycled pid can land on the same client's *other* GPD server; the
+    # family marker alone must not be enough to kill it.
+    other_server = subprocess.Popen(
+        [sys.executable, "-c", "import time  # gpd.mcp.servers.other_server\ntime.sleep(60)"],
+    )
+    try:
+        pid_file = tmp_path / f"gpd-test-client{os.getpid()}.pid"
+        pid_file.write_text(str(other_server.pid))
+
+        _terminate_superseded_instance("gpd-test", os.getpid(), tmp_path, "decoy_server")
+
+        with pytest.raises(subprocess.TimeoutExpired):
+            other_server.wait(timeout=0.5)
+        assert pid_file.read_text() == str(os.getpid())
+    finally:
+        other_server.kill()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="stdio lifecycle guard is POSIX-only")
+def test_lifecycle_guard_takeover_serializes_concurrent_contenders(tmp_path: Path) -> None:
+    import subprocess
+
+    # The contender code lives in a file so its command line is just the path:
+    # a `-c` source would put the family marker and token into ps output and
+    # make the contenders legitimately take each other over.
+    contender_script = tmp_path / "contender.py"
+    contender_script.write_text(
+        "import os\n"
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from gpd.mcp.servers import _terminate_superseded_instance\n"
+        "_terminate_superseded_instance('gpd-test', int(sys.argv[1]), Path(sys.argv[2]), 'absent_token')\n"
+        "print(os.getpid())\n"
+    )
+    contenders = [
+        subprocess.Popen(
+            [sys.executable, str(contender_script), str(os.getpid()), str(tmp_path)],
+            stdout=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(4)
+    ]
+    reported_pids = set()
+    for contender in contenders:
+        stdout, _stderr = contender.communicate(timeout=30)
+        assert contender.returncode == 0, "concurrent takeover must not crash"
+        reported_pids.add(stdout.strip())
+
+    pid_file = tmp_path / f"gpd-test-client{os.getpid()}.pid"
+    assert pid_file.read_text() in reported_pids, "pid file must record exactly one contender"
+    assert not list(tmp_path.glob("*.tmp")), "staging files must not be left behind"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="stdio lifecycle guard is POSIX-only")
@@ -862,7 +921,7 @@ def test_lifecycle_guard_spares_processes_that_are_not_gpd_servers(tmp_path: Pat
         pid_file = tmp_path / f"gpd-test-client{os.getpid()}.pid"
         pid_file.write_text(str(bystander.pid))
 
-        _terminate_superseded_instance("gpd-test", os.getpid(), tmp_path)
+        _terminate_superseded_instance("gpd-test", os.getpid(), tmp_path, "decoy_server")
 
         with pytest.raises(subprocess.TimeoutExpired):
             # Signal delivery is asynchronous; a short wait (not an instant
