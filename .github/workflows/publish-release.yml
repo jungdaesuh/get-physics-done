@@ -45,7 +45,7 @@ jobs:
           fi
 
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ inputs.release_sha || github.sha }}
           fetch-depth: 0
@@ -66,7 +66,7 @@ jobs:
           python-version: "3.11"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
@@ -161,7 +161,7 @@ jobs:
 
     steps:
       - name: Check out release helper
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.build-release.outputs.release_sha }}
           fetch-depth: 1
@@ -219,7 +219,7 @@ jobs:
 
     steps:
       - name: Check out release commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.build-release.outputs.release_sha }}
           fetch-depth: 0
@@ -244,7 +244,7 @@ jobs:
           python scripts/release_workflow.py stamp-publish-date --repo . --release-date "${{ needs.build-release.outputs.release_date }}" > /tmp/publish-date.json
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
