@@ -189,12 +189,26 @@ def _client_pid_dir() -> Path | None:
     return base
 
 
+def _word_names_entry_point(word: str, invocation_token: str) -> bool:
+    """Return whether one command-line word names ``invocation_token`` exactly.
+
+    Exact comparison against the word's path basename and its dot-split halves
+    covers console scripts (``.../gpd-mcp-state``), dotted modules
+    (``gpd.mcp.servers.state_server``), and script files (``state_server.py``)
+    without admitting prefix collisions such as ``state_server_extra``.
+    """
+    tail = word.rsplit("/", 1)[-1]
+    head, _, last = tail.rpartition(".")
+    return invocation_token in (tail, head, last)
+
+
 def _is_gpd_server_spawned_by(pid: int, parent_pid: int, invocation_token: str) -> bool:
     """Return whether ``pid`` is a live GPD MCP server whose parent is ``parent_pid``.
 
     ``invocation_token`` (the replacement instance's own entry-point name) must
-    appear in the candidate's command line so that a recycled pid pointing at a
-    *different* GPD server under the same client is never treated as ours.
+    exactly name a word of the candidate's command line so that a recycled pid
+    pointing at a *different* GPD server under the same client — including one
+    whose name merely extends ours — is never treated as ours.
     """
     try:
         listing = subprocess.run(
@@ -210,7 +224,11 @@ def _is_gpd_server_spawned_by(pid: int, parent_pid: int, invocation_token: str) 
     reported = listing.stdout.strip().split(None, 1)
     if len(reported) != 2:
         return False
-    return reported[0] == str(parent_pid) and "gpd.mcp.servers" in reported[1] and invocation_token in reported[1]
+    return (
+        reported[0] == str(parent_pid)
+        and "gpd.mcp.servers" in reported[1]
+        and any(_word_names_entry_point(word, invocation_token) for word in reported[1].split())
+    )
 
 
 def _terminate_superseded_instance(
