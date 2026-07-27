@@ -393,6 +393,9 @@ class ContractMetadataRequest(_ContractRequestBase):
     expected_behavior: str | None = None
     source_reference_id: str | None = None
     declared_family: str | None = None
+    # Optional-but-not-nullable: omitted -> None default, but an explicit null
+    # is rejected and the published schema stays a plain array (pinned by
+    # test_contract_metadata_family_lists_are_optional_but_not_nullable).
     allowed_families: list[str] = Field(default=None)
     forbidden_families: list[str] = Field(default=None)
     theorem_parameter_symbols: list[str] | None = None
@@ -592,6 +595,11 @@ def _contract_check_request_hint(check_key: str, *, contract: ResearchContract |
             )
         else:
             enriched_hint["required_request_fields"] = ["binding.forbidden_proxy_ids"]
+            enriched_hint["optional_request_fields"] = [
+                field
+                for field in enriched_hint["optional_request_fields"]
+                if field not in enriched_hint["required_request_fields"]
+            ]
 
     elif check_key == "contract.fit_family_mismatch":
         allowed_families = list(contract.approach_policy.allowed_fit_families)
@@ -3770,6 +3778,7 @@ def get_verification_coverage(error_class_ids: list[int], active_checks: list[st
     validated_error_class_ids, error = _validate_int_list(error_class_ids, field_name="error_class_ids")
     if error is not None:
         return error
+    validated_error_class_ids = list(dict.fromkeys(validated_error_class_ids or []))
     validated_active_checks, error = _validate_string_list(active_checks, field_name="active_checks")
     if error is not None:
         return error
