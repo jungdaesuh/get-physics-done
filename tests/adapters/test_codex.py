@@ -28,6 +28,7 @@ from gpd.adapters.install_utils import (
     file_hash,
     hook_python_interpreter,
 )
+from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
 from gpd.registry import load_agents_from_dir
 from tests.adapters.projection_test_utils import (
     assert_compact_help_bridge_shim,
@@ -1173,16 +1174,45 @@ class TestInstall:
         adapter: CodexAdapter,
         gpd_root: Path,
         tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         target = tmp_path / ".codex"
         target.mkdir()
         skills = tmp_path / "skills"
         skills.mkdir()
+        monkeypatch.setenv(WOLFRAM_MCP_API_KEY_ENV_VAR, "codex-test-key")
 
         adapter.install(gpd_root, target, skills_dir=skills)
 
         parsed = tomllib.loads((target / "config.toml").read_text(encoding="utf-8"))
-        assert parsed["mcp_servers"]["gpd-state"]["startup_timeout_sec"] == 30
+        assert parsed["mcp_servers"][WOLFRAM_MANAGED_SERVER_KEY]["startup_timeout_sec"] == 30
+
+
+    def test_install_scrubs_legacy_builtin_mcp_sections_and_preserves_user_servers(
+        self,
+        adapter: CodexAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        """Upgrading over a pre-removal install must delete exactly the GPD sections."""
+        target = tmp_path / ".codex"
+        target.mkdir()
+        skills = tmp_path / "skills"
+        skills.mkdir()
+        legacy_sections = "".join(
+            f"[mcp_servers.{key}]\ncommand = \"python3\"\nargs = [\"-m\", \"gpd.mcp.servers.stub\"]\n\n"
+            for key in sorted(GPD_MCP_SERVER_KEYS)
+        )
+        (target / "config.toml").write_text(
+            legacy_sections + "[mcp_servers.custom-server]\ncommand = \"node\"\nargs = [\"custom.js\"]\n",
+            encoding="utf-8",
+        )
+
+        adapter.install(gpd_root, target, skills_dir=skills)
+
+        parsed = tomllib.loads((target / "config.toml").read_text(encoding="utf-8"))
+        assert parsed["mcp_servers"] == {"custom-server": {"command": "node", "args": ["custom.js"]}}
+        assert set(parsed["mcp_servers"]) & GPD_MCP_SERVER_KEYS == set()
 
     def test_install_projects_wolfram_mcp_server_and_preserves_overrides(
         self,
@@ -1191,8 +1221,6 @@ class TestInstall:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
         target = tmp_path / ".codex"
         target.mkdir()
         skills = tmp_path / "skills"
@@ -1227,7 +1255,7 @@ class TestInstall:
         }
         assert parsed["mcp_servers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
         assert "codex-test-key" not in (target / "config.toml").read_text(encoding="utf-8")
-        assert result["mcpServers"] == len(build_mcp_servers_dict(python_path=hook_python_interpreter())) + 1
+        assert result["mcpServers"] == 1, "the managed integration is the only server GPD writes"
 
     def test_install_omits_managed_wolfram_when_project_override_disables_it(
         self,
@@ -1621,13 +1649,14 @@ class TestRuntimePermissions:
         skills = tmp_path / "skills"
         skills.mkdir()
         monkeypatch.setenv("GPD_PYTHON", "/env/override/python")
+        monkeypatch.setenv(WOLFRAM_MCP_API_KEY_ENV_VAR, "codex-test-key")
         monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
         adapter.install(gpd_root, target, skills_dir=skills)
 
         parsed = tomllib.loads((target / "config.toml").read_text(encoding="utf-8"))
         assert parsed["notify"] == ["/env/override/python", (target / "hooks" / "notify.py").as_posix()]
-        assert parsed["mcp_servers"]["gpd-state"]["command"] == "/env/override/python"
+        assert parsed["mcp_servers"][WOLFRAM_MANAGED_SERVER_KEY]["command"] == "/env/override/python"
 
     def test_install_writes_manifest(self, adapter: CodexAdapter, gpd_root: Path, tmp_path: Path) -> None:
         target = tmp_path / ".codex"

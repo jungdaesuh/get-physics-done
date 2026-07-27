@@ -309,21 +309,23 @@ def test_hook_hotspot_metadata_tracks_measured_slow_hook_files() -> None:
     assert all(CI_HOT_TEST_FILE_WEIGHT_MULTIPLIERS[rel_path] > 1.0 for rel_path in measured_slow_hook_files)
 
 
-def test_mcp_hotspot_metadata_tracks_measured_slow_mcp_files() -> None:
-    measured_slow_mcp_files = {
-        "mcp/test_server_regressions.py",
-        "mcp/test_servers.py",
-        "mcp/test_servers_integration.py",
-        "mcp/test_skills_server_tool_lists.py",
-        "mcp/test_tool_contract_visibility.py",
-        "mcp/test_verification_contract_server_regressions.py",
-    }
+def test_mcp_category_has_no_hotspot_metadata_after_builtin_server_removal() -> None:
+    """The mcp category is now just the paper compiler plus the Wolfram bridge.
 
-    assert CI_CATEGORY_SHARD_COUNTS["mcp"] == 2
-    assert measured_slow_mcp_files <= set(CI_HOT_TEST_FILE_SPLITS)
-    assert measured_slow_mcp_files <= set(CI_HOT_TEST_FILE_WEIGHT_MULTIPLIERS)
-    assert all(CI_HOT_TEST_FILE_SPLITS[rel_path] >= 2 for rel_path in measured_slow_mcp_files)
-    assert all(CI_HOT_TEST_FILE_WEIGHT_MULTIPLIERS[rel_path] > 1.0 for rel_path in measured_slow_mcp_files)
+    Every slow file it used to carry belonged to the deleted built-in MCP
+    servers, so a stale split/weight entry here would silently plan shards for
+    files that no longer exist.
+    """
+    mcp_relpaths = {rel_path for rel_path in all_test_relpaths(tests_root=TESTS_ROOT) if rel_path.startswith("mcp/")}
+
+    assert CI_CATEGORY_SHARD_COUNTS["mcp"] == 1
+    assert mcp_relpaths == {
+        "mcp/test_paper_compiler_regressions.py",
+        "mcp/test_paper_regressions.py",
+        "mcp/test_wolfram_bridge.py",
+    }
+    assert not any(rel_path.startswith("mcp/") for rel_path in CI_HOT_TEST_FILE_SPLITS)
+    assert not any(rel_path.startswith("mcp/") for rel_path in CI_HOT_TEST_FILE_WEIGHT_MULTIPLIERS)
 
 
 def test_adapter_hotspot_metadata_tracks_catalog_runtime_adapter_tests() -> None:

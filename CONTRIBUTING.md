@@ -80,11 +80,11 @@ Cross-runtime release checks:
 - `npm pack --dry-run --json` validates the published `npx` bootstrap package surface before release. Use a temporary cache outside the repo so the worktree does not gain a local `.npm-cache/`.
 - Gemini public installs are expected to be complete on disk after the CLI-level install path succeeds
   (`gpd install gemini ...` or `npx -y get-physics-done --gemini ...`): `.gemini/settings.json`
-  should exist with `experimental.enableAgents`, GPD hooks, GPD MCP servers, and `policyPaths`
+  should exist with `experimental.enableAgents`, GPD hooks, and `policyPaths`
   configured, and `policies/gpd-auto-edit.toml` should be present. Raw `GeminiAdapter.install()`
   prepares deferred settings; adapter-level tests or direct callers must call `finalize_install()`
   before asserting complete Gemini artifacts.
-- OpenCode installs are expected to leave `opencode.json` complete on disk with GPD-managed `permission.read` / `permission.external_directory` entries and built-in MCP servers under the `mcp` key.
+- OpenCode installs are expected to leave `opencode.json` complete on disk with GPD-managed `permission.read` / `permission.external_directory` entries; installs also remove any legacy `gpd-*` MCP server entries under the `mcp` key.
 
 ## Sharing Published Research
 
@@ -107,7 +107,6 @@ You don't need to share your full manuscript or data — even a brief write-up w
 - Do not reintroduce stale internal paths such as `packages/gpd` into docs or descriptors.
 - Keep public artifacts present and up to date: `README.md`, `LICENSE`, `CITATION.cff`, `CONTRIBUTING.md`, `package.json`, and `pyproject.toml`.
 - Keep the `tests` workflow pinned to the minimum supported Python version (`3.11`) unless we intentionally broaden CI coverage.
-- Keep `infra/gpd-*.json` synced with the canonical descriptor builder in `src/gpd/mcp/builtin_servers.py`.
 - Keep user-facing validation docs aligned with the CLI surface in `gpd validate`, especially `consistency`, `project-contract`, `review-preflight`, `paper-quality`, `referee-decision`, and `reproducibility-manifest`.
 - Do not commit secrets, private infrastructure details, internal strategy notes, or cached research outputs.
 

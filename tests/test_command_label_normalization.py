@@ -17,7 +17,7 @@ from gpd.command_labels import (
     runtime_public_command_prefixes,
     validated_public_command_prefix,
 )
-from gpd.mcp.servers.skills_server import _canonicalize_command_surface
+from gpd.core.skill_surface import _canonicalize_command_surface
 
 
 @pytest.fixture(autouse=True)

@@ -4,7 +4,8 @@ Owns everything about the protocol documents in ``specs/references/protocols/``:
 authoritative file loading, domain-manifest validation, section / step /
 checkpoint extraction, frontmatter normalization, keyword routing, and the query
 payloads served for a protocol lookup. Nothing here knows about MCP, transports,
-or response envelopes, so the same catalog backs the MCP server and the CLI.
+or response envelopes, so every caller — ``gpd refs protocols`` included —
+shares one catalog.
 """
 
 from __future__ import annotations

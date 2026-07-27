@@ -13,12 +13,14 @@ import pytest
 from gpd.adapters.claude_code import ClaudeCodeAdapter
 from gpd.adapters.install_utils import hook_python_interpreter
 from gpd.hooks.install_metadata import assess_install_target
+from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
 from gpd.version import __version__, version_for_gpd_root
 from tests.adapters.projection_test_utils import runtime_bridge_command
 from tests.adapters.review_contract_test_utils import (
     assert_review_contract_prompt_surface,
     compile_review_contract_fixture_for_runtime,
 )
+from tests.runtime_install_helpers import legacy_builtin_mcp_server_entries
 
 WOLFRAM_MANAGED_SERVER_KEY = "gpd-wolfram"
 WOLFRAM_MCP_API_KEY_ENV_VAR = "GPD_WOLFRAM_MCP_API_KEY"
@@ -575,31 +577,26 @@ class TestInstall:
         expected_check_update_cmd = f"{shlex.quote(hook_python)} {expected_check_update_path}"
         assert expected_check_update_cmd in cmds
 
-    def test_install_preserves_existing_mcp_overrides(
+    def test_install_scrubs_legacy_builtin_mcp_entries_and_preserves_user_servers(
         self,
         adapter: ClaudeCodeAdapter,
         gpd_root: Path,
         tmp_path: Path,
     ) -> None:
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
+        """Upgrading over a pre-removal install must delete exactly the GPD entries."""
+        user_entry = {
+            "command": "node",
+            "args": ["custom.js"],
+            "env": {"USER_FLAG": "1"},
+            "cwd": "/tmp/custom-user",
+            "type": "stdio",
+        }
         target = tmp_path / "workspace" / ".claude"
         target.mkdir(parents=True)
         mcp_config = target.parent / ".mcp.json"
         mcp_config.write_text(
             json.dumps(
-                {
-                    "mcpServers": {
-                        "gpd-state": {
-                            "command": "python3",
-                            "args": ["-m", "old.state_server"],
-                            "env": {"LOG_LEVEL": "INFO", "EXTRA_FLAG": "1"},
-                            "cwd": "/tmp/custom-gpd",
-                            "type": "stdio",
-                        },
-                        "custom-server": {"command": "node", "args": ["custom.js"]},
-                    }
-                },
+                {"mcpServers": {**legacy_builtin_mcp_server_entries(), "custom-server": user_entry}},
                 indent=2,
             )
             + "\n",
@@ -609,16 +606,8 @@ class TestInstall:
         adapter.install(gpd_root, target)
 
         parsed = json.loads(mcp_config.read_text(encoding="utf-8"))
-        hook_python = hook_python_interpreter()
-        expected = build_mcp_servers_dict(python_path=hook_python)["gpd-state"]
-        server = parsed["mcpServers"]["gpd-state"]
-        assert server["command"] == expected["command"]
-        assert server["args"] == expected["args"]
-        assert server["env"]["LOG_LEVEL"] == "INFO"
-        assert server["env"]["EXTRA_FLAG"] == "1"
-        assert server["cwd"] == "/tmp/custom-gpd"
-        assert server["type"] == "stdio"
-        assert parsed["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+        assert parsed["mcpServers"] == {"custom-server": user_entry}
+        assert set(parsed["mcpServers"]) & GPD_MCP_SERVER_KEYS == set()
 
     def test_install_projects_wolfram_mcp_server_and_preserves_overrides(
         self,
@@ -627,8 +616,6 @@ class TestInstall:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
         target = tmp_path / "workspace" / ".claude"
         target.mkdir(parents=True)
         mcp_config = target.parent / ".mcp.json"
@@ -668,7 +655,7 @@ class TestInstall:
         }
         assert parsed["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
         assert "claude-test-key" not in mcp_config.read_text(encoding="utf-8")
-        assert result["mcpServers"] == len(build_mcp_servers_dict(python_path=hook_python_interpreter())) + 1
+        assert result["mcpServers"] == 1, "the managed integration is the only server GPD writes"
 
     def test_install_omits_managed_wolfram_when_project_override_disables_it(
         self,
@@ -685,8 +672,9 @@ class TestInstall:
 
         adapter.install(gpd_root, target)
 
-        parsed = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))
-        assert WOLFRAM_MANAGED_SERVER_KEY not in parsed.get("mcpServers", {})
+        # With the managed integration disabled and no built-in servers left,
+        # GPD has nothing to write, so it must not create the config at all.
+        assert not (tmp_path / ".mcp.json").exists()
 
     def test_install_fails_closed_for_malformed_project_integrations_before_copying_artifacts(
         self,
@@ -753,10 +741,17 @@ class TestInstall:
         target = tmp_path / "custom-root" / ".claude"
         target.mkdir(parents=True)
 
+        (target.parent / ".claude.json").write_text(
+            json.dumps({"mcpServers": legacy_builtin_mcp_server_entries()}) + "\n",
+            encoding="utf-8",
+        )
+
         adapter.install(gpd_root, target, is_global=True)
 
         scoped_claude_json = target.parent / ".claude.json"
         assert scoped_claude_json.exists()
+        # The scrub must land on the target-scoped config, never on $HOME.
+        assert json.loads(scoped_claude_json.read_text(encoding="utf-8")) == {}
         assert not (fake_home / ".claude.json").exists()
 
     def test_install_raises_on_missing_dirs(self, adapter: ClaudeCodeAdapter, tmp_path: Path) -> None:
@@ -1066,14 +1061,12 @@ class TestUninstall:
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(target))
 
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
         claude_json = tmp_path / ".claude.json"
         claude_json.write_text(
             json.dumps(
                 {
                     "mcpServers": {
-                        **build_mcp_servers_dict(python_path=hook_python_interpreter()),
+                        **legacy_builtin_mcp_server_entries(),
                         "custom-server": {"command": "node", "args": ["custom.js"]},
                     }
                 }
@@ -1138,15 +1131,13 @@ class TestUninstall:
         target = tmp_path / "workspace" / ".claude"
         target.mkdir(parents=True)
 
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
         mcp_config = target.parent / ".mcp.json"
         mcp_config.write_text(
             (
                 "{\n"
                 "  // local workspace servers\n"
                 '  "mcpServers": {\n'
-                f'    "gpd-state": {json.dumps(build_mcp_servers_dict(python_path=hook_python_interpreter())["gpd-state"])},\n'
+                f'    "gpd-state": {json.dumps(legacy_builtin_mcp_server_entries()["gpd-state"])},\n'
                 '    "custom-server": {"command": "node", "args": ["custom.js"]},\n'
                 "  },\n"
                 "}\n"

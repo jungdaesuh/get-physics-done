@@ -4,6 +4,37 @@ All notable changes to Get Physics Done are documented here.
 
 ## vNEXT
 
+- **Breaking: GPD's built-in MCP servers are removed.** `gpd install` no longer writes any `mcpServers` entries, the `src/gpd/mcp/servers/` package and the eight `infra/gpd-*.json` public descriptors are deleted, and the `gpd-mcp-{conventions,verification,protocols,errors,patterns,arxiv,state,skills}` console scripts are gone. Every capability they exposed is reachable from the `gpd` CLI (`--raw` for stable JSON envelopes — the same schema-versioned shape the MCP tools returned) or by reading installed files directly. Measured motivation: 54 live sessions x 7 always-on servers = 378 resident processes and ~5 GB RSS, for 3 tools any workflow prompt actually referenced.
+
+  **Automatic migration.** Install, upgrade, *and* uninstall now actively delete the legacy `gpd-conventions`, `gpd-errors`, `gpd-patterns`, `gpd-protocols`, `gpd-skills`, `gpd-state`, `gpd-verification`, and `gpd-arxiv` entries from Claude Code (`.mcp.json` / `.claude.json`), Codex (`config.toml`), Gemini (`settings.json`), Copilot CLI (`copilot.json`), and OpenCode (`opencode.json`). Every non-GPD entry is preserved byte-for-byte. Just upgrade and relaunch your runtime; no manual config editing is required.
+
+  **Not affected.** The opt-in `gpd-wolfram` managed integration is unchanged: it still installs, still ships the `gpd-mcp-wolfram` console script, and `gpd mcp-serve wolfram` / `gpd list-servers` still work (both now cover managed integrations only). The paper compiler under `gpd.mcp.paper` is unchanged.
+
+  **Migration table.**
+
+  | Removed MCP tool | Replacement |
+  | --- | --- |
+  | `mcp__gpd_verification__run_contract_check` | `gpd --raw verify contract-check --payload <file\|-> [--project-dir DIR]` (`--schema` prints the payload JSON schema; exits 1 on `status: fail`) |
+  | `mcp__gpd_verification__suggest_contract_checks` | `gpd --raw verify suggest-checks --contract <file\|-> --project-dir DIR [--active-checks <id>,...]` |
+  | `mcp__gpd_verification__get_bundle_checklist` | `gpd --raw verify bundle-checklist <bundle-id> [<bundle-id> ...]` |
+  | `mcp__gpd_verification__get_checklist` | `gpd --raw verify checklist <domain>` |
+  | `mcp__gpd_verification__get_verification_coverage` | `gpd --raw verify coverage --error-classes <id>,... --active-checks <id>,...` |
+  | `mcp__gpd_verification__run_check` | `gpd --raw verify contract-check` (contract-aware execution is the single supported path) |
+  | `mcp__gpd_verification__{dimensional,limiting_case,symmetry}_check` | **Dropped, no replacement.** These were regex/guidance-text generators whose own docstrings deferred the real work to SymPy; no prompt referenced them. Use SymPy or `/gpd:dimensional-analysis` / `/gpd:limiting-cases`. |
+  | `mcp__gpd_errors__{get_error_class,get_detection_strategy,get_traceability,list_error_classes}` | `gpd --raw refs errors [--domain <d> \| --id <n> [--detection\|--traceability]]` |
+  | `mcp__gpd_errors__check_error_classes` | `gpd --raw refs errors --domain <d>` plus the phase contract; free-text triage is no longer a tool call |
+  | `mcp__gpd_protocols__{get_protocol,list_protocols,route_protocol,get_protocol_checkpoints}` | `gpd --raw refs protocols [--domain <d> \| --name <n> \| --route <query> \| --checkpoints <n>]` |
+  | `mcp__gpd_conventions__{convention_lock_status,convention_set,convention_check,convention_diff}` | `gpd convention list/set/check/diff` |
+  | `mcp__gpd_conventions__assert_convention_validate` | `gpd --raw convention validate-assert <file> [--lock <file\|-> \| --project-dir DIR]` |
+  | `mcp__gpd_conventions__subfield_defaults` | `gpd --raw convention subfield-defaults <domain>` |
+  | `mcp__gpd_patterns__{lookup_pattern,add_pattern,promote_pattern,seed_patterns,list_domains}` | `gpd pattern search/add/promote/seed/list` |
+  | `mcp__gpd_state__{get_state,get_phase_info,get_progress,validate_state,advance_plan,get_config}` | `gpd state get/patch/advance/validate`, `gpd progress`, `gpd config` |
+  | `mcp__gpd_state__{suggest_next,run_health_check}` | `gpd suggest`, `gpd health` |
+  | `mcp__gpd_skills__{list_skills,get_skill,route_skill,get_skill_index}` | Your runtime's own skill/command system — GPD's commands and agents are already installed as prompts. |
+  | `mcp__gpd_arxiv__*` (`search_papers`, `download_paper`, `list_papers`, `read_paper`, `get_abstract`, `download_source`) | The arXiv HTTP API (`https://export.arxiv.org/api/query`) via your runtime's `web_search` / `web_fetch` tools, which lit-review agents already used. `gpd-arxiv` was optional, off by default, and referenced by zero prompts. |
+
+  The `arxiv` optional extra is also removed; it existed only for the deleted bridge. The `arxiv` Python package now lives in the `paper` extra, where the bibliography enrichment that actually imports it belongs.
+
 - Add pandoc-driven markdown→LaTeX pipeline for the paper writer. Sections can opt in via `Section.content_format="markdown"`; raw-LaTeX payloads still pass through unchanged. Pandoc is probed once per `render_paper` call and shared across sections. When pandoc is missing the markdown path raises `PandocNotAvailable` with a recovery hint; legacy `maybe_convert_to_latex` callers degrade to pass-through. `--natbib` is the default so `@key` / `[@k1; @k2]` emit `\citet`/`\citep` for the template's `\bibliography{…}` to resolve; `pandoc-crossref` is auto-enabled when installed and `pandoc-citeproc` is intentionally excluded from auto-detection.
 - Fix Nature template citation rendering: switch from `naturemag.bst` to `unsrtnat` with `\usepackage[numbers,super,sort&compress]{natbib}`. `naturemag.bst` predates natbib and has no author-name macro, so pandoc's `\citet` rendered as "(author?)" in the final PDF while passing every string-level `.tex` assertion.
 - Fix PRL template cite-command resolution under revtex4-2: pass `natbib` as a class option (`\documentclass[…,natbib]{revtex4-2}`) instead of `\usepackage{natbib}`, which would otherwise option-clash with revtex's internal natbib load.

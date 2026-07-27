@@ -1,9 +1,8 @@
-"""Transport-neutral convention surfaces shared by the MCP server and the CLI.
+"""Transport-neutral convention payload builders behind ``gpd convention``.
 
 Owns the recommended per-domain convention defaults, the ASSERT_CONVENTION
-validation payload, and the project-state lock loading path so the
-``gpd-conventions`` MCP tools and the ``gpd convention`` CLI subcommands emit the
-same envelopes for the same inputs.
+validation payload, and the project-state lock loading path, so every caller of
+these builders emits the same envelopes for the same inputs.
 """
 
 from __future__ import annotations

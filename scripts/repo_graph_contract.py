@@ -94,8 +94,6 @@ GRAPH_SCOPE_SPECS = (
     GraphScopeSpec("`src/gpd/hooks/*.py`", ("src", "gpd", "hooks"), ".py"),
     GraphScopeSpec("`src/gpd/mcp/*.py`", ("src", "gpd", "mcp"), ".py"),
     GraphScopeSpec("`src/gpd/mcp/integrations/*.py`", ("src", "gpd", "mcp", "integrations"), ".py"),
-    GraphScopeSpec("`src/gpd/mcp/servers/*.py`", ("src", "gpd", "mcp", "servers"), ".py"),
-    GraphScopeSpec("`infra/gpd-*.json`", ("infra",), ".json", name_prefix="gpd-"),
 )
 
 GRAPH_SCOPE_LABELS = tuple(spec.label for spec in GRAPH_SCOPE_SPECS)
@@ -107,16 +105,7 @@ REQUIRED_REPO_GRAPH_EDGES = (
     GraphEdgeSpec(".github/workflows/test.yml", "tests/ci_sharding.py", "authority"),
     GraphEdgeSpec(".github/workflows/test.yml", "actions/checkout@v6", "external-service"),
     GraphEdgeSpec(".github/workflows/test.yml", "actions/setup-node@v6", "external-service"),
-    GraphEdgeSpec("src/gpd/mcp/builtin_servers.py", "src/gpd/mcp/descriptor_text.py", "hard-import"),
-    GraphEdgeSpec("src/gpd/mcp/servers/skills_server.py", "src/gpd/mcp/descriptor_text.py", "hard-import"),
-    GraphEdgeSpec(
-        "pyproject.toml",
-        (
-            "src/gpd/mcp/servers/{arxiv_bridge,conventions_server,verification_server,protocols_server,"
-            "errors_mcp,patterns_server,state_server,skills_server}.py"
-        ),
-        "authority",
-    ),
+    GraphEdgeSpec("src/gpd/core/skill_surface.py", "src/gpd/mcp/descriptor_text.py", "hard-import"),
     GraphEdgeSpec("pyproject.toml", "src/gpd/mcp/integrations/wolfram_bridge.py", "authority"),
     GraphEdgeSpec("src/gpd/hooks/statusline.py", "src/gpd/hooks/runtime_detect.py", "hard-import"),
     GraphEdgeSpec("src/gpd/hooks/statusline.py", "src/gpd/adapters/__init__.py", "hard-import"),

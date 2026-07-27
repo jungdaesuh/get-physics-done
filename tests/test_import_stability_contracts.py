@@ -86,7 +86,7 @@ def test_key_entrypoint_modules_import_stably() -> None:
             "-c",
             (
                 "import importlib; "
-                "modules = ['gpd', 'gpd.cli', 'gpd.runtime_cli', 'gpd.mcp.servers.skills_server']; "
+                "modules = ['gpd', 'gpd.cli', 'gpd.runtime_cli', 'gpd.core.skill_surface']; "
                 "[importlib.import_module(name) for name in modules]; "
                 "print(len(modules))"
             ),

@@ -17,7 +17,10 @@ EXACTNESS_TOTAL_BUDGETS = {
 }
 TAXONOMY_HELPER_TOTAL_FLOORS = {
     # Phase 8 observed 80 files and 735 helper calls; keep a small call-count cushion.
-    "taxonomy_helper_file_count": 80,
+    # Lowered to 78 when the built-in MCP server suite was deleted: two of the
+    # removed tests/mcp/ files used taxonomy helpers. No surviving file dropped a
+    # helper call — the call-count floor below is unchanged and still met.
+    "taxonomy_helper_file_count": 78,
     "taxonomy_helper_call_count": 725,
 }
 SEMANTIC_HELPER_LITERAL_FRAGMENT_FLOORS = {

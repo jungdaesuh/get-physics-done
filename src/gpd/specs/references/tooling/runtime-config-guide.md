@@ -8,9 +8,10 @@ After installation (`{GPD_BOOTSTRAP_COMMAND}`), GPD writes managed entries into 
 
 - **Status line or notification hooks** -- GPD status display in the runtime UI
 - **Update check hooks** -- check for GPD updates on session start
-- **MCP servers** -- GPD MCP servers for state and paper tooling (where supported)
 
-GPD does not touch entries it did not create. Existing user hooks, MCP servers, and settings are preserved.
+GPD no longer writes built-in MCP server registrations. All machine-facing GPD functionality (state, conventions, verification, error/protocol references, patterns, arXiv helpers) is reachable through the `gpd` CLI (`gpd state`, `gpd convention`, `gpd --raw verify ...`, `gpd refs ...`, `gpd pattern`, etc.) instead of a dedicated MCP server per surface. The only MCP entry the installer ever writes is the opt-in Wolfram integration (`gpd integrations enable wolfram`), and only when you enable it.
+
+GPD does not touch entries it did not create. Existing user hooks and settings are preserved. If the runtime configuration directory still has legacy `gpd-*` MCP server entries from an older install, `{GPD_BOOTSTRAP_COMMAND}` removes them on install/upgrade.
 
 ## Permission Mode Alignment
 
@@ -36,7 +37,7 @@ GPD installs its commands and agents into the runtime's command/agent directorie
 
 - Built-in runtime tools (file read/write, shell, search, etc.) -- fully compatible
 - User-defined custom slash commands -- compatible if they do not use the `gpd:` prefix
-- Third-party MCP servers -- compatible; GPD's MCP servers use reserved `gpd-*` names such as `gpd-state`, `gpd-skills`, and `gpd-verification`
+- Third-party MCP servers -- compatible; GPD registers no built-in MCP servers of its own, so there is no `gpd-*` server name collision to avoid. The only MCP entry GPD writes is `gpd-wolfram`, and only if you enable the optional Wolfram integration.
 - Multiple project configuration files -- compatible; GPD does not modify project-level config files it did not create
 
 ### Potentially Problematic Combinations
@@ -62,7 +63,7 @@ When syncing a GPD project across machines (via git, cloud storage, etc.):
 1. The `GPD/` project directory is portable -- it uses relative paths internally
 2. Runtime-specific configuration is machine-local -- re-run `{GPD_BOOTSTRAP_COMMAND}` on each machine
 3. The managed GPD Python environment is machine-local -- the installer recreates it automatically
-4. MCP server config is machine-local -- re-install regenerates it
+4. If the Wolfram integration is enabled, its `gpd-wolfram` MCP registration is machine-local -- re-install regenerates it; GPD has no other built-in MCP servers to regenerate
 
 ### Low-Resource Environments
 
@@ -93,8 +94,16 @@ When syncing a GPD project across machines (via git, cloud storage, etc.):
 2. Verify hook scripts exist in the `{GPD_INSTALL_ROOT_DIR_NAME}/hooks/` subdirectory
 3. Re-install to regenerate: `{GPD_BOOTSTRAP_COMMAND}`
 
-### MCP Servers Not Connecting
+### GPD Commands Erroring Instead of Returning Data
 
-1. Check the runtime's MCP configuration file
-2. Verify the managed Python environment has dependencies with the environment created by the installer
-3. Re-install to regenerate MCP config: `{GPD_BOOTSTRAP_COMMAND}`
+GPD has no built-in MCP servers to connect to; state, conventions, verification, references, and pattern lookups are CLI calls (`gpd state ...`, `gpd convention ...`, `gpd --raw verify ...`, `gpd refs ...`, `gpd pattern ...`). If a command errors:
+
+1. Confirm the managed GPD Python environment is present and has its dependencies
+2. Re-install to regenerate the managed environment: `{GPD_BOOTSTRAP_COMMAND}`
+3. Run `gpd doctor` for a diagnostic sweep of the current install
+
+### Wolfram Integration Not Connecting
+
+1. Confirm it is enabled: `gpd integrations status wolfram`
+2. Check the runtime's MCP configuration file for the `gpd-wolfram` entry
+3. Re-install to regenerate the entry: `{GPD_BOOTSTRAP_COMMAND}`

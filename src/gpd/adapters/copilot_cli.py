@@ -44,7 +44,6 @@ from gpd.adapters.install_utils import (
     compile_markdown_for_runtime,
     compute_path_prefix,
     convert_tool_references_in_body,
-    hook_python_interpreter,
     install_gpd_content,
     managed_hook_paths,
     prune_empty_ancestors,
@@ -52,6 +51,7 @@ from gpd.adapters.install_utils import (
     remove_stale_agents,
     render_markdown_frontmatter,
     rewrite_gpd_cli_invocations_to_runtime_bridge,
+    scrub_legacy_builtin_mcp_servers,
     split_markdown_frontmatter,
 )
 from gpd.adapters.install_utils import (
@@ -389,17 +389,14 @@ def configure_copilot_mcp(config_dir: Path) -> bool:
         raise RuntimeError("Copilot CLI copilot.json is malformed; refusing to overwrite it during install.")
     config = config or {}
 
-    from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
-    mcp_servers = build_mcp_servers_dict(python_path=hook_python_interpreter())
-    if not mcp_servers:
-        return False
+    mcp_servers = _project_managed_mcp_servers()
 
     existing_mcp = config.get("mcp")
     if not isinstance(existing_mcp, dict):
         existing_mcp = {}
 
-    modified = False
+    existing_mcp, scrubbed_keys = scrub_legacy_builtin_mcp_servers(existing_mcp)
+    modified = bool(scrubbed_keys)
     for key, server_def in mcp_servers.items():
         if existing_mcp.get(key) != server_def:
             existing_mcp[key] = server_def
@@ -775,17 +772,12 @@ class CopilotCliAdapter(RuntimeAdapter):
         if config_parse_error is not None:
             raise RuntimeError("Copilot CLI copilot.json is malformed; refusing to overwrite it during install.")
 
-        # Wire MCP servers into copilot.json.
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
-        mcp_servers = build_mcp_servers_dict(python_path=hook_python_interpreter())
+        # Wire managed MCP integrations into copilot.json. The writer prunes
+        # every GPD-owned key not in the new set, which is how legacy built-in
+        # server entries get scrubbed on upgrade — so it always runs.
         project_cwd = None if is_global or getattr(self, "_install_explicit_target", False) else target_dir.parent
-        managed_mcp_servers = _project_managed_mcp_servers(cwd=project_cwd)
-        if managed_mcp_servers:
-            mcp_servers.update(managed_mcp_servers)
-        mcp_count = 0
-        if mcp_servers:
-            mcp_count = _write_mcp_servers_copilot(target_dir, mcp_servers)
+        mcp_servers = _project_managed_mcp_servers(cwd=project_cwd)
+        mcp_count = _write_mcp_servers_copilot(target_dir, mcp_servers)
 
         return {
             "target": str(target_dir),

@@ -11,6 +11,7 @@ import json
 import os
 import sys
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -306,3 +307,64 @@ def managed_optional_mcp_server_keys() -> frozenset[str]:
     """Return the registry-backed optional managed MCP server keys."""
 
     return frozenset(integration.managed_server_key for integration in MANAGED_INTEGRATIONS.values())
+
+
+def merge_managed_mcp_entry(
+    existing_entry: object,
+    managed_entry: dict[str, object],
+    *,
+    merge_mapping_keys: frozenset[str] = frozenset(),
+) -> dict[str, object]:
+    """Merge a managed MCP entry into an existing runtime config entry.
+
+    Managed scalar fields overwrite the existing entry so reinstall can keep
+    the runtime launch command current. Mapping fields like ``env`` can be
+    merged instead, with existing values taking precedence so user overrides
+    survive reinstalls.
+    """
+
+    merged: dict[str, object] = {}
+    if isinstance(existing_entry, dict):
+        merged = {str(key): deepcopy(value) for key, value in existing_entry.items()}
+
+    for key, managed_value in managed_entry.items():
+        if key in merge_mapping_keys and isinstance(managed_value, dict):
+            existing_value = merged.get(key)
+            merged_mapping = {str(subkey): deepcopy(subvalue) for subkey, subvalue in managed_value.items()}
+            if isinstance(existing_value, dict):
+                for subkey, subvalue in existing_value.items():
+                    merged_mapping[str(subkey)] = deepcopy(subvalue)
+            if merged_mapping:
+                merged[key] = merged_mapping
+            else:
+                merged.pop(key, None)
+            continue
+
+        merged[key] = deepcopy(managed_value)
+
+    return merged
+
+
+def merge_managed_mcp_servers(
+    existing_servers: object,
+    managed_servers: dict[str, dict[str, object]],
+    *,
+    merge_mapping_keys: frozenset[str] = frozenset({"env"}),
+) -> dict[str, dict[str, object]]:
+    """Merge managed GPD MCP entries into a runtime config mapping."""
+
+    existing_map = existing_servers if isinstance(existing_servers, dict) else {}
+    merged_servers: dict[str, dict[str, object]] = {}
+
+    for name, entry in existing_map.items():
+        if isinstance(entry, dict):
+            merged_servers[str(name)] = {str(key): deepcopy(value) for key, value in entry.items()}
+
+    for name, managed_entry in managed_servers.items():
+        merged_servers[name] = merge_managed_mcp_entry(
+            existing_map.get(name) if isinstance(existing_map, dict) else None,
+            managed_entry,
+            merge_mapping_keys=merge_mapping_keys,
+        )
+
+    return merged_servers

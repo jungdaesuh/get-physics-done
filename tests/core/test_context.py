@@ -915,8 +915,8 @@ class TestInitExecutePhase:
             extension["bundle_id"] == "numerical-relativity" for extension in ctx["protocol_bundle_verifier_extensions"]
         )
 
-    def test_protocol_bundle_verifier_extensions_match_mcp_bundle_checklist(self, tmp_path: Path) -> None:
-        from gpd.mcp.servers.verification_server import get_bundle_checklist
+    def test_protocol_bundle_verifier_extensions_match_bundle_checklist(self, tmp_path: Path) -> None:
+        from gpd.core.contract_checks import get_bundle_checklist
 
         _setup_project(tmp_path)
         phase_dir = _create_phase_dir(tmp_path, "01-setup")

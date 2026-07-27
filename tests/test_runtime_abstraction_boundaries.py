@@ -213,7 +213,7 @@ _SHARED_RUNTIME_AGNOSTIC_PATHS = (
     REPO_ROOT / "src/gpd/specs",
     REPO_ROOT / "infra",
     REPO_ROOT / "src/gpd/registry.py",
-    REPO_ROOT / "src/gpd/mcp/servers/skills_server.py",
+    REPO_ROOT / "src/gpd/core/skill_surface.py",
 )
 _COMMANDS_DIR = REPO_ROOT / "src/gpd/commands"
 _RAW_PROJECT_INCLUDE_PATTERN = re.compile(r"@GPD/")

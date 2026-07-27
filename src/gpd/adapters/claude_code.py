@@ -25,6 +25,7 @@ from gpd.adapters.install_utils import (
     remove_managed_mcp_server_keys,
     remove_stale_agents,
     runtime_managed_mcp_server_keys,
+    scrub_legacy_builtin_mcp_servers,
     translate_frontmatter_tool_names,
     verify_installed,
     write_settings,
@@ -322,14 +323,13 @@ class ClaudeCodeAdapter(RuntimeAdapter):
         #   Project: .mcp.json (in project root, parent of .claude/)
         import json as _json
 
-        from gpd.mcp.builtin_servers import merge_managed_mcp_servers
+        from gpd.mcp.managed_integrations import merge_managed_mcp_servers
 
         project_cwd = self._project_cwd_for_runtime_config(target_dir, is_global)
         mcp_servers = build_runtime_managed_mcp_servers(cwd=project_cwd)
         mcp_count = 0
-        if mcp_servers:
-            mcp_config_path = _mcp_config_path(target_dir, is_global=is_global)
-
+        mcp_config_path = _mcp_config_path(target_dir, is_global=is_global)
+        if mcp_servers or mcp_config_path.exists():
             mcp_config: dict = {}
             if mcp_config_path.exists():
                 try:
@@ -348,9 +348,18 @@ class ClaudeCodeAdapter(RuntimeAdapter):
                 )
 
             existing_mcp = mcp_config.get("mcpServers", {})
-            mcp_config["mcpServers"] = merge_managed_mcp_servers(existing_mcp, mcp_servers)
+            # Upgrades must actively drop entries earlier GPD releases wrote for
+            # the removed built-in servers; every other entry is preserved.
+            existing_mcp, scrubbed_keys = scrub_legacy_builtin_mcp_servers(existing_mcp)
+            if mcp_servers:
+                mcp_config["mcpServers"] = merge_managed_mcp_servers(existing_mcp, mcp_servers)
+            elif existing_mcp:
+                mcp_config["mcpServers"] = existing_mcp
+            else:
+                mcp_config.pop("mcpServers", None)
 
-            mcp_config_path.write_text(_json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
+            if mcp_servers or scrubbed_keys:
+                mcp_config_path.write_text(_json.dumps(mcp_config, indent=2) + "\n", encoding="utf-8")
             mcp_count = len(mcp_servers)
 
         return {

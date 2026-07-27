@@ -71,7 +71,7 @@ def test_peer_review_and_arxiv_use_subject_aware_publication_roots() -> None:
 
 
 def test_generated_peer_review_skill_surface_uses_artifact_text_helper_for_non_plaintext_intake() -> None:
-    from gpd.mcp.servers.skills_server import get_skill
+    from gpd.core.skill_surface import get_skill
 
     peer_review_skill = get_skill("gpd-peer-review")
     peer_review_skill_content = peer_review_skill["content"]

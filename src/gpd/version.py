@@ -120,8 +120,8 @@ def resolve_checkout_python(start: Path | None = None, *, fallback: str | None =
     """Return the preferred Python interpreter for the active checkout.
 
     When a source checkout is available, installed runtime artifacts should
-    point at the checkout's own virtualenv if present so copied hook scripts,
-    MCP servers, and runtime bridges all import the same live source tree.
+    point at the checkout's own virtualenv if present so copied hook scripts
+    and runtime bridges all import the same live source tree.
     Return ``None`` when no checkout is available so managed-install callers
     can keep their own interpreter selection. Fall back to *fallback* only
     when a checkout exists but its local virtualenv is missing.

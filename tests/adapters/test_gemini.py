@@ -35,11 +35,13 @@ from gpd.adapters.install_utils import (
     hook_python_interpreter,
 )
 from gpd.hooks.install_metadata import assess_install_target
+from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
 from tests.adapters.projection_test_utils import assert_compact_staged_command_shim, runtime_bridge_command
 from tests.adapters.review_contract_test_utils import (
     assert_review_contract_prompt_surface,
     compile_review_contract_fixture_for_runtime,
 )
+from tests.runtime_install_helpers import legacy_builtin_mcp_server_entries
 
 
 def expected_gemini_bridge(target: Path) -> str:
@@ -899,6 +901,7 @@ class TestInstall:
         target = tmp_path / ".gemini"
         target.mkdir()
         monkeypatch.setenv("GPD_PYTHON", "/env/override/python")
+        monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "gemini-test-key")
         monkeypatch.setattr("gpd.version.checkout_root", lambda start=None: None)
 
         result = adapter.install(gpd_root, target)
@@ -909,7 +912,7 @@ class TestInstall:
         session_start = settings.get("hooks", {}).get("SessionStart", [])
         cmds = [h.get("command", "") for entry in session_start for h in (entry.get("hooks") or [])]
         assert "/env/override/python .gemini/hooks/check_update.py" in cmds
-        assert settings["mcpServers"]["gpd-state"]["command"] == "/env/override/python"
+        assert settings["mcpServers"]["gpd-wolfram"]["command"] == "/env/override/python"
 
     def test_reinstall_rewrites_stale_managed_update_hook(
         self,
@@ -1012,30 +1015,26 @@ class TestInstall:
         expected_check_update_cmd = f"{shlex.quote(hook_python)} {expected_check_update_path}"
         assert expected_check_update_cmd in cmds
 
-    def test_install_preserves_existing_mcp_overrides(
+    def test_install_scrubs_legacy_builtin_mcp_entries_and_preserves_user_servers(
         self,
         adapter: GeminiAdapter,
         gpd_root: Path,
         tmp_path: Path,
     ) -> None:
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
+        """Upgrading over a pre-removal install must delete exactly the GPD entries."""
+        user_entry = {
+            "command": "node",
+            "args": ["custom.js"],
+            "env": {"USER_FLAG": "1"},
+            "cwd": "/tmp/custom-user",
+            "timeout": 15000,
+            "trust": False,
+        }
         target = tmp_path / ".gemini"
         target.mkdir()
         (target / "settings.json").write_text(
             json.dumps(
-                {
-                    "mcpServers": {
-                        "gpd-state": {
-                            "command": "python3",
-                            "args": ["-m", "old.state_server"],
-                            "env": {"LOG_LEVEL": "INFO", "EXTRA_FLAG": "1"},
-                            "cwd": "/tmp/custom-gpd",
-                            "timeout": 15000,
-                        },
-                        "custom-server": {"command": "node", "args": ["custom.js"]},
-                    }
-                },
+                {"mcpServers": {**legacy_builtin_mcp_server_entries(), "custom-server": user_entry}},
                 indent=2,
             )
             + "\n",
@@ -1046,17 +1045,8 @@ class TestInstall:
         adapter.finalize_install(result)
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
-        hook_python = hook_python_interpreter()
-        expected = build_mcp_servers_dict(python_path=hook_python)["gpd-state"]
-        server = settings["mcpServers"]["gpd-state"]
-        assert server["command"] == expected["command"]
-        assert server["args"] == expected["args"]
-        assert server["env"]["LOG_LEVEL"] == "INFO"
-        assert server["env"]["EXTRA_FLAG"] == "1"
-        assert server["cwd"] == "/tmp/custom-gpd"
-        assert server["timeout"] == 15000
-        assert server["trust"] is True
-        assert settings["mcpServers"]["custom-server"] == {"command": "node", "args": ["custom.js"]}
+        assert settings["mcpServers"] == {"custom-server": user_entry}
+        assert set(settings["mcpServers"]) & GPD_MCP_SERVER_KEYS == set()
 
     def test_install_projects_managed_wolfram_mcp_without_secrets(
         self,
@@ -1291,9 +1281,9 @@ class TestInstall:
                     "policyPaths": [existing_policy_path],
                     "tools": {"allowed": ["write_file"]},
                     "mcpServers": {
-                        "gpd-state": {
+                        "custom-server": {
                             "command": "python3",
-                            "args": ["-m", "old.state_server"],
+                            "args": ["-m", "custom.server"],
                             "trust": False,
                         }
                     },
@@ -1308,7 +1298,7 @@ class TestInstall:
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
         assert settings["policyPaths"] == [existing_policy_path, str((target / "policies").resolve())]
         assert settings["tools"]["allowed"] == ["write_file"]
-        assert settings["mcpServers"]["gpd-state"]["trust"] is False
+        assert settings["mcpServers"]["custom-server"]["trust"] is False
 
     def test_install_reads_commit_attribution_from_target_settings_not_policy_toml(
         self,
@@ -1660,7 +1650,6 @@ class TestInstall:
         ("settings_key", "expected_error", "expected_missing"),
         [
             ("hooks", "update hook not configured", "settings.json update hook"),
-            ("mcpServers", "MCP servers are not configured", "settings.json mcpServers"),
         ],
     )
     def test_finalize_install_verifies_persisted_settings(
@@ -1685,6 +1674,26 @@ class TestInstall:
         assessment = assess_install_target(target, expected_runtime=adapter.runtime_name)
         assert assessment.state == "owned_incomplete"
         assert expected_missing in assessment.missing_install_artifacts
+
+    def test_finalize_install_fails_closed_when_legacy_builtin_mcp_entries_survive(
+        self,
+        adapter: GeminiAdapter,
+        gpd_root: Path,
+        tmp_path: Path,
+    ) -> None:
+        """An absent mcpServers block is fine; a surviving legacy GPD entry is not."""
+        target = tmp_path / ".gemini"
+        target.mkdir()
+        result = adapter.install(gpd_root, target)
+        assert "mcpServers" not in result["settings"]
+        result["settings"]["mcpServers"] = dict(legacy_builtin_mcp_server_entries())
+
+        with pytest.raises(RuntimeError, match="legacy GPD MCP server entries were not removed"):
+            adapter.finalize_install(result)
+
+        assessment = assess_install_target(target, expected_runtime=adapter.runtime_name)
+        assert assessment.state == "owned_incomplete"
+        assert "settings.json mcpServers" in assessment.missing_install_artifacts
 
     @pytest.mark.parametrize("missing_field", ["settingsPath", "settings", "statuslineCommand"])
     def test_finalize_install_fails_closed_for_missing_deferred_payload_field(
@@ -1968,6 +1977,7 @@ class TestUninstall:
         )
 
         settings = json.loads((target / "settings.json").read_text(encoding="utf-8"))
+        settings["mcpServers"] = dict(legacy_builtin_mcp_server_entries())
         settings["mcpServers"]["custom-server"] = {"command": "node", "args": ["custom.js"]}
         settings["mcpServers"]["gpd-wolfram"] = {
             "command": "gpd-mcp-wolfram",

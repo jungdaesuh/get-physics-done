@@ -46,6 +46,7 @@ from gpd.adapters.install_utils import (
     compile_markdown_for_runtime,
     convert_tool_references_in_body,
     ensure_update_hook,
+    legacy_builtin_mcp_server_keys,
     parse_jsonc,
     process_attribution,
     protect_runtime_agent_prompt,
@@ -54,6 +55,7 @@ from gpd.adapters.install_utils import (
     remove_stale_agents,
     render_markdown_frontmatter,
     runtime_managed_mcp_server_keys,
+    scrub_legacy_builtin_mcp_servers,
     split_markdown_frontmatter,
     strip_sub_tags,
     verify_installed,
@@ -1224,19 +1226,25 @@ class GeminiAdapter(RuntimeAdapter):
             settings["policyPaths"] = merged_policy_paths
         self._managed_policy_paths = added_policy_paths
 
-        # Wire MCP servers into settings so they start automatically.
-        from gpd.mcp.builtin_servers import merge_managed_mcp_servers
+        # Wire managed MCP integrations into settings so they start automatically,
+        # and drop any entry an earlier GPD release wrote for a built-in server.
+        from gpd.mcp.managed_integrations import merge_managed_mcp_servers
 
         project_cwd = self._project_cwd_for_runtime_config(target_dir, is_global)
         mcp_servers = build_runtime_managed_mcp_servers(cwd=project_cwd)
+        existing_mcp = settings.get("mcpServers", {})
+        existing_mcp, _scrubbed_keys = scrub_legacy_builtin_mcp_servers(existing_mcp)
         if mcp_servers:
-            existing_mcp = settings.get("mcpServers", {})
             merged_mcp = merge_managed_mcp_servers(existing_mcp, mcp_servers)
             for server_name in mcp_servers:
                 existing_entry = existing_mcp.get(server_name) if isinstance(existing_mcp, dict) else None
                 if not isinstance(existing_entry, dict) or "trust" not in existing_entry:
                     merged_mcp.setdefault(server_name, {})["trust"] = True
             settings["mcpServers"] = merged_mcp
+        elif existing_mcp:
+            settings["mcpServers"] = existing_mcp
+        else:
+            settings.pop("mcpServers", None)
 
         return {
             "settingsPath": str(settings_path),
@@ -1359,8 +1367,13 @@ class GeminiAdapter(RuntimeAdapter):
         if not isinstance(experimental, dict) or experimental.get("enableAgents") is not True:
             _append_once("settings.json experimental.enableAgents")
 
+        # An absent `mcpServers` block is the steady state now that GPD installs
+        # no built-in servers; only malformed shapes or unscrubbed legacy entries
+        # count as a broken install.
         mcp_servers = settings.get("mcpServers")
-        if not isinstance(mcp_servers, dict) or not mcp_servers:
+        if mcp_servers is not None and not isinstance(mcp_servers, dict):
+            _append_once("settings.json mcpServers")
+        elif isinstance(mcp_servers, dict) and set(mcp_servers) & legacy_builtin_mcp_server_keys():
             _append_once("settings.json mcpServers")
 
         if (target_dir / "hooks" / HOOK_SCRIPTS["check_update"]).is_file():
@@ -1543,9 +1556,14 @@ class GeminiAdapter(RuntimeAdapter):
             ):
                 raise RuntimeError("Gemini install incomplete: update hook not configured")
 
+        # GPD installs no built-in MCP servers, so an absent `mcpServers` block is
+        # the expected steady state. Only a malformed block, or a leftover entry
+        # for a removed built-in server, indicates an incomplete install.
         mcp_servers = settings.get("mcpServers")
-        if not isinstance(mcp_servers, dict) or not mcp_servers:
-            raise RuntimeError("Gemini install incomplete: MCP servers are not configured")
+        if mcp_servers is not None and not isinstance(mcp_servers, dict):
+            raise RuntimeError("Gemini install incomplete: mcpServers is malformed")
+        if isinstance(mcp_servers, dict) and set(mcp_servers) & legacy_builtin_mcp_server_keys():
+            raise RuntimeError("Gemini install incomplete: legacy GPD MCP server entries were not removed")
 
 
 # ---------------------------------------------------------------------------

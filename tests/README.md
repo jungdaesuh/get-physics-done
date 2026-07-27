@@ -6,9 +6,9 @@ The repository graph below is checked in because graph guardrail tests read it d
 
 Default `uv run pytest` runs the full checked-in suite, and `uv run pytest -q` does the same with quieter output. Both inherit `-n auto --dist=worksteal` from `pyproject.toml`. For local full-suite runs, `tests/conftest.py` raises xdist auto-worker selection toward the current CI shard fanout without changing collection. For serial debugging, override that default explicitly with `uv run pytest -n 0`.
 
-The 180 second full-suite shard budget is enforced per CI pytest shard; the 10 minute job timeout remains the outer failure boundary. Shard target resolution has its own 3 minute timeout and logs elapsed seconds before pytest starts, git inventory calls have a 30 second timeout, and each collect-only subprocess has a 150 second timeout. Shard target resolution collects only the requested category. In-process repeated resolutions reuse the same immutable collection result, while CI matrix jobs stay isolated and do not share collection state across jobs. For a focused smoke pass, run `uv run pytest -n 0 tests/test_runtime_abstraction_boundaries.py tests/core/test_contract_schema_prompt_parity.py tests/core/test_review_contract_prompt_visibility.py tests/mcp/test_tool_contract_visibility.py tests/core/test_verifier_prompt_contract_visibility.py tests/core/test_verification_surface_alignment_regressions.py -q`.
+The 180 second full-suite shard budget is enforced per CI pytest shard; the 10 minute job timeout remains the outer failure boundary. Shard target resolution has its own 3 minute timeout and logs elapsed seconds before pytest starts, git inventory calls have a 30 second timeout, and each collect-only subprocess has a 150 second timeout. Shard target resolution collects only the requested category. In-process repeated resolutions reuse the same immutable collection result, while CI matrix jobs stay isolated and do not share collection state across jobs. For a focused smoke pass, run `uv run pytest -n 0 tests/test_runtime_abstraction_boundaries.py tests/core/test_contract_schema_prompt_parity.py tests/core/test_review_contract_prompt_visibility.py tests/core/test_peer_review_skill_surface.py tests/core/test_verifier_prompt_contract_visibility.py tests/core/test_verification_surface_alignment_regressions.py -q`.
 
-The GitHub Actions workflow runs that same full suite as category-named runtime-informed shards: `root 1/9` through `root 9/9`, `adapters 1/2` through `adapters 2/2`, `hooks 1/2` through `hooks 2/2`, `mcp 1/2` through `mcp 2/2`, and `core 1/5` through `core 5/5`. `tests/ci_sharding.py` weights files by collected test counts, boosts root modules that have been slow on GitHub Actions, splits known hotspot modules such as `tests/test_runtime_cli.py`, `tests/test_registry.py`, `tests/test_update_workflow.py`, `tests/hooks/test_runtime_detect.py`, and `tests/mcp/test_verification_contract_server_regressions.py`, and greedily rebalances those work units inside each category while pytest keeps the default work-stealing parallelism policy.
+The GitHub Actions workflow runs that same full suite as category-named runtime-informed shards: `root 1/9` through `root 9/9`, `adapters 1/2` through `adapters 2/2`, `hooks 1/2` through `hooks 2/2`, `mcp 1/1` through `mcp 1/1`, and `core 1/5` through `core 5/5`. `tests/ci_sharding.py` weights files by collected test counts, boosts root modules that have been slow on GitHub Actions, splits known hotspot modules such as `tests/test_runtime_cli.py`, `tests/test_registry.py`, `tests/test_update_workflow.py`, `tests/hooks/test_runtime_detect.py`, and `tests/adapters/test_codex.py`, and greedily rebalances those work units inside each category while pytest keeps the default work-stealing parallelism policy.
 
 ## Repository Interdependency Graph
 
@@ -39,10 +39,8 @@ It covers:
 - `src/gpd/specs/references/**/*.md`: `241`
 - `src/gpd/adapters/*.py`: `15`
 - `src/gpd/hooks/*.py`: `11`
-- `src/gpd/mcp/*.py`: `5`
+- `src/gpd/mcp/*.py`: `4`
 - `src/gpd/mcp/integrations/*.py`: `2`
-- `src/gpd/mcp/servers/*.py`: `15`
-- `infra/gpd-*.json`: `8`
 
 Excluded as noise from node counting, but still modeled where contractually relevant:
 
@@ -121,7 +119,7 @@ Generated-output families are modeled when code or tests depend on them:
 flowchart TD
     package_json[package.json] --> install_js[bin/install.js]
     pyproject[pyproject.toml] --> cli[src/gpd/cli.py]
-    pyproject --> mcp_scripts[src/gpd/mcp/servers/*.py]
+    pyproject --> wolfram[src/gpd/mcp/integrations/wolfram_bridge.py]
     install_js --> cli
     cli --> core[src/gpd/core/*.py]
     cli --> adapters[src/gpd/adapters/*.py]
@@ -138,7 +136,6 @@ flowchart TD
     adapters --> runtime_cfg[external runtime configs]
     hooks --> runtime_cfg
     hooks --> workspace_state[external GPD/**]
-    builtin[src/gpd/mcp/builtin_servers.py] --> infra[infra/gpd-*.json]
     paper --> paper_outputs[generated paper/build outputs]
     checkpoints --> checkpoint_outputs[generated checkpoint outputs]
     tests[tests/**] --> cli
@@ -159,12 +156,8 @@ flowchart TD
   `external-service`
 - `.github/workflows/test.yml -> actions/setup-node@v6`
   `external-service`
-- `src/gpd/mcp/builtin_servers.py -> src/gpd/mcp/descriptor_text.py`
+- `src/gpd/core/skill_surface.py -> src/gpd/mcp/descriptor_text.py`
   `hard-import`
-- `src/gpd/mcp/servers/skills_server.py -> src/gpd/mcp/descriptor_text.py`
-  `hard-import`
-- `pyproject.toml -> src/gpd/mcp/servers/{arxiv_bridge,conventions_server,verification_server,protocols_server,errors_mcp,patterns_server,state_server,skills_server}.py`
-  `authority`
 - `pyproject.toml -> src/gpd/mcp/integrations/wolfram_bridge.py`
   `authority`
 - `src/gpd/hooks/statusline.py -> src/gpd/hooks/runtime_detect.py`
@@ -259,10 +252,6 @@ flowchart TD
   `authority`
   Python console-script authority for `gpd`.
 
-- `pyproject.toml -> src/gpd/mcp/servers/{arxiv_bridge,conventions_server,verification_server,protocols_server,errors_mcp,patterns_server,state_server,skills_server}.py`
-  `authority`
-  Console-script authority for shipped `gpd-mcp-*` server entrypoints.
-
 - `pyproject.toml -> src/gpd/mcp/integrations/wolfram_bridge.py`
   `authority`
   Console-script authority for the shipped `gpd-mcp-wolfram` integration entrypoint.
@@ -271,12 +260,8 @@ flowchart TD
   `authority`
   Fallback version source when installed metadata is unavailable.
 
-- `pyproject.toml -> external Python packages {typer, rich, pydantic, PyYAML, mcp, pybtex, Pillow, jinja2, pytest, pytest-asyncio, pytest-xdist, ruff, hatchling, arxiv-mcp-server, arxiv, httpx, cairosvg, pypdf}`
+- `pyproject.toml -> external Python packages {typer, rich, pydantic, PyYAML, mcp, pybtex, Pillow, jinja2, pytest, pytest-asyncio, pytest-xdist, ruff, hatchling, arxiv, cairosvg, pypdf}`
   `external-package`
-
-- `src/gpd/mcp/builtin_servers.py -> infra/gpd-*.json`
-  `authority`
-  Canonical descriptor builder for committed MCP descriptors.
 
 - `README.md -> CONTRIBUTING.md`
   `authority`
@@ -342,13 +327,6 @@ flowchart TD
 
 - `.github/ISSUE_TEMPLATE/feature_request.yml -> src/gpd/commands/**`
   `semantic`
-
-- `CONTRIBUTING.md -> src/gpd/mcp/builtin_servers.py`
-  `authority`
-  Contributor docs explicitly require keeping descriptors in sync with the canonical builder.
-
-- `CONTRIBUTING.md -> infra/gpd-*.json`
-  `authority`
 
 ## CLI, Core Runtime, Schema, and Object Layers
 
@@ -529,9 +507,6 @@ flowchart TD
   `span-context`
 
 - `src/gpd/core/observability.py -> src/gpd/adapters/*.py`
-  `span-context`
-
-- `src/gpd/core/observability.py -> src/gpd/mcp/servers/*.py`
   `span-context`
 
 - `src/gpd/core/observability.py -> <cwd>/GPD/observability/{sessions/*.jsonl,sessions/*.json,current-session.json,current-execution.json}`
@@ -1304,42 +1279,19 @@ They explicitly preserve:
   `authority`
   Adapter iteration determines the runtime config directories excluded from project scans.
 
-## MCP Servers, Paper Pipeline, Package Data, and External Packages
+## MCP Integration, Paper Pipeline, Package Data, and External Packages
 
-- `src/gpd/mcp/builtin_servers.py -> infra/gpd-{conventions,errors,patterns,protocols,skills,state,verification,arxiv}.json`
+GPD ships no built-in MCP servers. `src/gpd/mcp/builtin_servers.py` is a
+tombstone module holding only the legacy `gpd-*` config keys that install,
+upgrade, and uninstall scrub out of runtime configs.
+
+- `src/gpd/adapters/{claude_code,codex,copilot_cli,gemini,opencode}.py -> src/gpd/mcp/builtin_servers.py::GPD_MCP_SERVER_KEYS`
   `authority`
+  Every runtime install/uninstall path scrubs exactly these legacy keys and preserves all other entries.
 
-- `src/gpd/mcp/builtin_servers.py -> src/gpd/mcp/descriptor_text.py`
+- `src/gpd/core/skill_surface.py -> src/gpd/mcp/descriptor_text.py`
   `hard-import`
-  Shared public descriptor copy keeps generated MCP descriptors and runtime skill discovery aligned.
-
-- `src/gpd/mcp/builtin_servers.py -> external binary {python}`
-  `external-binary`
-
-- `src/gpd/mcp/builtin_servers.py -> src/gpd/mcp/servers/arxiv_bridge.py`
-  `hard-import`
-
-- `src/gpd/mcp/servers/skills_server.py -> src/gpd/mcp/descriptor_text.py`
-  `hard-import`
-  Shared skill-server guardrail copy keeps listed, routed, and retrieved skill payloads aligned with descriptor text.
-
-- `src/gpd/mcp/servers/arxiv_bridge.py -> external Python package {arxiv_mcp_server}`
-  `external-package`
-
-- `infra/gpd-{conventions,errors,patterns,protocols,skills,state,verification,arxiv}.json -> external binary {python}`
-  `external-binary`
-
-- `infra/gpd-arxiv.json -> src/gpd/mcp/servers/arxiv_bridge.py`
-  `hard-import`
-
-- `src/gpd/mcp/servers/state_server.py -> src/gpd/core/{config,health,state,errors}.py`
-  `hard-import`
-
-- `src/gpd/mcp/servers/state_server.py -> src/gpd/core/observability.py`
-  `hard-import`
-
-- `tests/mcp/test_servers.py -> src/gpd/mcp/servers/{conventions_server,errors_mcp,patterns_server,protocols_server,skills_server,state_server,verification_server}.py`
-  `hard-import`
+  Shared skill guardrail copy keeps listed, routed, and retrieved skill payloads aligned with descriptor text.
 
 - `src/gpd/mcp/paper/__init__.py -> src/gpd/mcp/paper/{bibliography,compiler,journal_map,models,review_artifacts}.py`
   `hard-import`
@@ -1555,9 +1507,6 @@ They explicitly preserve:
 - `tests/test_metadata_consistency.py -> src/gpd/agents/**`
   `count-contract`
 
-- `tests/test_metadata_consistency.py -> src/gpd/mcp/servers/**`
-  `count-contract`
-
 - `tests/test_metadata_consistency.py -> gpd.contracts.ConventionLock`
   `count-contract`
 
@@ -1596,12 +1545,6 @@ They explicitly preserve:
   The npm bootstrap surface must keep shipping and requiring the shared runtime catalog.
 
 - `tests/test_release_consistency.py -> src/gpd/specs/workflows/export.md`
-  `manifest-contract`
-
-- `tests/test_release_consistency.py -> src/gpd/mcp/builtin_servers.py::build_public_descriptors()`
-  `manifest-contract`
-
-- `tests/test_release_consistency.py -> infra/gpd-*.json`
   `manifest-contract`
 
 - `tests/test_release_consistency.py -> dist/*.whl`
@@ -1796,7 +1739,7 @@ High confidence coverage:
 
 - packaging and bootstrap authority chains such as `package.json -> bin/install.js -> src/gpd/cli.py`
 - Python packaging/version authority such as `pyproject.toml -> src/gpd/cli.py` and `src/gpd/version.py -> pyproject.toml`
-- committed MCP descriptor authority such as `src/gpd/mcp/builtin_servers.py -> infra/gpd-*.json`
+- managed MCP integration authority such as `pyproject.toml -> src/gpd/mcp/integrations/wolfram_bridge.py`
 - many direct Python import relationships under `src/gpd/**`
 - broad source-to-installed-layout correspondence between `src/gpd/**` and runtime-installed artifact families such as `.claude/**`
 

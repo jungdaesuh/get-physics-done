@@ -1,7 +1,10 @@
 """CLI parity tests for the contract-aware ``gpd verify`` subcommands.
 
-Each command must emit exactly the envelope its MCP counterpart returns for the
-same inputs, so the MCP tool functions are used directly as the oracle.
+Each command must emit exactly the envelope the shared ``gpd.core`` entry point
+returns for the same inputs, so the core functions are bound below as oracles
+with the same lookups the CLI wires in. The pinned literal expectations
+(statuses, check ids, envelope shapes) are what keep the assertions honest: they
+fail if either surface drifts from the published contract.
 """
 
 from __future__ import annotations
@@ -14,8 +17,44 @@ import pytest
 from typer.testing import CliRunner
 
 from gpd.cli import app
+from gpd.core import contract_checks
+from gpd.core.protocol_bundles import get_protocol_bundle
+from gpd.core.verification_checks import get_verification_check, list_verification_checks
 
 runner = CliRunner()
+
+
+# ── Core oracles ────────────────────────────────────────────────────────────
+# One binding each, mirroring the lookups the CLI passes into gpd.core.
+
+
+def run_contract_check(request: object, project_dir: str | None = None) -> dict:
+    return contract_checks.run_contract_check(request, project_dir, check_lookup=get_verification_check)
+
+
+def suggest_contract_checks(
+    contract: object,
+    active_checks: list[str] | None = None,
+    project_dir: str | None = None,
+) -> dict:
+    return contract_checks.suggest_contract_checks(
+        contract,
+        active_checks,
+        project_dir,
+        check_lookup=get_verification_check,
+    )
+
+
+def get_checklist(domain: object) -> dict:
+    return contract_checks.get_checklist(domain, check_lister=list_verification_checks)
+
+
+def get_bundle_checklist(bundle_ids: object) -> dict:
+    return contract_checks.get_bundle_checklist(bundle_ids, bundle_lookup=get_protocol_bundle)
+
+
+def get_verification_coverage(error_class_ids: list[int], active_checks: list[str]) -> dict:
+    return contract_checks.get_verification_coverage(error_class_ids, active_checks)
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "stage0"
 
 
@@ -43,9 +82,7 @@ def _invoke(args: list[str], **kwargs: object) -> object:
     return runner.invoke(app, ["--raw", *args], catch_exceptions=False, **kwargs)
 
 
-def test_contract_check_happy_path_matches_mcp_tool_payload(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import run_contract_check
-
+def test_contract_check_happy_path_matches_core_payload(tmp_path: Path) -> None:
     request = _benchmark_request()
     payload_path = tmp_path / "request.json"
     payload_path.write_text(json.dumps(request), encoding="utf-8")
@@ -60,8 +97,6 @@ def test_contract_check_happy_path_matches_mcp_tool_payload(tmp_path: Path) -> N
 
 
 def test_contract_check_failed_status_exits_one_so_ci_callers_can_gate_on_exit_code(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import run_contract_check
-
     request = _failing_benchmark_request()
     payload_path = tmp_path / "request.json"
     payload_path.write_text(json.dumps(request), encoding="utf-8")
@@ -76,8 +111,6 @@ def test_contract_check_failed_status_exits_one_so_ci_callers_can_gate_on_exit_c
 
 
 def test_contract_check_reads_request_from_stdin(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import run_contract_check
-
     request = _benchmark_request()
     expected = run_contract_check(copy.deepcopy(request))
 
@@ -87,9 +120,7 @@ def test_contract_check_reads_request_from_stdin(tmp_path: Path) -> None:
     assert json.loads(result.output) == expected
 
 
-def test_contract_check_validation_error_matches_mcp_tool_and_exits_one(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import run_contract_check
-
+def test_contract_check_validation_error_matches_core_oracle_and_exits_one(tmp_path: Path) -> None:
     payload_path = tmp_path / "request.json"
     payload_path.write_text(json.dumps({}), encoding="utf-8")
 
@@ -163,9 +194,7 @@ def test_suggest_checks_stdin_marker_fails_fast_when_stdin_is_a_tty(monkeypatch,
     assert "piped on stdin" in stderr
 
 
-def test_suggest_checks_matches_mcp_tool_payload(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import suggest_contract_checks
-
+def test_suggest_checks_matches_core_payload(tmp_path: Path) -> None:
     contract = _project_contract()
     contract_path = tmp_path / "contract.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
@@ -179,8 +208,6 @@ def test_suggest_checks_matches_mcp_tool_payload(tmp_path: Path) -> None:
 
 
 def test_suggest_checks_honours_repeated_active_checks(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import suggest_contract_checks
-
     contract = _project_contract()
     contract_path = tmp_path / "contract.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
@@ -204,9 +231,7 @@ def test_suggest_checks_honours_repeated_active_checks(tmp_path: Path) -> None:
     assert any(suggestion["already_active"] for suggestion in expected["suggested_checks"])
 
 
-def test_bundle_checklist_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.verification_server import get_bundle_checklist
-
+def test_bundle_checklist_matches_core_payload() -> None:
     expected = get_bundle_checklist(["stat-mech-simulation"])
     result = _invoke(["verify", "bundle-checklist", "stat-mech-simulation"])
 
@@ -217,8 +242,6 @@ def test_bundle_checklist_matches_mcp_tool_payload() -> None:
 
 
 def test_bundle_checklist_blank_bundle_id_exits_one() -> None:
-    from gpd.mcp.servers.verification_server import get_bundle_checklist
-
     expected = get_bundle_checklist(["stat-mech-simulation", "   "])
     result = _invoke(["verify", "bundle-checklist", "stat-mech-simulation", "   "])
 
@@ -227,9 +250,7 @@ def test_bundle_checklist_blank_bundle_id_exits_one() -> None:
     assert expected["error"] == "bundle_ids[1] must be a non-empty string"
 
 
-def test_checklist_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.verification_server import get_checklist
-
+def test_checklist_matches_core_payload() -> None:
     expected = get_checklist("qft")
     result = _invoke(["verify", "checklist", "qft"])
 
@@ -240,8 +261,6 @@ def test_checklist_matches_mcp_tool_payload() -> None:
 
 
 def test_checklist_unknown_domain_reports_available_domains_and_exits_one() -> None:
-    from gpd.mcp.servers.verification_server import get_checklist
-
     expected = get_checklist("not-a-domain")
     result = _invoke(["verify", "checklist", "not-a-domain"])
 
@@ -251,9 +270,7 @@ def test_checklist_unknown_domain_reports_available_domains_and_exits_one() -> N
     assert "qft" in expected["available_domains"]
 
 
-def test_coverage_matches_mcp_tool_payload_for_csv_and_repeated_options() -> None:
-    from gpd.mcp.servers.verification_server import get_verification_coverage
-
+def test_coverage_matches_core_payload_for_csv_and_repeated_options() -> None:
     expected = get_verification_coverage([15, 22], ["5.1", "5.2"])
 
     csv_result = _invoke(["verify", "coverage", "--error-classes", "15,22", "--active-checks", "5.1,5.2"])
@@ -304,8 +321,6 @@ def test_coverage_empty_error_class_csv_is_a_usage_error_not_full_coverage() -> 
 
 
 def test_coverage_dedupes_repeated_error_class_ids_order_preserving() -> None:
-    from gpd.mcp.servers.verification_server import get_verification_coverage
-
     expected = get_verification_coverage([22, 15], ["5.1"])
     result = _invoke(["verify", "coverage", "--error-classes", "22,15,22", "--active-checks", "5.1"])
 
@@ -315,8 +330,6 @@ def test_coverage_dedupes_repeated_error_class_ids_order_preserving() -> None:
 
 
 def test_suggest_checks_splits_comma_separated_active_checks_like_coverage(tmp_path: Path) -> None:
-    from gpd.mcp.servers.verification_server import suggest_contract_checks
-
     contract = _project_contract()
     contract_path = tmp_path / "contract.json"
     contract_path.write_text(json.dumps(contract), encoding="utf-8")
@@ -339,8 +352,6 @@ def test_suggest_checks_splits_comma_separated_active_checks_like_coverage(tmp_p
 
 
 def test_bundle_checklist_unknown_bundle_id_exits_one() -> None:
-    from gpd.mcp.servers.verification_server import get_bundle_checklist
-
     expected = get_bundle_checklist(["not-a-bundle"])
     result = _invoke(["verify", "bundle-checklist", "not-a-bundle"])
 

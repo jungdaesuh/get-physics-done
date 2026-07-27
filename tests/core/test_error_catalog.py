@@ -102,20 +102,31 @@ def test_get_error_class_rejects_ids_outside_the_catalog_range(store: ErrorStore
     }
 
 
-def test_error_class_payloads_match_the_mcp_server_envelopes(store: ErrorStore) -> None:
-    from gpd.mcp.servers import errors_mcp
+def test_error_class_payloads_wrap_core_results_in_the_stable_envelope(store: ErrorStore) -> None:
+    """The published envelope adds exactly ``schema_version`` — no nesting, no renames.
 
-    found = errors_mcp.get_error_class(1)
-    missing = errors_mcp.get_error_class(105)
-    detection = errors_mcp.get_detection_strategy(1)
-    traceability = errors_mcp.get_traceability(1)
-    listed = errors_mcp.list_error_classes("core")
+    ``gpd --raw refs errors`` emits these envelopes verbatim; the shape assertions
+    here are what stop a transport change from silently reshaping the payload.
+    """
+    from gpd.core.envelopes import MCP_SCHEMA_VERSION, stable_mcp_response
 
-    assert dict(found) == {**get_error_class(store, 1), "schema_version": 1}
-    assert dict(missing) == {**get_error_class(store, 105), "schema_version": 1}
-    assert dict(detection) == {**get_detection_strategy(store, 1), "schema_version": 1}
-    assert dict(traceability) == {**get_traceability(store, 1), "schema_version": 1}
-    assert dict(listed) == {**list_error_classes(store, "core"), "schema_version": 1}
+    assert MCP_SCHEMA_VERSION == 1
+
+    for payload in (
+        get_error_class(store, 1),
+        get_error_class(store, 105),
+        get_detection_strategy(store, 1),
+        get_traceability(store, 1),
+        list_error_classes(store, "core"),
+    ):
+        envelope = stable_mcp_response(payload)
+
+        assert dict(envelope) == {**payload, "schema_version": 1}
+        assert "payload" not in envelope, "the envelope must stay flat, not nest the tool payload"
+
+    assert stable_mcp_response(get_error_class(store, 105))["error"] == "Error class #105 not found"
+    assert stable_mcp_response(get_error_class(store, 1))["id"] == 1
+    assert stable_mcp_response(list_error_classes(store, "core"))["count"] > 0
 
 
 def test_get_detection_strategy_returns_only_detection_fields(store: ErrorStore) -> None:

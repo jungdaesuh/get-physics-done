@@ -1,6 +1,6 @@
 # Remove GPD Built-in MCP Servers — Replace with `gpd` CLI + Skills
 
-**Status:** Draft
+**Status:** Done — Phases 0–3 executed on branch `docs/mcp-removal-plan`; remaining: upstream PR (Phase 1+2) and removal-proposal issue
 **Last updated:** 2026-07-27
 
 ## Purpose
@@ -57,8 +57,8 @@ Risk tier: **Tier 3** (public surface: console scripts, infra descriptors, MCP t
 ## Implementation Plan
 
 1. **Phase 0 — Immediate local relief (no repo change, this machine)**
-   - [ ] Close stale runtime sessions (54 live sessions each holding 7 servers).
-   - [ ] Remove `gpd-conventions|errors|patterns|protocols|skills|state` entries from runtime `mcpServers` config; keep `gpd-verification` until Phase 3 ships if `/gpd:verify-work` is in active use. Note: `gpd install` re-adds them until Phase 3.
+   - [x] Close stale runtime sessions / kill legacy servers (2026-07-27: 343 processes killed, ~3.2 GB freed, zero remaining).
+   - [x] Remove all `gpd-*` entries from Claude and Codex `mcpServers` configs (all seven at once — Phase 1 CLI was already merged locally). Verified live: fresh `claude` and `codex` TUIs spawn zero gpd MCP processes, with codex's own `node ./mcp/server.mjs` as the positive control.
 
 2. **Phase 1 — CLI parity (additive, independently shippable PR)**
    - [x] Move error-catalog parsing from `errors_mcp.py` into `src/gpd/core/error_catalog.py`; server imports from core until deleted (no duplication window).
@@ -82,17 +82,17 @@ Risk tier: **Tier 3** (public surface: console scripts, infra descriptors, MCP t
 3. **Phase 2 — Prompt/skill migration**
    - [x] `src/gpd/commands/verify-work.md`: replace the 3 `mcp__gpd_verification__*` entries in the `allowed-tools:` frontmatter list and their call sites with `gpd --raw verify ...` shell invocations.
    - [x] `src/gpd/agents/gpd-verifier.md`: drop the 3 `mcp__gpd_verification__*` names from `tools:`; keep `shell`; update body instructions to the CLI forms.
-   - [ ] Sweep `src/gpd/specs/references/` for prose directing agents at MCP tools — confirmed matches in ≥9 files, including `tooling/tool-integration.md`, `tooling/runtime-config-guide.md`, `verification/core/verification-quick-reference.md`, `orchestration/checkpoints.md`, `orchestration/state-portability.md` — and update to CLI/file-read guidance.
+   - [x] Sweep `src/gpd/specs/references/` for prose directing agents at MCP tools — confirmed matches in ≥9 files, including `tooling/tool-integration.md`, `tooling/runtime-config-guide.md`, `verification/core/verification-quick-reference.md`, `orchestration/checkpoints.md`, `orchestration/state-portability.md` — and update to CLI/file-read guidance.
    - [ ] Verify each runtime adapter's permission/allowlist handling covers the new `gpd verify|refs|conventions|patterns` invocations (adapters already manage permissions for `gpd` commands; extend patterns if allowlists are verb-scoped).
 
-4. **Phase 3 — Remove the MCP layer (breaking release)**
-   - [ ] Adapters/install: stop writing `mcpServers`; on install/upgrade, actively delete entries named in a retained tombstone constant — the current `GPD_MCP_SERVER_KEYS`, which already includes all 8 servers (`gpd-arxiv` included; it is `frozenset(_BUILTIN_SERVERS.keys())`, `builtin_servers.py:266`) — from Claude Code, Codex, Gemini, Copilot, OpenCode configs. Adapters already union `managed_optional_mcp_server_keys()` (wolfram) for removal handling (`copilot_cli.py:139`, `install_utils.py:308-310`); preserve that. Uninstall keeps using the same tombstone.
-   - [ ] Delete `src/gpd/mcp/servers/` (all 7 servers + arxiv bridge + `_arxiv_*` helpers + `arxiv_translators.py`), `verification_contract_policy.py`'s server-description surface (keep contract policy logic used by CLI), and shrink `builtin_servers.py` to the tombstone-keys module (or fold into `install_utils`).
-   - [ ] Remove `gpd mcp-server` and `gpd list-servers` CLI commands (or keep `list-servers` for one release returning `{}` plus a deprecation note — decide with maintainers).
-   - [ ] Remove the built-in `gpd-mcp-*` entry points from `pyproject.toml` — all except `gpd-mcp-wolfram`, which belongs to the out-of-scope managed integration; remove `infra/gpd-*.json`; update `scripts/repo_graph_contract.py:98`.
-   - [ ] Remove the `arxiv` optional extra from `pyproject.toml [project.optional-dependencies]` (exists solely for the bridge).
-   - [ ] Tests: delete/port `tests/mcp/` (30 files) — parity assertions move to CLI tests in Phase 1; update `test_release_consistency.py`, `test_metadata_consistency.py`.
-   - [ ] API evolution gate artifacts: CHANGELOG breaking-change entry with migration table (old MCP tool → new CLI command); caller inventory (runtime configs, entry points, infra descriptors — plus GitHub code search for external `gpd-mcp-` usage); version bump per repo's semver policy.
+4. **Phase 3 — Remove the MCP layer (breaking release)** — executed 2026-07-27; deviations recorded per item.
+   - [x] Adapters/install: stop writing `mcpServers`; on install/upgrade, actively delete entries named in a retained tombstone constant — the current `GPD_MCP_SERVER_KEYS`, which already includes all 8 servers (`gpd-arxiv` included; it is `frozenset(_BUILTIN_SERVERS.keys())`, `builtin_servers.py:266`) — from Claude Code, Codex, Gemini, Copilot, OpenCode configs. Adapters already union `managed_optional_mcp_server_keys()` (wolfram) for removal handling (`copilot_cli.py:139`, `install_utils.py:308-310`); preserve that. Uninstall keeps using the same tombstone.
+   - [x] Delete `src/gpd/mcp/servers/` and `verification_contract_policy.py`; `builtin_servers.py` shrunk to the tombstone-keys module. Deviation: `skills_server` was not pure transport — its ~950 lines of skill-index/reference-graph logic moved to `src/gpd/core/skill_surface.py` (byte-parity proven against the server for all 95 skills before deletion). `merge_managed_mcp_*` relocated to `managed_integrations.py` (wolfram still writes config entries).
+   - [x] CLI commands: `mcp-serve` (actual name) and `list-servers` KEPT but repointed to managed (wolfram) servers only — `list-servers --binary` rewrites to `mcp-serve` and is the only public surface for the wolfram sidecar config; zero other consumers found.
+   - [x] Entry points removed (all 8; `gpd-mcp-wolfram` kept); `infra/gpd-*.json` deleted; repo graph contract regenerated via `scripts/sync_repo_graph_contract.py`.
+   - [x] `arxiv` extra removed. Deviation: `arxiv>=2.4.1` moved into the `paper` extra — `gpd/mcp/paper/bibliography.py` imports it independently of the deleted bridge.
+   - [x] Tests: 24 of 30 `tests/mcp/` files deleted; 3 kept in place (they cover the retained paper/wolfram modules), 1 relocated to `tests/core/`; CLI parity oracles migrated to `gpd.core` with pinned literals preserved; consistency tests rewritten; new `tests/adapters/test_legacy_mcp_config_migration.py` covers the scrub across claude/codex/gemini/opencode + uninstall. CI shard matrix for the mcp category collapsed 2→1 in `.github/workflows/test.yml`.
+   - [x] CHANGELOG breaking-change entry with 17-row migration table, automatic-scrub note, and console-script removal. Version bump: left to maintainers (proposal-issue path chosen instead of direct upstream PR for the removal).
 
 ## Deferred with rationale
 

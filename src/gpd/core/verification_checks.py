@@ -3,7 +3,7 @@
 This module is the single executable source of truth for:
 
 - universal verification checks
-- stable check metadata exposed by MCP servers
+- stable check metadata exposed on public surfaces
 - error-class to check coverage mappings used for gap analysis
 
 Prompts and workflow prose may describe richer behavior, but any machine-facing

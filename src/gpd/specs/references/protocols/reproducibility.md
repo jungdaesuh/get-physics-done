@@ -91,11 +91,7 @@ Every computational phase must record:
     "sympy": "1.12",
     "matplotlib": "3.8.3"
   },
-  "mcp_servers": {
-    "gpd-verification": "<installed GPD version>",
-    "gpd-conventions": "<installed GPD version>",
-    "gpd-arxiv": "<installed GPD version>"
-  },
+  "gpd_version": "<installed GPD version>",
   "platform": {
     "os": "Linux 6.1.0",
     "arch": "x86_64"
@@ -103,7 +99,7 @@ Every computational phase must record:
 }
 ```
 
-If you are recording GPD-managed MCP services, use the public server keys from the runtime descriptors (`gpd-conventions`, `gpd-errors`, `gpd-patterns`, `gpd-protocols`, `gpd-skills`, `gpd-state`, `gpd-verification`, `gpd-arxiv`).
+Record the installed `gpd_version` (`gpd --version`) rather than per-surface service versions: state, conventions, verification, error/protocol references, patterns, and arXiv helpers are all part of the same `gpd` CLI package, not separate services. If the optional Wolfram integration is enabled for the phase, also record it (for example `"integrations": {"wolfram": "<endpoint or version>"}`).
 
 ### Automated Version Capture
 

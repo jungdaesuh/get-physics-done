@@ -52,6 +52,7 @@ from gpd.adapters.install_utils import (
     remove_stale_agents,
     render_markdown_frontmatter,
     runtime_managed_mcp_server_keys,
+    scrub_legacy_builtin_mcp_servers,
     split_markdown_frontmatter,
 )
 from gpd.adapters.install_utils import (
@@ -793,7 +794,13 @@ def _write_mcp_servers_opencode(config_dir: Path, servers: dict[str, dict[str, o
     if not isinstance(existing_mcp, dict):
         existing_mcp = {}
 
-    from gpd.mcp.builtin_servers import merge_managed_mcp_entry
+    from gpd.mcp.managed_integrations import merge_managed_mcp_entry
+
+    # Upgrades must drop entries earlier GPD releases wrote for the removed
+    # built-in servers, while preserving every non-GPD entry byte-for-byte.
+    existing_mcp, scrubbed_keys = scrub_legacy_builtin_mcp_servers(existing_mcp)
+    if not servers and not scrubbed_keys:
+        return 0
 
     for name, entry in servers.items():
         cmd = str(entry.get("command", ""))
@@ -984,12 +991,12 @@ class OpenCodeAdapter(RuntimeAdapter):
             raise RuntimeError("OpenCode opencode.json is malformed; refusing to overwrite it during install.")
         _, self._opencode_permission_restore_state = _configure_opencode_permissions_with_restore(target_dir)
 
-        # Wire MCP servers into opencode.json.
+        # Wire managed MCP integrations into opencode.json. The writer always
+        # scrubs legacy built-in GPD entries first, so it runs even with an
+        # empty managed set to clean up configs from earlier releases.
         project_cwd = self._project_cwd_for_runtime_config(target_dir, is_global)
         mcp_servers = build_runtime_managed_mcp_servers(cwd=project_cwd)
-        mcp_count = 0
-        if mcp_servers:
-            mcp_count = _write_mcp_servers_opencode(target_dir, mcp_servers)
+        mcp_count = _write_mcp_servers_opencode(target_dir, mcp_servers)
 
         return {
             "target": str(target_dir),

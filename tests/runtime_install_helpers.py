@@ -82,3 +82,21 @@ def seed_complete_runtime_install(
             ),
         )
         adapter.finalize_install(install_result)
+
+
+def legacy_builtin_mcp_server_entries(*, command: str = "python3") -> dict[str, dict[str, object]]:
+    """Return an ``mcpServers`` mapping exactly as pre-removal GPD releases wrote it.
+
+    Install, upgrade, and uninstall must scrub every one of these keys while
+    leaving user-defined entries untouched.
+    """
+    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
+
+    return {
+        key: {
+            "command": command,
+            "args": ["-m", f"gpd.mcp.servers.{key.removeprefix('gpd-')}_server"],
+            "env": {"LOG_LEVEL": "WARNING"},
+        }
+        for key in sorted(GPD_MCP_SERVER_KEYS)
+    }

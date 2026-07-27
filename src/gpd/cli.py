@@ -11764,17 +11764,17 @@ def uninstall(
         raise typer.Exit(code=1)
 
 
-@app.command("mcp-serve", help="Launch a GPD MCP server by name (for sidecar/binary mode).")
+@app.command("mcp-serve", help="Launch a managed GPD MCP integration by name (for sidecar/binary mode).")
 def mcp_serve(
-    server: str = typer.Argument(
-        ...,
-        help="Server name (e.g., conventions, errors, patterns, protocols, skills, state, verification, arxiv).",
-    ),
+    server: str = typer.Argument(..., help="Managed integration name (e.g., wolfram, gpd-wolfram)."),
 ) -> None:
-    """Launch a specific GPD MCP server via stdio transport."""
+    """Launch a managed optional MCP integration via its own stdio transport.
+
+    GPD no longer ships built-in MCP servers; the only launchable servers are
+    the opt-in managed integrations.
+    """
     import importlib
 
-    from gpd.mcp.builtin_servers import _BUILTIN_SERVERS
     from gpd.mcp.managed_integrations import list_managed_integrations
 
     requested_server = server.strip()
@@ -11786,56 +11786,39 @@ def mcp_serve(
     }
     prefixed_server = requested_server if requested_server.startswith("gpd-") else f"gpd-{requested_server}"
     managed_integration = managed_aliases.get(requested_server) or managed_aliases.get(prefixed_server)
-    if managed_integration is not None:
-        module_path = getattr(managed_integration, "bridge_module", None)
-        if not isinstance(module_path, str) or not module_path.strip():
-            raise typer.BadParameter(
-                f"Managed server {managed_integration.managed_server_key} has no descriptor module path "
-                f"for {managed_integration.bridge_command}"
-            )
-        module_path = module_path.strip()
-        sys.argv = [sys.argv[0]]
-        mod = importlib.import_module(module_path)
-        mod.main()
-        return
+    if managed_integration is None:
+        available = ", ".join(sorted({integration.managed_server_key for integration in managed_aliases.values()}))
+        raise typer.BadParameter(f"Unknown server: {prefixed_server}. Available: {available}")
 
-    # Accept both "conventions" and "gpd-conventions"
-    server = prefixed_server
+    module_path = getattr(managed_integration, "bridge_module", None)
+    if not isinstance(module_path, str) or not module_path.strip():
+        raise typer.BadParameter(
+            f"Managed server {managed_integration.managed_server_key} has no descriptor module path "
+            f"for {managed_integration.bridge_command}"
+        )
 
-    if server not in _BUILTIN_SERVERS:
-        managed_server_keys = {integration.managed_server_key for integration in managed_aliases.values()}
-        available = ", ".join(sorted(set(_BUILTIN_SERVERS.keys()) | managed_server_keys))
-        raise typer.BadParameter(f"Unknown server: {server}. Available: {available}")
-
-    entry = _BUILTIN_SERVERS[server]
-    args = entry.get("args", [])
-    if len(args) >= 2 and args[0] == "-m":
-        module_path = args[1]
-    else:
-        raise typer.BadParameter(f"Server {server} has no module path")
-
-    # Clean argv so the server's argparse sees no leftover args
     sys.argv = [sys.argv[0]]
-
-    mod = importlib.import_module(module_path)
+    mod = importlib.import_module(module_path.strip())
     mod.main()
 
 
-@app.command("list-servers", help="List available MCP servers as JSON config for runtime integration.")
+@app.command("list-servers", help="List managed MCP integrations as JSON config for runtime integration.")
 def list_servers(
     json_output: bool = typer.Option(True, "--json/--text", help="Output as JSON (default) or text."),
     binary_path: str = typer.Option(None, "--binary", help="Override binary path in command arrays."),
 ) -> None:
-    """Emit runtime-compatible MCP server config JSON from the builtin registry."""
+    """Emit runtime-compatible MCP config JSON for the configured managed integrations.
+
+    GPD installs no built-in MCP servers, so this reports only opt-in managed
+    integrations that the current project or environment has configured.
+    """
     import json as json_mod
 
-    from gpd.mcp.builtin_servers import build_mcp_servers_dict, merge_managed_mcp_servers
     from gpd.mcp.managed_integrations import projected_managed_optional_mcp_servers
 
-    servers: dict[str, dict[str, object]] = build_mcp_servers_dict(python_path=sys.executable)
-    managed_servers = projected_managed_optional_mcp_servers(cwd=_read_only_project_scoped_cwd())
-    if managed_servers:
-        servers = merge_managed_mcp_servers(servers, managed_servers)
+    servers: dict[str, dict[str, object]] = projected_managed_optional_mcp_servers(
+        cwd=_read_only_project_scoped_cwd()
+    )
 
     sidecar = binary_path or (sys.executable if getattr(sys, "frozen", False) else None)
     if sidecar:

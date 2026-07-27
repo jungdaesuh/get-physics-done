@@ -24,6 +24,7 @@ from gpd.adapters.opencode import (
     copy_flattened_commands,
     write_manifest,
 )
+from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
 from tests.adapters.projection_test_utils import (
     assert_compact_help_bridge_shim,
     assert_compact_staged_command_shim,
@@ -991,51 +992,36 @@ class TestInstall:
         assert 'INIT=$(gpd --raw init plan-phase "${PHASE}")' not in planner_procedure
         assert 'INIT=$(gpd --raw init plan-phase "<PHASE>")' not in agent
 
-    def test_install_preserves_existing_mcp_overrides(
+    def test_install_scrubs_legacy_builtin_mcp_entries_and_preserves_user_servers(
         self,
         adapter: OpenCodeAdapter,
         gpd_root: Path,
         tmp_path: Path,
     ) -> None:
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
+        """Upgrading over a pre-removal install must delete exactly the GPD entries."""
+        user_entry = {
+            "type": "local",
+            "command": ["node", "custom.js"],
+            "enabled": False,
+            "timeout": 12000,
+            "environment": {"USER_FLAG": "1"},
+        }
+        legacy = {
+            key: {"type": "local", "command": ["python3", "-m", "gpd.mcp.servers.stub"], "enabled": True}
+            for key in sorted(GPD_MCP_SERVER_KEYS)
+        }
         target = tmp_path / ".opencode"
         target.mkdir()
         (target / "opencode.json").write_text(
-            json.dumps(
-                {
-                    "mcp": {
-                        "gpd-state": {
-                            "type": "local",
-                            "command": ["python3", "-m", "old.state_server"],
-                            "enabled": False,
-                            "timeout": 12000,
-                            "environment": {"LOG_LEVEL": "INFO", "EXTRA_FLAG": "1"},
-                        },
-                        "custom-server": {
-                            "type": "local",
-                            "command": ["node", "custom.js"],
-                        },
-                    }
-                },
-                indent=2,
-            )
-            + "\n",
+            json.dumps({"mcp": {**legacy, "custom-server": user_entry}}, indent=2) + "\n",
             encoding="utf-8",
         )
 
         adapter.install(gpd_root, target)
 
         config = json.loads((target / "opencode.json").read_text(encoding="utf-8"))
-        expected = build_mcp_servers_dict(python_path=hook_python_interpreter())["gpd-state"]
-        server = config["mcp"]["gpd-state"]
-        assert server["type"] == "local"
-        assert server["command"] == [expected["command"], *expected["args"]]
-        assert server["enabled"] is False
-        assert server["timeout"] == 12000
-        assert server["environment"]["LOG_LEVEL"] == "INFO"
-        assert server["environment"]["EXTRA_FLAG"] == "1"
-        assert config["mcp"]["custom-server"] == {"type": "local", "command": ["node", "custom.js"]}
+        assert config["mcp"] == {"custom-server": user_entry}
+        assert set(config["mcp"]) & GPD_MCP_SERVER_KEYS == set()
 
     def test_install_projects_managed_wolfram_mcp_without_secrets(
         self,
@@ -1329,6 +1315,7 @@ class TestUninstall:
         config_path = target / "opencode.json"
         config = json.loads(config_path.read_text(encoding="utf-8"))
         config["permission"]["read"]["/tmp/custom/*"] = "allow"
+        config["mcp"] = {}
         config["mcp"]["gpd-wolfram"] = {
             "type": "local",
             "command": ["gpd-mcp-wolfram"],

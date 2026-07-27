@@ -1,10 +1,10 @@
-"""Schema-versioned response envelopes shared by GPD tool transports.
+"""Schema-versioned response envelopes for GPD tool payloads.
 
-The MCP servers and the ``gpd`` CLI build the same envelope dictionaries for the
-same inputs — the MCP tools return them as tool results, the CLI renders them as
-JSON under ``--raw`` — so the envelope shape and the absolute-project-dir
-contract live here rather than inside any one transport. ``gpd.mcp.servers``
-re-exports these names so existing MCP imports keep working.
+The envelope shape and the absolute-project-dir contract live here rather than
+inside any one caller, so ``gpd --raw ...`` output and every in-process consumer
+of the same payload builders agree byte-for-byte. The ``stable_mcp_*`` names are
+kept because the shape is a published output contract: downstream parsers were
+written against it and must keep working unchanged.
 """
 
 from __future__ import annotations

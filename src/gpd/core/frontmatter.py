@@ -68,6 +68,7 @@ __all__ = [
     "FrontmatterValidationError",
     # Core parsing
     "extract_frontmatter",
+    "parse_frontmatter_with_error",
     "reconstruct_frontmatter",
     "splice_frontmatter",
     "deep_merge_frontmatter",
@@ -173,6 +174,29 @@ def extract_frontmatter(content: str) -> tuple[dict, str]:
 
     # No frontmatter at all
     return {}, clean
+
+
+_UNCLOSED_FRONTMATTER_OPEN_RE = re.compile(r"^---[ \t]*(?:\r?\n|$)")
+_CLOSED_FRONTMATTER_BLOCK_RE = re.compile(r"^---[ \t]*\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)")
+
+
+def parse_frontmatter_with_error(text: str) -> tuple[dict[str, object], str, str | None]:
+    """Split YAML frontmatter from markdown body and surface parse failures.
+
+    Unlike :func:`extract_frontmatter`, this never raises: malformed YAML and
+    unclosed ``---`` blocks are reported as the third tuple element while the
+    original *text* is returned as the body. Used by content-projection surfaces
+    that must keep rendering a document whose frontmatter cannot be parsed.
+    """
+
+    candidate = _LEADING_BLANK_LINES_BEFORE_FRONTMATTER_RE.sub("", text.lstrip("\ufeff"), count=1)
+    if _UNCLOSED_FRONTMATTER_OPEN_RE.match(candidate) and not _CLOSED_FRONTMATTER_BLOCK_RE.match(candidate):
+        return {}, text, "Unclosed frontmatter block"
+    try:
+        meta, body = extract_frontmatter(text)
+    except FrontmatterParseError as exc:
+        return {}, text, str(exc)
+    return meta, body, None
 
 
 def _dump_yaml(meta: dict) -> str:

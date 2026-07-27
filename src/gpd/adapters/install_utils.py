@@ -277,37 +277,57 @@ def build_runtime_managed_mcp_servers(
     cwd: Path | None = None,
     env: Mapping[str, str] | None = None,
     python_path: str | None = None,
-    include_builtin: bool = True,
 ) -> dict[str, dict[str, object]]:
-    """Return neutral managed MCP server entries for runtime adapters."""
+    """Return neutral managed MCP server entries for runtime adapters.
+
+    GPD ships no built-in MCP servers, so this is exactly the set of opt-in
+    managed integrations the current project/environment has configured.
+    """
     from gpd.mcp import managed_integrations as _managed_integrations
-    from gpd.mcp.builtin_servers import build_mcp_servers_dict
 
     resolved_python_path = python_path or hook_python_interpreter()
-    servers: dict[str, dict[str, object]] = {}
-    if include_builtin:
-        servers.update(build_mcp_servers_dict(python_path=resolved_python_path))
-    servers.update(
+    return dict(
         _managed_integrations.projected_managed_optional_mcp_servers(
             env,
             cwd=cwd,
             python_path=resolved_python_path,
         )
     )
-    return servers
 
 
-def runtime_managed_mcp_server_keys(*, include_builtin: bool = True) -> frozenset[str]:
-    """Return neutral managed MCP server keys owned by GPD runtime installs."""
-    from gpd.mcp import managed_integrations as _managed_integrations
-
-    optional_keys = set(_managed_integrations.managed_optional_mcp_server_keys())
-    if not include_builtin:
-        return frozenset(optional_keys)
-
+def legacy_builtin_mcp_server_keys() -> frozenset[str]:
+    """Return the tombstone keys of GPD's removed built-in MCP servers."""
     from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
 
-    return frozenset(set(GPD_MCP_SERVER_KEYS) | optional_keys)
+    return GPD_MCP_SERVER_KEYS
+
+
+def runtime_managed_mcp_server_keys() -> frozenset[str]:
+    """Return every MCP config key a GPD install owns: managed plus legacy tombstones."""
+    from gpd.mcp import managed_integrations as _managed_integrations
+
+    return frozenset(
+        set(legacy_builtin_mcp_server_keys()) | set(_managed_integrations.managed_optional_mcp_server_keys())
+    )
+
+
+def scrub_legacy_builtin_mcp_servers(servers: object) -> tuple[dict[str, object], tuple[str, ...]]:
+    """Drop legacy built-in ``gpd-*`` entries, preserving every other entry verbatim.
+
+    Returns the cleaned mapping plus the removed key names. Non-mapping input
+    yields an empty mapping and no removals so callers can treat the result as
+    the authoritative entry map.
+    """
+    if not isinstance(servers, dict):
+        return {}, ()
+
+    tombstones = legacy_builtin_mcp_server_keys()
+    removed = tuple(str(key) for key in servers if isinstance(key, str) and key in tombstones)
+    if not removed:
+        return servers, ()
+    for key in removed:
+        del servers[key]
+    return servers, removed
 
 
 def projection_target_dir_from_path_prefix(path_prefix: str, *, config_dir_name: str) -> Path:

@@ -15,7 +15,7 @@ CI_CATEGORY_SHARD_COUNTS = {
     "root": 9,
     "adapters": 2,
     "hooks": 2,
-    "mcp": 2,
+    "mcp": 1,
     "core": 5,
 }
 CI_FULL_SUITE_SHARD_BUDGET_SECONDS = 180
@@ -49,12 +49,6 @@ CI_HOT_TEST_FILE_SPLITS = {
     "hooks/test_statusline.py": 2,
     "hooks/test_todo_resolution.py": 2,
     "hooks/test_update_resolution.py": 2,
-    "mcp/test_servers.py": 6,
-    "mcp/test_verification_contract_server_regressions.py": 6,
-    "mcp/test_tool_contract_visibility.py": 3,
-    "mcp/test_servers_integration.py": 3,
-    "mcp/test_skills_server_tool_lists.py": 2,
-    "mcp/test_server_regressions.py": 2,
     "core/test_provider_free_persona_canary_acceptance.py": 2,
     "core/test_cli.py": 3,
     "core/test_contract_validation.py": 3,
@@ -85,12 +79,6 @@ CI_HOT_TEST_FILE_WEIGHT_MULTIPLIERS = {
     "hooks/test_statusline.py": 1.5,
     "hooks/test_todo_resolution.py": 2.0,
     "hooks/test_update_resolution.py": 2.0,
-    "mcp/test_servers.py": 4.0,
-    "mcp/test_verification_contract_server_regressions.py": 4.0,
-    "mcp/test_tool_contract_visibility.py": 2.0,
-    "mcp/test_servers_integration.py": 2.0,
-    "mcp/test_skills_server_tool_lists.py": 1.5,
-    "mcp/test_server_regressions.py": 1.5,
     "core/test_provider_free_persona_canary_acceptance.py": 6.0,
 }
 
@@ -307,7 +295,7 @@ def assert_tests_readme_documents_ci_shard_policy(tests_readme: str) -> None:
         "test_registry.py",
         "test_update_workflow.py",
         "hooks/test_runtime_detect.py",
-        "mcp/test_verification_contract_server_regressions.py",
+        "adapters/test_codex.py",
     ):
         assert relpath in CI_HOT_TEST_FILE_SPLITS
         assert f"tests/{relpath}" in code_spans

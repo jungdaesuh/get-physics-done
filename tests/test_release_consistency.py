@@ -72,36 +72,23 @@ def _bootstrap_json_assets_from_metadata_generator(repo_root: Path) -> tuple[str
 
 _SHARED_INSTALL = get_shared_install_metadata()
 _BOOTSTRAP_JSON_ASSETS = _bootstrap_json_assets_from_metadata_generator(_repo_root())
-_PUBLIC_BOOTSTRAP_PREREQUISITE = "Install GPD before enabling built-in MCP servers."
-_ARXIV_EXTRA_PREREQUISITE = (
-    "Install GPD with the `arxiv` Python extra in the same environment before enabling gpd-arxiv."
-)
 _EXPECTED_OPTIONAL_DEPENDENCIES = {
-    "paper": ["cairosvg>=2.7.0", "pypdf>=5.0"],
-    "arxiv": ["arxiv-mcp-server[pdf]>=0.4.11", "arxiv>=2.4.1", "httpx>=0.27", "cairosvg>=2.7.0", "pypdf>=5.0"],
+    "paper": ["arxiv>=2.4.1", "cairosvg>=2.7.0", "pypdf>=5.0"],
 }
 _OPTIONAL_IMPORT_MODULE_TO_DEPENDENCY = {
     "arxiv": "arxiv",
     "cairosvg": "cairosvg",
-    "httpx": "httpx",
     "pypdf": "pypdf",
 }
 _EXPECTED_OPTIONAL_IMPORT_LOCATIONS = {
     "arxiv": {"src/gpd/mcp/paper/bibliography.py"},
     "cairosvg": {"src/gpd/mcp/paper/figures.py"},
-    "httpx": {
-        "src/gpd/mcp/servers/_arxiv_ar5iv.py",
-        "src/gpd/mcp/servers/_arxiv_gcs.py",
-        "src/gpd/mcp/servers/arxiv_translators.py",
-    },
     "pypdf": {"src/gpd/core/artifact_text.py", "src/gpd/mcp/paper/compiler.py"},
 }
 _EXPECTED_OPTIONAL_DEPENDENCY_EXTRAS = {
-    "arxiv": {"arxiv"},
-    "arxiv-mcp-server": {"arxiv"},
-    "cairosvg": {"arxiv", "paper"},
-    "httpx": {"arxiv"},
-    "pypdf": {"arxiv", "paper"},
+    "arxiv": {"paper"},
+    "cairosvg": {"paper"},
+    "pypdf": {"paper"},
 }
 _EXPECTED_BUILD_BACKEND_REQUIREMENT = "hatchling==1.29.0"
 
@@ -117,7 +104,7 @@ def _project_script_lines(repo_root: Path) -> list[str]:
             continue
         if collecting and stripped.startswith("["):
             break
-        if collecting and stripped:
+        if collecting and stripped and not stripped.startswith("#"):
             script_lines.append(stripped)
     return script_lines
 
@@ -402,22 +389,6 @@ def _optional_import_locations(repo_root: Path, module_names: set[str]) -> dict[
             for module_name in imported_modules & module_names:
                 locations[module_name].add(relative_path)
     return {module_name: paths for module_name, paths in sorted(locations.items()) if paths}
-
-
-def _string_constant_assignments(repo_root: Path, relative_path: str) -> dict[str, str]:
-    tree = ast.parse((repo_root / relative_path).read_text(encoding="utf-8"), filename=relative_path)
-    assignments: dict[str, str] = {}
-    for node in ast.walk(tree):
-        if (
-            not isinstance(node, ast.Assign)
-            or not isinstance(node.value, ast.Constant)
-            or not isinstance(node.value.value, str)
-        ):
-            continue
-        for target in node.targets:
-            if isinstance(target, ast.Name):
-                assignments[target.id] = node.value.value
-    return assignments
 
 
 def _expected_runtime_dependency_names() -> set[str]:
@@ -1548,10 +1519,9 @@ def test_optional_publication_imports_stay_explicitly_declared_integrations() ->
         assert module_name in _EXPECTED_OPTIONAL_IMPORT_LOCATIONS
         assert _EXPECTED_OPTIONAL_DEPENDENCY_EXTRAS[dependency_name] <= optional_extras_by_dependency[dependency_name]
 
-    bridge_constants = _string_constant_assignments(repo_root, "src/gpd/mcp/servers/arxiv_bridge.py")
-    assert bridge_constants["UPSTREAM_ARXIV_MODULE"] == "arxiv_mcp_server"
+    # The deleted gpd-arxiv bridge was the only `arxiv-mcp-server` consumer.
     assert "arxiv-mcp-server" not in runtime_requirement_names
-    assert _EXPECTED_OPTIONAL_DEPENDENCY_EXTRAS["arxiv-mcp-server"] <= optional_extras_by_dependency["arxiv-mcp-server"]
+    assert "arxiv-mcp-server" not in optional_extras_by_dependency
 
 
 def test_registry_command_surface_rewrite_surfaces_live_registry_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1591,35 +1561,11 @@ def test_model_visible_command_note_does_not_depend_on_live_registry(monkeypatch
     assert "gpd-planner" not in note
 
 
-def test_infra_descriptors_reference_public_bootstrap_flow() -> None:
-    from gpd.mcp.builtin_servers import build_public_descriptors
-
-    repo_root = _repo_root()
-    stale_markers = (
-        "packages/gpd",
-        "uv pip install -e",
-        "pip install -e packages/gpd",
-        _SHARED_INSTALL.bootstrap_command,
-    )
-    expected_descriptors = build_public_descriptors()
-
-    for path in sorted((repo_root / "infra").glob("gpd-*.json")):
-        content = path.read_text(encoding="utf-8")
-        assert _PUBLIC_BOOTSTRAP_PREREQUISITE in content, f"{path.name} should reference the public prerequisite flow"
-        for marker in stale_markers:
-            assert marker not in content, f"{path.name} should not mention {marker!r}"
-        assert json.loads(content) == expected_descriptors[path.stem]
-
-    assert {path.stem for path in (repo_root / "infra").glob("gpd-*.json")} == set(expected_descriptors)
-
-
-def test_public_gpd_infra_descriptors_use_entry_points_not_python() -> None:
+def test_no_builtin_mcp_infra_descriptors_remain() -> None:
+    """The public `infra/gpd-*.json` descriptors died with the built-in MCP servers."""
     repo_root = _repo_root()
 
-    for path in sorted((repo_root / "infra").glob("gpd-*.json")):
-        descriptor = json.loads(path.read_text(encoding="utf-8"))
-        assert descriptor["command"].startswith("gpd-mcp-")
-        assert descriptor["args"] == []
+    assert list((repo_root / "infra").glob("gpd-*.json")) == []
 
 
 def test_gitignore_covers_repo_local_npm_cache() -> None:

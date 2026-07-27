@@ -1102,14 +1102,11 @@ class CodexAdapter(RuntimeAdapter):
             approval_policy=approval_policy,
         )
 
-        # Wire MCP servers into config.toml.
-        from gpd.mcp.builtin_servers import build_mcp_servers_dict
-
-        mcp_servers = build_mcp_servers_dict(python_path=python_path)
-        mcp_servers.update(managed_optional_mcp_servers)
-        mcp_count = 0
-        if mcp_servers:
-            mcp_count = _write_mcp_servers_codex_toml(target_dir, mcp_servers)
+        # Wire managed MCP integrations into config.toml. The writer always
+        # scrubs legacy built-in GPD sections first, so this also runs with an
+        # empty mapping to clean up configs written by earlier releases.
+        mcp_servers = dict(managed_optional_mcp_servers)
+        mcp_count = _write_mcp_servers_codex_toml(target_dir, mcp_servers)
         agent_role_count = _write_codex_agent_roles_toml(target_dir)
 
         return {
@@ -2128,8 +2125,14 @@ def _write_mcp_servers_codex_toml(target_dir: Path, servers: dict[str, dict[str,
         content = config_toml.read_text(encoding="utf-8")
     existing_content = content
 
-    # Remove existing GPD MCP sections before rewriting.
+    # Remove existing GPD MCP sections before rewriting. This also scrubs the
+    # legacy built-in server sections, which are in GPD_MCP_SERVER_KEYS.
     content = _remove_gpd_mcp_toml_sections(content, extra_keys=set(servers))
+
+    if not servers:
+        if content != existing_content:
+            config_toml.write_text(content, encoding="utf-8")
+        return 0
 
     # Append new MCP server sections.
     lines: list[str] = []

@@ -1,25 +1,21 @@
-"""MCP server for the canonical GPD skill index.
+"""Canonical GPD skill-surface projection.
 
 Reads shared skill definitions from the GPD registry and provides discovery,
 content retrieval, auto-routing, and runtime context assembly support. Runtime
-adapters may project different installed or discoverable surfaces, but they
-all derive from this shared index.
+adapters may project different installed or discoverable surfaces, but they all
+derive from this shared index.
 
-Usage:
-    python -m gpd.mcp.servers.skills_server
-    # or via entry point:
-    gpd-mcp-skills
+Transport-neutral: callers receive the schema-versioned envelopes built by
+``gpd.core.envelopes``.
 """
+
+from __future__ import annotations
 
 import copy
 import re
 from collections.abc import Callable
 from functools import cache, lru_cache
 from pathlib import Path
-from typing import Annotated
-
-from mcp.server.fastmcp import FastMCP
-from pydantic import Field
 
 from gpd import registry as content_registry
 from gpd.adapters.tool_names import canonical
@@ -30,7 +26,9 @@ from gpd.command_labels import (
     runtime_command_surface_is_path_like_context,
 )
 from gpd.core.agent_role_kits import role_kit_authority_paths
+from gpd.core.envelopes import stable_mcp_error, stable_mcp_response
 from gpd.core.errors import GPDError
+from gpd.core.frontmatter import parse_frontmatter_with_error
 from gpd.core.observability import gpd_span
 from gpd.core.reference_graph import (
     ReferenceResolver,
@@ -40,21 +38,16 @@ from gpd.core.reference_graph import (
 from gpd.core.review_contract_prompt import review_contract_payload
 from gpd.core.task_overlays import build_task_overlay_compatibility_manifest
 from gpd.mcp.descriptor_text import SKILL_BEHAVIORAL_GUARDRAIL_HINT
-from gpd.mcp.servers import (
-    configure_mcp_logging,
-    parse_frontmatter_with_error,
-    published_tool_input_schema,
-    read_only_tool_annotations,
-    refresh_string_enum_property_schema,
-    set_registered_and_published_tool_input_schema,
-    stable_mcp_error,
-    stable_mcp_response,
-    tighten_registered_tool_contracts,
-)
 
-logger = configure_mcp_logging("gpd-skills")
+__all__ = [
+    "SkillCategoryFilter",
+    "get_skill",
+    "get_skill_index",
+    "list_skills",
+    "route_skill",
+    "skill_category_values",
+]
 
-mcp = FastMCP("gpd-skills")
 _GENERIC_ROUTE_TOKENS = frozenset(
     {
         "analysis",
@@ -93,23 +86,16 @@ def _load_skill_index() -> list[content_registry.SkillDef]:
     return [content_registry.get_skill(name) for name in content_registry.list_skills()]
 
 
-def _skill_category_values() -> tuple[str, ...]:
+def skill_category_values() -> tuple[str, ...]:
     """Return the live skill-category enum published by the registry."""
 
     return tuple(content_registry.skill_categories())
 
 
+_skill_category_values = skill_category_values
+
+
 SkillCategoryFilter = str
-
-
-def _schema_with_refreshed_skill_category_enum(schema: dict[str, object]) -> dict[str, object]:
-    """Return one published schema with the live skill-category enum refreshed."""
-
-    return refresh_string_enum_property_schema(
-        schema,
-        property_name="category",
-        enum_values=list(_skill_category_values()),
-    )
 
 
 def _resolve_skill(name: str) -> content_registry.SkillDef | None:
@@ -170,7 +156,7 @@ def _skill_loading_hint(
 def _skill_review_contract_payload(
     review_contract: content_registry.ReviewCommandContract | None,
 ) -> dict[str, object] | None:
-    """Return the canonical MCP payload for a command review contract."""
+    """Return the canonical payload for a command review contract."""
     if review_contract is None:
         return None
     return review_contract_payload(review_contract)
@@ -179,7 +165,7 @@ def _skill_review_contract_payload(
 def _skill_staged_loading_payload(
     staged_loading: content_registry.WorkflowStageManifest | None,
 ) -> dict[str, object] | None:
-    """Return the canonical MCP payload for a command staged-loading manifest."""
+    """Return the canonical payload for a command staged-loading manifest."""
     if staged_loading is None:
         return None
     return staged_loading.to_payload()
@@ -188,7 +174,7 @@ def _skill_staged_loading_payload(
 def _skill_spawn_contracts_payload(
     spawn_contracts: tuple[dict[str, object], ...] | None,
 ) -> list[dict[str, object]] | None:
-    """Return the canonical MCP payload for command spawn-contract sidecars."""
+    """Return the canonical payload for command spawn-contract sidecars."""
     if not spawn_contracts:
         return None
     return [copy.deepcopy(contract) for contract in spawn_contracts]
@@ -204,7 +190,7 @@ def _normalize_skill_category(category: str) -> str:
 
 
 def _skill_index_label(skill: content_registry.SkillDef) -> str:
-    """Render a canonical skill label for the shared MCP surface."""
+    """Render a canonical skill label for the shared skill surface."""
     if skill.source_kind == "command":
         command = content_registry.get_command(skill.registry_name)
         qualifiers = [f"context={command.context_mode}"]
@@ -577,10 +563,7 @@ def _expanded_reference_documents(
     )
 
 
-@mcp.tool(annotations=read_only_tool_annotations())
-def list_skills(
-    category: Annotated[SkillCategoryFilter, Field(min_length=1, pattern=r"\S")] | None = None,
-) -> dict:
+def list_skills(category: SkillCategoryFilter | None = None) -> dict:
     """List canonical GPD skills with optional category filter.
 
     Skills are organized by category: execution, planning, verification,
@@ -592,7 +575,7 @@ def list_skills(
     if category is not None and (not isinstance(category, str) or not category.strip()):
         return stable_mcp_response(error="category must be a non-empty string when provided")
 
-    with gpd_span("mcp.skills.list", category=category or ""):
+    with gpd_span("skills.list", category=category or ""):
         try:
             if category is not None:
                 category = _normalize_skill_category(category)
@@ -615,11 +598,7 @@ def list_skills(
             return stable_mcp_error(e)
 
 
-@mcp.tool(annotations=read_only_tool_annotations())
-def get_skill(
-    name: Annotated[str, Field(min_length=1, pattern=r"\S")],
-    include_transitive_reference_bodies: bool = False,
-) -> dict:
+def get_skill(name: str, include_transitive_reference_bodies: bool = False) -> dict:
     """Get the full content of a canonical skill definition.
 
     Returns the skill prompt and metadata for injection into agent context.
@@ -627,7 +606,7 @@ def get_skill(
     Args:
         name: Skill name (e.g., "gpd-execute-phase", "gpd-plan-phase").
         include_transitive_reference_bodies: Include markdown bodies for transitive schema/contract
-            reference documents. Defaults to metadata-only transitive documents to keep MCP payloads small.
+            reference documents. Defaults to metadata-only transitive documents to keep payloads small.
     """
     if not isinstance(name, str) or not name.strip():
         return stable_mcp_response(error="name must be a non-empty string")
@@ -771,10 +750,7 @@ def get_skill(
             return stable_mcp_error(e)
 
 
-@mcp.tool(annotations=read_only_tool_annotations())
-def route_skill(
-    task_description: Annotated[str, Field(min_length=1, pattern=r"\S")],
-) -> dict:
+def route_skill(task_description: str) -> dict:
     """Auto-select the best GPD skill for a given task description.
 
     Uses keyword matching to suggest the most relevant skill(s) for
@@ -783,7 +759,7 @@ def route_skill(
     Args:
         task_description: Natural language description of what needs to be done.
     """
-    with gpd_span("mcp.skills.route"):
+    with gpd_span("skills.route"):
         try:
             if not isinstance(task_description, str) or not task_description.strip():
                 return stable_mcp_response(error="task_description must be a non-empty string")
@@ -955,14 +931,13 @@ def route_skill(
             return stable_mcp_error(e)
 
 
-@mcp.tool(annotations=read_only_tool_annotations())
 def get_skill_index() -> dict:
     """Return a formatted canonical skill index for runtime context assembly.
 
     Returns a compact summary suitable for adding to LLM context so the
     runtime can see available GPD capabilities.
     """
-    with gpd_span("mcp.skills.index"):
+    with gpd_span("skills.index"):
         try:
             skills = _load_skill_index()
             by_category: dict[str, list[str]] = {}
@@ -1006,43 +981,3 @@ def get_skill_index() -> dict:
             return stable_mcp_error(e)
         except Exception as e:  # pragma: no cover - defensive envelope
             return stable_mcp_error(e)
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-
-def main() -> None:
-    """Run the gpd-skills MCP server."""
-    from gpd.mcp.servers import run_mcp_server
-
-    run_mcp_server(mcp, "GPD Skills MCP Server")
-
-
-tighten_registered_tool_contracts(mcp)
-
-_BASE_LIST_TOOLS = mcp.list_tools
-
-
-async def _list_tools_with_fresh_skill_schema():
-    tools = await _BASE_LIST_TOOLS()
-    for tool in tools:
-        if tool.name != "list_skills":
-            continue
-        schema = published_tool_input_schema(tool)
-        if schema is None:
-            continue
-        set_registered_and_published_tool_input_schema(
-            mcp,
-            tool,
-            _schema_with_refreshed_skill_category_enum(schema),
-        )
-    return tools
-
-
-mcp.list_tools = _list_tools_with_fresh_skill_schema
-
-
-if __name__ == "__main__":
-    main()

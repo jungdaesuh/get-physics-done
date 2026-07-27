@@ -7527,15 +7527,13 @@ class TestReviewValidationCommands:
         serialized = json.dumps(payload)
         assert "${" not in serialized
         assert "test-secret" not in serialized
-        assert payload["gpd-conventions"] == {
-            "command": sys.executable,
-            "args": ["-m", "gpd.mcp.servers.conventions_server"],
-            "env": {"LOG_LEVEL": "WARNING"},
-        }
-        assert payload[WOLFRAM_MANAGED_SERVER_KEY] == {
-            "command": sys.executable,
-            "args": ["-m", WOLFRAM_BRIDGE_MODULE],
-            "env": {WOLFRAM_MCP_ENDPOINT_ENV_VAR: "https://example.invalid/mcp"},
+        # GPD ships no built-in servers, so only managed integrations are listed.
+        assert payload == {
+            WOLFRAM_MANAGED_SERVER_KEY: {
+                "command": sys.executable,
+                "args": ["-m", WOLFRAM_BRIDGE_MODULE],
+                "env": {WOLFRAM_MCP_ENDPOINT_ENV_VAR: "https://example.invalid/mcp"},
+            }
         }
 
     def test_list_servers_binary_rewrites_managed_integrations_to_sidecar_dispatch(

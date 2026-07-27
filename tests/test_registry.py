@@ -2589,7 +2589,7 @@ class TestRegistryPromptIncludeInlining:
             )
 
     def test_publication_review_skills_keep_the_needed_contract_references_visible(self) -> None:
-        from gpd.mcp.servers.skills_server import get_skill
+        from gpd.core.skill_surface import get_skill
 
         referee = get_skill("gpd-referee")
         review_reader = get_skill("gpd-review-reader")

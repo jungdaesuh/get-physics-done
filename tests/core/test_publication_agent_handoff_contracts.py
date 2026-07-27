@@ -63,7 +63,7 @@ def test_publication_child_agents_keep_return_only_shared_state_boundary() -> No
 
 
 def test_peer_review_and_referee_skill_surfaces_keep_lifecycle_cleanup_boundary() -> None:
-    from gpd.mcp.servers.skills_server import get_skill
+    from gpd.core.skill_surface import get_skill
 
     peer_review = get_skill("gpd-peer-review")
     referee = get_skill("gpd-referee")

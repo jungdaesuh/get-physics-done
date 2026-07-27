@@ -1,16 +1,15 @@
-"""Contract-aware verification check execution, shared by the MCP tools and the CLI.
+"""Contract-aware verification check execution behind the ``gpd verify`` commands.
 
 This module owns the transport-neutral logic behind the ``run_contract_check``,
 ``suggest_contract_checks``, ``get_checklist``, ``get_bundle_checklist``, and
 ``get_verification_coverage`` surfaces: request-key validation, contract payload
 parsing and salvage, binding validation and context collection, metadata
-normalization, and per-check execution dispatch. Published MCP input schemas and
-tool registration stay in ``gpd.mcp.servers.verification_server``; this module
-never imports MCP.
+normalization, and per-check execution dispatch. The published request schema is
+``RunContractCheckRequest`` here, which ``gpd verify contract-check --schema``
+prints so callers can self-correct invalid payloads.
 
-The catalog accessors are injectable so a transport can bind its own catalog
-source (the MCP server passes its module-level names so operator-facing failure
-envelopes stay attributable to that server).
+The catalog accessors are injectable so a caller can bind its own catalog source
+and keep operator-facing failure envelopes attributable to that source.
 """
 
 import copy

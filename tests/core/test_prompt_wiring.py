@@ -5313,7 +5313,7 @@ def test_verify_work_active_sessions_use_canonical_verification_path_and_keep_st
 
 
 def test_skill_surface_exposes_contract_references_for_paper_and_review_workflows() -> None:
-    from gpd.mcp.servers.skills_server import get_skill
+    from gpd.core.skill_surface import get_skill
 
     write_paper = get_skill("gpd-write-paper")
     peer_review = get_skill("gpd-peer-review")
@@ -5383,7 +5383,7 @@ def test_skill_surface_exposes_contract_references_for_paper_and_review_workflow
 
 
 def test_peer_review_workflow_and_generated_skill_surface_keep_lifecycle_cleanup_contract() -> None:
-    from gpd.mcp.servers.skills_server import get_skill
+    from gpd.core.skill_surface import get_skill
 
     peer_review_workflow = _workflow_authority_text("peer-review")
     peer_review_skill_content = get_skill("gpd-peer-review")["content"]
@@ -5442,7 +5442,7 @@ def test_peer_review_spawned_stage_prompts_keep_stage_identity_callsite_owned() 
 
 
 def test_bibliographer_skill_surface_stays_direct_only() -> None:
-    from gpd.mcp.servers.skills_server import get_skill
+    from gpd.core.skill_surface import get_skill
 
     bibliographer = get_skill("gpd-bibliographer")
     direct_reference_suffixes = {

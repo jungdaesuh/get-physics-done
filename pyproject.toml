@@ -44,36 +44,18 @@ dependencies = [
 
 [project.optional-dependencies]
 paper = [
-    "cairosvg>=2.7.0",
-    "pypdf>=5.0",
-]
-arxiv = [
-    "arxiv-mcp-server[pdf]>=0.4.11",
-    # arxiv-mcp-server already depends on `arxiv` transitively (its
-    # tools/search.py, tools/download.py, etc. import it directly). The
-    # GPD bridge itself does not import `arxiv` — we pin a tighter floor
-    # explicitly so a transitive bump never silently drops to a known-
-    # broken older version.
+    # `arxiv` backs the optional arXiv metadata enrichment in the paper
+    # bibliography builder (gpd/mcp/paper/bibliography.py). The floor is pinned
+    # explicitly so a resolve never silently drops to a known-broken version.
     "arxiv>=2.4.1",
-    # Used directly by the OpenAlex translator and GCS PDF fetcher. While
-    # arxiv-mcp-server already depends on httpx, we declare it explicitly
-    # so the gpd-mcp-arxiv entrypoint never relies on a transitive resolve.
-    "httpx>=0.27",
     "cairosvg>=2.7.0",
     "pypdf>=5.0",
 ]
 
 [project.scripts]
 gpd = "gpd.cli:entrypoint"
-"gpd-mcp-conventions" = "gpd.mcp.servers.conventions_server:main"
-"gpd-mcp-verification" = "gpd.mcp.servers.verification_server:main"
-"gpd-mcp-protocols" = "gpd.mcp.servers.protocols_server:main"
-"gpd-mcp-errors" = "gpd.mcp.servers.errors_mcp:main"
-"gpd-mcp-patterns" = "gpd.mcp.servers.patterns_server:main"
-"gpd-mcp-arxiv" = "gpd.mcp.servers.arxiv_bridge:main"
+# The opt-in Wolfram managed integration is the only MCP entry point GPD ships.
 "gpd-mcp-wolfram" = "gpd.mcp.integrations.wolfram_bridge:main"
-"gpd-mcp-state" = "gpd.mcp.servers.state_server:main"
-"gpd-mcp-skills" = "gpd.mcp.servers.skills_server:main"
 
 [project.urls]
 Homepage = "https://github.com/psi-oss/get-physics-done"

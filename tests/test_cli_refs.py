@@ -1,9 +1,9 @@
 """CLI parity tests for the read-only ``gpd refs`` reference catalogs.
 
-The protocols oracle is the ``gpd-protocols`` MCP tool surface (not the core
-catalog functions) so these assert true CLI/MCP parity. The errors side keeps a
-core oracle because ``tests/core/test_error_catalog.py`` already pins the
-``errors_mcp`` tools against the same core payloads.
+Both oracles are the shared ``gpd.core`` catalogs wrapped in the published
+envelope. The protocols oracles are bound below under their published tool
+names; the pinned literal expectations (counts, error strings, envelope
+``schema_version``) keep the assertions honest.
 """
 
 from __future__ import annotations
@@ -13,8 +13,50 @@ import json
 from typer.testing import CliRunner
 
 from gpd.cli import app
+from gpd.core.envelopes import stable_mcp_response
+from gpd.core.protocol_catalog import (
+    available_protocol_names,
+    get_protocol_store,
+    protocol_checkpoints_payload,
+    protocol_detail_payload,
+    protocol_listing_payload,
+    protocol_route_payload,
+)
 
 runner = CliRunner()
+
+
+# ── Core oracles for the protocol catalog ───────────────────────────────────
+
+
+def list_protocols(domain: str | None = None) -> dict:
+    return stable_mcp_response(protocol_listing_payload(get_protocol_store(), domain))
+
+
+def get_protocol(name: str) -> dict:
+    store = get_protocol_store()
+    payload = protocol_detail_payload(store, name)
+    if payload is None:
+        return stable_mcp_response(
+            {"available": available_protocol_names(store)},
+            error=f"Protocol '{name}' not found",
+        )
+    return stable_mcp_response(payload)
+
+
+def get_protocol_checkpoints(name: str) -> dict:
+    store = get_protocol_store()
+    payload = protocol_checkpoints_payload(store, name)
+    if payload is None:
+        return stable_mcp_response(
+            {"available": available_protocol_names(store)},
+            error=f"Protocol '{name}' not found",
+        )
+    return stable_mcp_response(payload)
+
+
+def route_protocol(computation_type: str) -> dict:
+    return stable_mcp_response(protocol_route_payload(get_protocol_store(), computation_type))
 
 
 def _invoke(args: list[str]) -> object:
@@ -29,7 +71,6 @@ def _error_store() -> object:
 
 def test_refs_errors_list_matches_core_payload() -> None:
     from gpd.core import error_catalog
-    from gpd.core.envelopes import stable_mcp_response
 
     expected = stable_mcp_response(error_catalog.list_error_classes(_error_store(), None))
     result = _invoke(["refs", "errors"])
@@ -41,7 +82,6 @@ def test_refs_errors_list_matches_core_payload() -> None:
 
 def test_refs_errors_domain_filter_matches_core_payload() -> None:
     from gpd.core import error_catalog
-    from gpd.core.envelopes import stable_mcp_response
 
     expected = stable_mcp_response(error_catalog.list_error_classes(_error_store(), "core"))
     result = _invoke(["refs", "errors", "--domain", "core"])
@@ -54,7 +94,6 @@ def test_refs_errors_domain_filter_matches_core_payload() -> None:
 
 def test_refs_errors_by_id_matches_core_payload() -> None:
     from gpd.core import error_catalog
-    from gpd.core.envelopes import stable_mcp_response
 
     expected = stable_mcp_response(error_catalog.get_error_class(_error_store(), 3))
     result = _invoke(["refs", "errors", "--id", "3"])
@@ -67,7 +106,6 @@ def test_refs_errors_by_id_matches_core_payload() -> None:
 
 def test_refs_errors_detection_and_traceability_match_core_payloads() -> None:
     from gpd.core import error_catalog
-    from gpd.core.envelopes import stable_mcp_response
 
     expected_detection = stable_mcp_response(error_catalog.get_detection_strategy(_error_store(), 3))
     expected_traceability = stable_mcp_response(error_catalog.get_traceability(_error_store(), 3))
@@ -84,7 +122,6 @@ def test_refs_errors_detection_and_traceability_match_core_payloads() -> None:
 
 def test_refs_errors_unknown_id_emits_the_full_core_envelope_and_exits_one() -> None:
     from gpd.core import error_catalog
-    from gpd.core.envelopes import stable_mcp_response
 
     expected = stable_mcp_response(error_catalog.get_error_class(_error_store(), 99999))
     result = _invoke(["refs", "errors", "--id", "99999"])
@@ -123,9 +160,7 @@ def test_refs_errors_rejects_detection_without_id() -> None:
     assert "--id" in result.output
 
 
-def test_refs_protocols_list_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.protocols_server import list_protocols
-
+def test_refs_protocols_list_matches_core_payload() -> None:
     expected = list_protocols()
     result = _invoke(["refs", "protocols"])
 
@@ -134,9 +169,7 @@ def test_refs_protocols_list_matches_mcp_tool_payload() -> None:
     assert expected["count"] > 0
 
 
-def test_refs_protocols_domain_filter_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.protocols_server import list_protocols
-
+def test_refs_protocols_domain_filter_matches_core_payload() -> None:
     unfiltered = list_protocols()
     domain = unfiltered["available_domains"][0]
     expected = list_protocols(domain)
@@ -172,9 +205,7 @@ def test_refs_protocols_rejects_blank_selector_values() -> None:
         assert "non-empty" in result.output
 
 
-def test_refs_protocols_by_name_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.protocols_server import get_protocol, list_protocols
-
+def test_refs_protocols_by_name_matches_core_payload() -> None:
     name = list_protocols()["protocols"][0]["name"]
     expected = get_protocol(name)
 
@@ -185,9 +216,7 @@ def test_refs_protocols_by_name_matches_mcp_tool_payload() -> None:
     assert expected["name"] == name
 
 
-def test_refs_protocols_route_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.protocols_server import route_protocol
-
+def test_refs_protocols_route_matches_core_payload() -> None:
     query = "perturbative expansion with renormalization"
     expected = route_protocol(query)
 
@@ -198,9 +227,7 @@ def test_refs_protocols_route_matches_mcp_tool_payload() -> None:
     assert expected["query"] == query
 
 
-def test_refs_protocols_checkpoints_matches_mcp_tool_payload() -> None:
-    from gpd.mcp.servers.protocols_server import get_protocol_checkpoints, list_protocols
-
+def test_refs_protocols_checkpoints_matches_core_payload() -> None:
     name = list_protocols()["protocols"][0]["name"]
     expected = get_protocol_checkpoints(name)
 
@@ -212,8 +239,6 @@ def test_refs_protocols_checkpoints_matches_mcp_tool_payload() -> None:
 
 
 def test_refs_protocols_unknown_name_lists_available_and_exits_one() -> None:
-    from gpd.mcp.servers.protocols_server import get_protocol
-
     expected = get_protocol("not-a-protocol")
     result = _invoke(["refs", "protocols", "--name", "not-a-protocol"])
 

@@ -136,7 +136,7 @@ def _project_script_lines(repo_root: Path) -> list[str]:
             continue
         if collecting and stripped.startswith("["):
             break
-        if collecting and stripped:
+        if collecting and stripped and not stripped.startswith("#"):
             script_lines.append(stripped)
     return script_lines
 
@@ -250,25 +250,12 @@ def test_public_package_keywords_do_not_hand_maintain_runtime_names() -> None:
         assert leaked == [], f"{source} should not hand-maintain runtime catalog names in package keywords"
 
 
-def _mcp_server_modules_with_main(repo_root: Path) -> list[Path]:
-    """Return server modules that expose a ``main`` entrypoint (public CLI surface)."""
-
-    candidates = [
-        p
-        for p in (repo_root / "src" / "gpd" / "mcp" / "servers").glob("*.py")
-        if p.name != "__init__.py" and not p.name.startswith("_")
-    ]
-    main_pattern = re.compile(r"^(?:async\s+)?def\s+main\s*\(", re.MULTILINE)
-    return [p for p in candidates if main_pattern.search(p.read_text(encoding="utf-8"))]
-
-
 def test_canonical_registry_skill_inventory_counts_match_repo_contents() -> None:
     repo_root = _repo_root()
     commands_count = len(list((repo_root / "src" / "gpd" / "commands").glob("*.md")))
     agents_count = len(list((repo_root / "src" / "gpd" / "agents").glob("*.md")))
     content_registry.invalidate_cache()
     canonical_skills_count = len(content_registry.list_skills())
-    mcp_server_count = len(_mcp_server_modules_with_main(repo_root))
     mcp_script_count = sum(1 for line in _project_script_lines(repo_root) if line.startswith('"gpd-mcp-'))
     managed_integration_script_count = sum(
         1 for name in _project_script_targets(repo_root) if name == "gpd-mcp-wolfram"
@@ -276,10 +263,11 @@ def test_canonical_registry_skill_inventory_counts_match_repo_contents() -> None
 
     assert commands_count > 0
     assert agents_count > 0
-    # The canonical registry/MCP skill index remains commands + agents even
-    # when a runtime projects a narrower discoverable install surface.
+    # The canonical registry skill index remains commands + agents even when a
+    # runtime projects a narrower discoverable install surface.
     assert canonical_skills_count == commands_count + agents_count
-    assert mcp_server_count == mcp_script_count - managed_integration_script_count
+    # Every remaining gpd-mcp-* script is a managed optional integration.
+    assert mcp_script_count == managed_integration_script_count
 
 
 def test_agent_metadata_inventory_uses_valid_enums_without_changing_canonical_skill_surface() -> None:
@@ -321,134 +309,63 @@ def test_pattern_domain_counts_match_source_of_truth() -> None:
     )
 
 
-def test_mcp_server_count_matches_public_entrypoints() -> None:
+def test_no_builtin_mcp_server_surface_ships_any_more() -> None:
+    """GPD ships zero built-in MCP servers: no package, no scripts, no descriptors."""
     from gpd.mcp.managed_integrations import WOLFRAM_BRIDGE_COMMAND
 
     repo_root = _repo_root()
-    mcp_server_count = len(_mcp_server_modules_with_main(repo_root))
-    builtin_mcp_script_count = sum(
-        1
-        for name in _project_script_targets(repo_root)
-        if name.startswith("gpd-mcp-") and name != WOLFRAM_BRIDGE_COMMAND
+    script_targets = _project_script_targets(repo_root)
+    mcp_scripts = {name for name in script_targets if name.startswith("gpd-mcp-")}
+
+    assert not (repo_root / "src" / "gpd" / "mcp" / "servers").exists()
+    assert mcp_scripts == {WOLFRAM_BRIDGE_COMMAND}
+    assert not list((repo_root / "infra").glob("gpd-*.json"))
+
+
+def test_legacy_builtin_mcp_keys_stay_a_frozen_uninstall_tombstone() -> None:
+    """The keys exist only so install/uninstall can scrub stale runtime-config entries."""
+    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
+
+    assert GPD_MCP_SERVER_KEYS == frozenset(
+        {
+            "gpd-arxiv",
+            "gpd-conventions",
+            "gpd-errors",
+            "gpd-patterns",
+            "gpd-protocols",
+            "gpd-skills",
+            "gpd-state",
+            "gpd-verification",
+        }
     )
-    assert mcp_server_count > 0
-    assert mcp_server_count == builtin_mcp_script_count
+    assert isinstance(GPD_MCP_SERVER_KEYS, frozenset)
 
 
-def test_managed_mcp_server_keys_match_public_descriptors_and_infra_inventory() -> None:
-    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS, build_public_descriptors
-
-    repo_root = _repo_root()
-    descriptor_keys = set(build_public_descriptors())
-    infra_keys = {path.stem for path in (repo_root / "infra").glob("gpd-*.json")}
-
-    assert GPD_MCP_SERVER_KEYS == descriptor_keys
-    assert GPD_MCP_SERVER_KEYS == infra_keys
-
-
-def test_gpd_skills_infra_health_check_tracks_the_research_vertical() -> None:
-    descriptor = json.loads(_read("infra/gpd-skills.json"))
-    health_check = descriptor["health_check"]
-
-    assert health_check["tool"] == "list_skills"
-    assert health_check["input"] == {}
-    assert "gpd-execute-phase" in health_check["expect"]
-    assert "gpd-research-phase" in health_check["expect"]
-
-
-def test_optional_wolfram_bridge_stays_outside_builtin_public_mcp_surface() -> None:
-    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS, build_public_descriptors
+def test_optional_wolfram_bridge_stays_outside_the_legacy_tombstone_surface() -> None:
+    from gpd.mcp.builtin_servers import GPD_MCP_SERVER_KEYS
     from gpd.mcp.managed_integrations import WOLFRAM_BRIDGE_COMMAND, WOLFRAM_MANAGED_SERVER_KEY
 
     repo_root = _repo_root()
-    descriptor_keys = set(build_public_descriptors())
-    infra_keys = {path.stem for path in (repo_root / "infra").glob("gpd-*.json")}
     script_targets = _project_script_targets(repo_root)
 
     assert WOLFRAM_MANAGED_SERVER_KEY not in GPD_MCP_SERVER_KEYS
-    assert WOLFRAM_MANAGED_SERVER_KEY not in descriptor_keys
-    assert WOLFRAM_MANAGED_SERVER_KEY not in infra_keys
-
-    if WOLFRAM_BRIDGE_COMMAND in script_targets:
-        assert script_targets[WOLFRAM_BRIDGE_COMMAND] == "gpd.mcp.integrations.wolfram_bridge:main"
+    assert script_targets[WOLFRAM_BRIDGE_COMMAND] == "gpd.mcp.integrations.wolfram_bridge:main"
 
 
-def test_public_mcp_descriptor_capabilities_match_server_tools() -> None:
-    from gpd.mcp.builtin_servers import build_public_descriptors
-
-    descriptors = build_public_descriptors()
-    for name, descriptor in descriptors.items():
-        module_name = _descriptor_python_module(descriptor)
-        assert isinstance(module_name, str), name
-        assert descriptor["capabilities"] == _module_advertised_mcp_tools(module_name), name
-
-
-def test_public_mcp_descriptor_entry_point_alternatives_match_pyproject_scripts() -> None:
-    from gpd.mcp.builtin_servers import build_public_descriptors
-
-    repo_root = _repo_root()
-    script_targets: dict[str, str] = {}
-    for line in _project_script_lines(repo_root):
-        name, target = line.split("=", 1)
-        script_targets[name.strip().strip('"')] = target.strip().strip('"')
-
-    descriptors = build_public_descriptors()
-    for name, descriptor in descriptors.items():
-        module_name = _descriptor_python_module(descriptor)
-        assert isinstance(module_name, str), name
-        script_name = descriptor.get("command")
-        assert isinstance(script_name, str), name
-        assert descriptor.get("args") == []
-        assert script_name.startswith("gpd-mcp-")
-        assert script_targets[script_name] == f"{module_name}:main"
-
-        alternatives = descriptor.get("alternatives")
-        assert isinstance(alternatives, dict), name
-        python_module = alternatives.get("python_module")
-        assert isinstance(python_module, dict), name
-        assert python_module.get("command") == "${GPD_PYTHON}"
-        assert python_module.get("args") == ["-m", module_name]
-        assert (
-            python_module.get("notes")
-            == "Replace `${GPD_PYTHON}` with a Python >=3.11 interpreter that has GPD installed."
-        )
-
-
-def test_arxiv_descriptor_tracks_optional_dependency_surface() -> None:
-    from gpd.mcp.builtin_servers import build_public_descriptors
-    from gpd.mcp.servers.arxiv_bridge import ADVERTISED_TOOL_NAMES, DOWNLOAD_SOURCE_TOOL_NAME, UPSTREAM_CORE_TOOL_NAMES
-
+def test_arxiv_bridge_optional_extra_is_gone_and_paper_keeps_its_own_deps() -> None:
+    """The `arxiv` extra existed for the deleted gpd-arxiv bridge; only `paper` remains."""
     project = tomllib.loads(_read("pyproject.toml"))["project"]
     dependencies: list[str] = project["dependencies"]
     optional = project.get("optional-dependencies", {})
-    assert not any(item.startswith("arxiv-mcp-server") for item in dependencies)
-    assert set(optional) == {"arxiv", "paper"}
-    assert set(optional["paper"]) == {
-        "cairosvg>=2.7.0",
-        "pypdf>=5.0",
-    }
-    assert set(optional["arxiv"]) == {
-        "arxiv-mcp-server[pdf]>=0.4.11",
-        "arxiv>=2.4.1",
-        "httpx>=0.27",
-        "cairosvg>=2.7.0",
-        "pypdf>=5.0",
-    }
 
-    descriptor = build_public_descriptors()["gpd-arxiv"]
-    infra_descriptor = json.loads(_read("infra/gpd-arxiv.json"))
-    expected_prerequisites = [
-        "Install GPD before enabling built-in MCP servers.",
-        "Install GPD with the `arxiv` Python extra in the same environment before enabling gpd-arxiv.",
-    ]
-    assert descriptor["prerequisites"] == expected_prerequisites
-    assert infra_descriptor["prerequisites"] == expected_prerequisites
-    assert descriptor["capability_surface"] == "baseline_dynamic_upstream"
-    assert descriptor["dynamic_upstream_capabilities"] is True
-    assert descriptor["baseline_upstream_capabilities"] == list(UPSTREAM_CORE_TOOL_NAMES)
-    assert descriptor["local_capabilities"] == [DOWNLOAD_SOURCE_TOOL_NAME]
-    assert descriptor["capabilities"] == list(ADVERTISED_TOOL_NAMES)
-    assert descriptor["capabilities"][-1] == "download_source"
+    assert not any(item.startswith("arxiv-mcp-server") for item in dependencies)
+    assert not any(item.startswith("arxiv") for item in dependencies)
+    assert set(optional) == {"paper"}
+    assert set(optional["paper"]) == {
+        "arxiv>=2.4.1",
+        "cairosvg>=2.7.0",
+        "pypdf>=5.0",
+    }
 
 
 def test_paper_journal_vocabulary_docs_match_builder_contract() -> None:

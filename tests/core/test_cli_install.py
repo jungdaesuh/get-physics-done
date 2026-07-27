@@ -1258,7 +1258,13 @@ def test_uninstall_raw_outputs_json(tmp_path: Path):
     assert payload["uninstalled"][0]["removed"] == []
 
 
-def test_uninstall_human_reports_managed_mcp_server_removal(gpd_root: Path, tmp_path: Path) -> None:
+def test_uninstall_human_reports_managed_mcp_server_removal(
+    gpd_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GPD installs no built-in servers, so the managed integration is what gets removed."""
+    monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "test-managed-key")
     for descriptor in _descriptors_with_uninstall_counter(tmp_path, "mcpServers"):
         adapter = get_adapter(descriptor.runtime_name)
         target = tmp_path / "human-uninstall" / descriptor.config_dir_name
@@ -1270,7 +1276,12 @@ def test_uninstall_human_reports_managed_mcp_server_removal(gpd_root: Path, tmp_
         assert_cli_human_contract(result, required_all=["GPD", "MCP servers"])
 
 
-def test_uninstall_raw_reports_managed_mcp_server_removal(gpd_root: Path, tmp_path: Path) -> None:
+def test_uninstall_raw_reports_managed_mcp_server_removal(
+    gpd_root: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GPD_WOLFRAM_MCP_API_KEY", "test-managed-key")
     for descriptor in _descriptors_with_uninstall_counter(tmp_path, "mcpServers"):
         adapter = get_adapter(descriptor.runtime_name)
         target = tmp_path / "raw-uninstall" / descriptor.config_dir_name

@@ -128,9 +128,9 @@ def test_write_mcp_servers_opencode_fails_closed_for_non_dict_mcp_key(tmp_path: 
         _write_mcp_servers_opencode(
             config_dir,
             {
-                "gpd-errors": {
+                "gpd-wolfram": {
                     "command": "python",
-                    "args": ["-m", "gpd.mcp.servers.errors_mcp"],
+                    "args": ["-m", "gpd.mcp.integrations.wolfram_bridge"],
                 }
             },
         )
@@ -147,7 +147,6 @@ def test_runtime_managed_mcp_projection_helper_hides_api_key_and_preserves_endpo
     servers = build_runtime_managed_mcp_servers(
         env=env,
         python_path="/tmp/gpd-managed-python",
-        include_builtin=False,
     )
     wolfram = servers["gpd-wolfram"]
     payload = json.dumps(wolfram)
@@ -159,20 +158,19 @@ def test_runtime_managed_mcp_projection_helper_hides_api_key_and_preserves_endpo
     assert "https://example.invalid/api/mcp" in payload
 
 
-@pytest.mark.parametrize(
-    ("include_builtin", "expected_keys"),
-    [
-        (False, frozenset({"gpd-wolfram"})),
-        (True, frozenset({*GPD_MCP_SERVER_KEYS, "gpd-wolfram"})),
-    ],
-)
-def test_runtime_managed_mcp_key_helper_includes_registry_backed_optional_keys(
-    include_builtin: bool,
-    expected_keys: frozenset[str],
-) -> None:
-    keys = runtime_managed_mcp_server_keys(include_builtin=include_builtin)
+def test_runtime_managed_mcp_key_helper_covers_optional_keys_and_legacy_tombstones() -> None:
+    """Uninstall must reach both live managed keys and every legacy built-in key."""
+    keys = runtime_managed_mcp_server_keys()
 
-    assert keys == expected_keys
+    assert keys == frozenset({*GPD_MCP_SERVER_KEYS, "gpd-wolfram"})
+    assert "gpd-wolfram" not in GPD_MCP_SERVER_KEYS
+
+
+def test_build_runtime_managed_mcp_servers_never_projects_a_legacy_builtin_server() -> None:
+    """Installs must write managed integrations only — never a removed built-in server."""
+    servers = build_runtime_managed_mcp_servers(env={}, python_path="/tmp/gpd-managed-python")
+
+    assert set(servers) & GPD_MCP_SERVER_KEYS == set()
 
 
 @pytest.mark.parametrize(
