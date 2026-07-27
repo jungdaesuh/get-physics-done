@@ -65,6 +65,7 @@ Risk tier: **Tier 3** (public surface: console scripts, infra descriptors, MCP t
    - [ ] Move protocol parsing/routing from `protocols_server.py` into `src/gpd/core/protocol_catalog.py`; same import discipline.
    - [ ] Extend the existing `gpd verify` sub-app (`src/gpd/cli.py:3228`) with contract subcommands wrapping `gpd.core.contract_validation` / `gpd.core.protocol_bundles` / `gpd.core.verification_checks`:
      - [ ] `gpd verify contract-check --payload <file|->` (JSON in, stable-envelope JSON out; `--schema` flag prints the pydantic JSON schema so agents can self-correct invalid payloads).
+     - [ ] No-orphan guarantee for all new subcommands: fail fast instead of blocking — when `--payload -` is used with a TTY stdin (no piped input), exit immediately with a usage error rather than waiting on stdin. Lock waits are already bounded (`file_lock` 5 s acquisition timeout, `src/gpd/core/utils.py:461`) and OS advisory locks auto-release on process death, so no CLI invocation can linger or leave stale locks; nothing in these commands may spawn background processes or daemons.
      - [ ] `gpd verify suggest-checks --contract <file|->`.
      - [ ] `gpd verify bundle-checklist <bundle-id>...`.
      - [ ] `gpd verify checklist <domain>` and `gpd verify coverage` (replace `get_checklist`/`get_verification_coverage`).
@@ -97,6 +98,7 @@ Risk tier: **Tier 3** (public surface: console scripts, infra descriptors, MCP t
 - [ ] Upgrade migration test (Phase 3): given a runtime config containing all 8 legacy `gpd-*` entries plus one user-defined non-GPD server, `gpd install` removes exactly the GPD entries and preserves the user's.
 - [ ] E2E: in a sample GPD project, run `/gpd:verify-work` end-to-end on Claude Code and one non-Claude runtime (Codex or Gemini) — contract check, bundle checklist, and suggest-checks all round-trip through the CLI.
 - [ ] Resource check: after install on a clean runtime, `ps aux | grep gpd.mcp` shows zero processes during an active session.
+- [ ] No-orphan check: after exercising each new CLI subcommand (including a `--payload -` invocation with no piped stdin, which must exit non-zero immediately), `pgrep -f "gpd (verify|refs|convention|pattern)"` returns nothing.
 - [ ] Descriptor-consistency tests (`tests/test_release_consistency.py`, `tests/test_metadata_consistency.py`) updated and green after `infra/` removal. `gpd doctor` needs no changes (verified: `gpd.core.health` contains no MCP server probes).
 
 ## Risks and Mitigations
