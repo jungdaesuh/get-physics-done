@@ -28,7 +28,7 @@ Eliminate the resident-process cost of GPD's built-in MCP servers (7 always-on +
   - CLI: `gpd mcp-server <name>` (runs a server in-process) and `gpd list-servers` (`src/gpd/cli.py` ~11480–11520).
   - Public descriptors: `infra/gpd-*.json` (8 files), kept in sync by `tests/test_release_consistency.py`, `tests/test_metadata_consistency.py`, and scoped by `scripts/repo_graph_contract.py:98`.
   - Console entry points: `gpd-mcp-{conventions,verification,protocols,errors,patterns,arxiv,state,skills}` in `pyproject.toml [project.scripts]`.
-- Only 2 of 95 prompt files reference MCP tools: `src/gpd/commands/verify-work.md:40-42` and `src/gpd/agents/gpd-verifier.md` (frontmatter `tools:` line) — all 3 tools from `gpd-verification`.
+- Only 2 of 95 prompt files referenced MCP tools: `src/gpd/commands/verify-work.md` (the `mcp__gpd_verification__*` entries in its `allowed-tools:` frontmatter list) and `src/gpd/agents/gpd-verifier.md` (its frontmatter `tools:` line) — all 3 tools from `gpd-verification`.
 - All servers are stateless per-request wrappers; the real logic already lives in `gpd.core.*` / `gpd.contracts` (shared with the CLI, including `save_state_json_locked` file locking). The exceptions are parsing/routing code that lives **inside** server modules and must move to core:
   - Error-catalog markdown-table parsing: `src/gpd/mcp/servers/errors_mcp.py`.
   - Protocol section/step/checkpoint parsing + keyword routing: `src/gpd/mcp/servers/protocols_server.py`.
@@ -61,24 +61,27 @@ Risk tier: **Tier 3** (public surface: console scripts, infra descriptors, MCP t
    - [ ] Remove `gpd-conventions|errors|patterns|protocols|skills|state` entries from runtime `mcpServers` config; keep `gpd-verification` until Phase 3 ships if `/gpd:verify-work` is in active use. Note: `gpd install` re-adds them until Phase 3.
 
 2. **Phase 1 — CLI parity (additive, independently shippable PR)**
-   - [ ] Move error-catalog parsing from `errors_mcp.py` into `src/gpd/core/error_catalog.py`; server imports from core until deleted (no duplication window).
-   - [ ] Move protocol parsing/routing from `protocols_server.py` into `src/gpd/core/protocol_catalog.py`; same import discipline.
-   - [ ] Extend the existing `gpd verify` sub-app (`src/gpd/cli.py:3228`) with contract subcommands wrapping `gpd.core.contract_validation` / `gpd.core.protocol_bundles` / `gpd.core.verification_checks`:
-     - [ ] `gpd verify contract-check --payload <file|->` (JSON in, stable-envelope JSON out; `--schema` flag prints the pydantic JSON schema so agents can self-correct invalid payloads).
-     - [ ] No-orphan guarantee for all new subcommands: fail fast instead of blocking — when `--payload -` is used with a TTY stdin (no piped input), exit immediately with a usage error rather than waiting on stdin. Lock waits are already bounded (`file_lock` 5 s acquisition timeout, `src/gpd/core/utils.py:461`) and OS advisory locks auto-release on process death, so no CLI invocation can linger or leave stale locks; nothing in these commands may spawn background processes or daemons.
-     - [ ] `gpd verify suggest-checks --contract <file|->`.
-     - [ ] `gpd verify bundle-checklist <bundle-id>...`.
-     - [ ] `gpd verify checklist <domain>` and `gpd verify coverage` (replace `get_checklist`/`get_verification_coverage`).
-   - [ ] Add `gpd refs errors [list|get <id>|--domain <d>]` and `gpd refs protocols [list|get <name>|route <query>|checkpoints <name>]` over the new core modules (no existing CLI surface; `gpd query` is project-artifact search, unrelated).
-   - [ ] Close the two conventions gaps on the existing `gpd convention` sub-app: `gpd convention validate-assert <file>` (wraps `check_assertions`/`parse_assert_conventions`) and `gpd convention subfield-defaults <domain>`. Mutations already go through `save_state_json_locked` (used by both `cli.py` and the server).
-   - [ ] Audit `gpd pattern` parity against the patterns server (`search` vs `lookup_pattern` filters, `list` vs `list_domains`); close any gaps found — expected near-zero work.
-   - [ ] Decision recorded: `dimensional_check`, `limiting_case_check`, `symmetry_check` are **dropped without CLI replacement** — they are regex/guidance-text generators whose own docstrings defer real math to SymPy; no prompt references them.
-   - [ ] No CLI work for `gpd-state` (surface exists) or `gpd-skills` (the runtime's own skill system is the surface; no replacement).
-   - [ ] Output envelopes reuse the `stable_mcp_response`/`stable_mcp_error` shape (rename to a transport-neutral module, e.g. `gpd.core.envelopes`) so downstream parsing is identical across MCP (until deleted) and CLI.
+   - [x] Move error-catalog parsing from `errors_mcp.py` into `src/gpd/core/error_catalog.py`; server imports from core until deleted (no duplication window).
+   - [x] Move protocol parsing/routing from `protocols_server.py` into `src/gpd/core/protocol_catalog.py`; same import discipline.
+   - [x] Extend the existing `gpd verify` sub-app with contract subcommands wrapping `gpd.core.contract_validation` / `gpd.core.protocol_bundles` / `gpd.core.verification_checks`:
+     - [x] `gpd --raw verify contract-check --payload <file|-> [--project-dir DIR]` (JSON in, stable-envelope JSON out; `--schema` prints the contract-check payload model's pydantic JSON schema so agents can self-correct invalid payloads). Exits 1 on `status: fail` so CI callers can gate on `$?`.
+     - [x] No-orphan guarantee for all new subcommands: fail fast instead of blocking — when `--payload -` is used with a TTY stdin (no piped input), exit immediately with a usage error rather than waiting on stdin. Lock waits are already bounded (`file_lock` 5 s acquisition timeout, `src/gpd/core/utils.py:461`) and OS advisory locks auto-release on process death, so no CLI invocation can linger or leave stale locks; nothing in these commands may spawn background processes or daemons.
+     - [x] `gpd --raw verify suggest-checks --contract <file|-> --project-dir DIR [--active-checks <id>,... ]`. `--project-dir` is not optional in practice: without it the anchor grounding is skipped and `contract_warnings` comes back empty.
+     - [x] `gpd --raw verify bundle-checklist <bundle-id> [<bundle-id> ...]`. Exits 1 when any requested bundle id is unknown.
+     - [x] `gpd --raw verify checklist <domain>` and `gpd --raw verify coverage --error-classes <id>,... --active-checks <id>,...` (replace `get_checklist`/`get_verification_coverage`).
+   - [x] Add `gpd --raw refs errors [--domain <d> | --id <n> [--detection|--traceability]]` and `gpd --raw refs protocols [--domain <d> | --name <n> | --route <query> | --checkpoints <n>]` over the new core modules — one command each with mutually exclusive selector flags, not `list`/`get` subcommands (no existing CLI surface; `gpd query` is project-artifact search, unrelated). Unknown domains/ids emit the stable error envelope on stdout and exit 1.
+   - [x] Close the two conventions gaps on the existing `gpd convention` sub-app: `gpd convention validate-assert <file> [--lock <file|-> | --project-dir DIR]` (wraps `check_assertions`/`parse_assert_conventions`) and `gpd convention subfield-defaults <domain>`. `validate-assert` fails closed when no lock is resolvable, so assertions cannot pass vacuously outside a GPD project. Mutations already go through `save_state_json_locked` (used by both `cli.py` and the server).
+   - [x] **Audit performed** — `gpd pattern` parity against the patterns server (`gpd/cli.py` `pattern list|search` vs `patterns_server.lookup_pattern`/`list_domains`). **Two gaps found**, both still open:
+     - [ ] `lookup_pattern(domain, category, keywords)` post-filters free-text search results by `domain` and `category`; `gpd pattern search <query>` takes no filter flags, so a keyword search cannot be narrowed. (`gpd pattern list` is a *superset* of the server's no-keyword path — it adds `--severity`, which `lookup_pattern` lacks — so the list side has no gap.)
+     - [ ] `list_domains()` returns the valid `domains`/`categories`/`severities` vocabularies (`VALID_DOMAINS`/`VALID_CATEGORIES`/`VALID_SEVERITIES`); no `gpd pattern` command exposes them. Agents composing `gpd pattern add` have no CLI way to discover the accepted enum values.
+     - Envelope note: the server flattens both paths into `{count, patterns, query, library_exists}`, while the CLI emits the raw `PatternListResult`/`PatternSearchResult` models (`matches` rather than `patterns`, no `query` on the list path). Closing the two gaps above should also reconcile the key names.
+   - [x] Decision recorded: `dimensional_check`, `limiting_case_check`, `symmetry_check` are **dropped without CLI replacement** — they are regex/guidance-text generators whose own docstrings defer real math to SymPy; no prompt references them.
+   - [x] No CLI work for `gpd-state` (surface exists) or `gpd-skills` (the runtime's own skill system is the surface; no replacement).
+   - [x] Output envelopes reuse the `stable_mcp_response`/`stable_mcp_error` shape, now in the transport-neutral `gpd.core.envelopes`, so downstream parsing is identical across MCP (until deleted) and CLI.
 
 3. **Phase 2 — Prompt/skill migration**
-   - [ ] `src/gpd/commands/verify-work.md:40-42`: replace the 3 `mcp__gpd_verification__*` allowlist entries and call sites with `gpd verify ...` Bash invocations.
-   - [ ] `src/gpd/agents/gpd-verifier.md`: drop the 3 `mcp__gpd_verification__*` names from `tools:`; keep `shell`; update body instructions to the CLI forms.
+   - [x] `src/gpd/commands/verify-work.md`: replace the 3 `mcp__gpd_verification__*` entries in the `allowed-tools:` frontmatter list and their call sites with `gpd --raw verify ...` shell invocations.
+   - [x] `src/gpd/agents/gpd-verifier.md`: drop the 3 `mcp__gpd_verification__*` names from `tools:`; keep `shell`; update body instructions to the CLI forms.
    - [ ] Sweep `src/gpd/specs/references/` for prose directing agents at MCP tools — confirmed matches in ≥9 files, including `tooling/tool-integration.md`, `tooling/runtime-config-guide.md`, `verification/core/verification-quick-reference.md`, `orchestration/checkpoints.md`, `orchestration/state-portability.md` — and update to CLI/file-read guidance.
    - [ ] Verify each runtime adapter's permission/allowlist handling covers the new `gpd verify|refs|conventions|patterns` invocations (adapters already manage permissions for `gpd` commands; extend patterns if allowlists are verb-scoped).
 
@@ -90,6 +93,14 @@ Risk tier: **Tier 3** (public surface: console scripts, infra descriptors, MCP t
    - [ ] Remove the `arxiv` optional extra from `pyproject.toml [project.optional-dependencies]` (exists solely for the bridge).
    - [ ] Tests: delete/port `tests/mcp/` (30 files) — parity assertions move to CLI tests in Phase 1; update `test_release_consistency.py`, `test_metadata_consistency.py`.
    - [ ] API evolution gate artifacts: CHANGELOG breaking-change entry with migration table (old MCP tool → new CLI command); caller inventory (runtime configs, entry points, infra descriptors — plus GitHub code search for external `gpd-mcp-` usage); version bump per repo's semver policy.
+
+## Deferred with rationale
+
+Consciously left undone in Phases 1–2; each is tracked, none blocks Phase 3 planning.
+
+- **Frontmatter-regex hoist to `gpd.core.frontmatter`.** Four near-identical unclosed-frontmatter / leading-blank-line regex variants now live in `gpd.core.error_catalog`, `gpd.core.protocol_catalog`, `gpd.mcp.servers/__init__.py` (`parse_frontmatter_with_error`), and `gpd.core.frontmatter` itself. They differ in failure mode (raise vs. return an error string vs. silently return `({}, text)`), so folding them into one helper is a behavior-reconciliation task, not a move. Tracked as a follow-up; doing it inside this diff would have mixed a semantic change into a transport migration.
+- **`filename="<mcp_input>"` literal retained** in `gpd.core.convention_checks.assert_convention_validate_payload`. Verified it never reaches the emitted envelope — the payload builder drops `AssertionCheckResult.file` and `AssertionMismatch.file` — so it is the one shared builder's internal label for both the `assert_convention_validate` MCP tool and `gpd convention validate-assert`. Renaming it changes nothing observable and would only churn the transport-parity seam; it retires with the MCP vocabulary in Phase 3.
+- **Core docstrings that reference `gpd.mcp.*` paths** (e.g. `contract_checks` pointing at `gpd.mcp.servers.verification_server` for published input schemas) are accurate today — those schemas really do live there — and become stale only when Phase 3 deletes the module. Updated for transport-neutral *wording* (no more "MCP error envelope"), left pointing at the real code.
 
 ## Validation Plan
 
